@@ -1,0 +1,9 @@
+.git
+.gitignore
+.idea
+.gradle
+.vscode
+build
+*.md
+*.sql
+*.txt

@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:mariadb://mariadb:3306/pawever
+    username: pawever
+    password: pawever1234
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:data.sql
+
+  docker:
+    compose:
+      enabled: false
