@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "user_pet")
+@Table(name = "user_pets")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -27,14 +27,4 @@ public class UserPet {
     @Builder.Default
     private Boolean isOwner = false;
 
-    @Builder.Default
-    private Boolean selected = false;
-
-    public void select() {
-        this.selected = true;
-    }
-
-    public void deselect() {
-        this.selected = false;
-    }
 }

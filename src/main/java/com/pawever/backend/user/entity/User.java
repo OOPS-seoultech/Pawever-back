@@ -30,7 +30,13 @@ public class User extends BaseTimeEntity {
 
     private String profileImageUrl;
 
+    private Long selectedPetId;
+
     private LocalDateTime deletedAt;
+
+    public void selectPet(Long petId) {
+        this.selectedPetId = petId;
+    }
 
     public void updateProfile(String name, String nickname, String phone) {
         this.name = name;

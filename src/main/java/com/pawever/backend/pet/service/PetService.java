@@ -54,17 +54,15 @@ public class PetService {
                 .build();
         pet = petRepository.save(pet);
 
-        // 기존 선택된 펫 해제
-        userPetRepository.findByUserIdAndSelectedTrue(userId)
-                .ifPresent(UserPet::deselect);
-
         UserPet userPet = UserPet.builder()
                 .user(user)
                 .pet(pet)
                 .isOwner(true)
-                .selected(true)
                 .build();
         userPetRepository.save(userPet);
+
+        // 새로 생성한 펫을 선택
+        user.selectPet(pet.getId());
 
         // 미션 초기화 (이별 전인 경우)
         if (request.getLifecycleStatus() == LifecycleStatus.BEFORE_FAREWELL) {
@@ -72,39 +70,58 @@ public class PetService {
             initializeChecklist(pet);
         }
 
-        return PetResponse.of(pet, true, true);
+        return PetResponse.of(pet, user.getSelectedPetId(), true);
     }
 
     public PetResponse getPet(Long userId, Long petId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
-        return PetResponse.of(pet, userPet.getSelected(), userPet.getIsOwner());
+        return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     public List<PetListResponse> getMyPets(Long userId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        Long selectedPetId = user.getSelectedPetId();
+
         return userPetRepository.findByUserId(userId).stream()
                 .map(userPet -> PetListResponse.builder()
                         .id(userPet.getPet().getId())
                         .name(userPet.getPet().getName())
                         .profileImageUrl(userPet.getPet().getProfileImageUrl())
-                        .selected(userPet.getSelected())
+                        .selected(userPet.getPet().getId().equals(selectedPetId))
                         .build())
                 .toList();
     }
 
     public PetResponse getSelectedPet(Long userId) {
-        UserPet userPet = userPetRepository.findByUserIdAndSelectedTrue(userId)
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        Long selectedPetId = user.getSelectedPetId();
+        if (selectedPetId == null) {
+            throw new CustomException(ErrorCode.PET_NOT_FOUND);
+        }
+
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, selectedPetId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
-        return PetResponse.of(userPet.getPet(), true, userPet.getIsOwner());
+        return PetResponse.of(userPet.getPet(), selectedPetId, userPet.getIsOwner());
     }
 
     @Transactional
     public PetResponse updatePet(Long userId, Long petId, PetUpdateRequest request) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
@@ -118,16 +135,24 @@ public class PetService {
 
         pet.update(request.getName(), request.getBirthDate(), request.getGender(), request.getWeight(), breed);
 
-        return PetResponse.of(pet, userPet.getSelected(), userPet.getIsOwner());
+        return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     @Transactional
     public void deletePet(Long userId, Long petId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
         if (!userPet.getIsOwner()) {
             throw new CustomException(ErrorCode.NOT_OWNER);
+        }
+
+        // 삭제하는 펫이 현재 선택된 펫이면 선택 해제
+        if (petId.equals(user.getSelectedPetId())) {
+            user.selectPet(null);
         }
 
         // 모든 연결된 UserPet 삭제
@@ -139,23 +164,22 @@ public class PetService {
 
     @Transactional
     public PetResponse switchPet(Long userId, Long petId) {
-        userPetRepository.findByUserIdAndPetId(userId, petId)
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
-        // 기존 선택 해제
-        userPetRepository.findByUserIdAndSelectedTrue(userId)
-                .ifPresent(UserPet::deselect);
+        user.selectPet(petId);
 
-        // 새로운 펫 선택
-        UserPet targetUserPet = userPetRepository.findByUserIdAndPetId(userId, petId)
-                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
-        targetUserPet.select();
-
-        return PetResponse.of(targetUserPet.getPet(), true, targetUserPet.getIsOwner());
+        return PetResponse.of(userPet.getPet(), user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     @Transactional
     public PetResponse uploadPetImage(Long userId, Long petId, MultipartFile file) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
@@ -168,7 +192,7 @@ public class PetService {
 
         pet.updateProfileImage(imageUrl);
 
-        return PetResponse.of(pet, userPet.getSelected(), userPet.getIsOwner());
+        return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     public List<AnimalType> getAnimalTypes() {

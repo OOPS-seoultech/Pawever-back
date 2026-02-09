@@ -1,6 +1,5 @@
 package com.pawever.backend.memorial.dto;
 
-import com.pawever.backend.memorial.entity.Memorial;
 import com.pawever.backend.pet.entity.Pet;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,7 +13,6 @@ import java.time.Period;
 @Builder
 @AllArgsConstructor
 public class MemorialResponse {
-    private Long memorialId;
     private Long petId;
     private String petName;
     private String petProfileImageUrl;
@@ -22,24 +20,22 @@ public class MemorialResponse {
     private Integer age;
     private LocalDateTime deathDate;
 
-    public static MemorialResponse from(Memorial memorial) {
-        Pet pet = memorial.getPet();
+    public static MemorialResponse from(Pet pet) {
         Integer age = null;
         if (pet.getBirthDate() != null) {
-            LocalDate endDate = memorial.getDeathDate() != null
-                    ? memorial.getDeathDate().toLocalDate()
+            LocalDate endDate = pet.getDeathDate() != null
+                    ? pet.getDeathDate().toLocalDate()
                     : LocalDate.now();
             age = Period.between(pet.getBirthDate(), endDate).getYears();
         }
 
         return MemorialResponse.builder()
-                .memorialId(memorial.getId())
                 .petId(pet.getId())
                 .petName(pet.getName())
                 .petProfileImageUrl(pet.getProfileImageUrl())
                 .gender(pet.getGender() != null ? pet.getGender().name() : null)
                 .age(age)
-                .deathDate(memorial.getDeathDate())
+                .deathDate(pet.getDeathDate())
                 .build();
     }
 }

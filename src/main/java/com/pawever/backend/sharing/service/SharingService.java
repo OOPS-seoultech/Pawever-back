@@ -90,17 +90,15 @@ public class SharingService {
             throw new CustomException(ErrorCode.ALREADY_SHARED);
         }
 
-        // 기존 선택된 펫 해제
-        userPetRepository.findByUserIdAndSelectedTrue(userId)
-                .ifPresent(UserPet::deselect);
-
         UserPet userPet = UserPet.builder()
                 .user(user)
                 .pet(pet)
                 .isOwner(false)
-                .selected(true)
                 .build();
         userPetRepository.save(userPet);
+
+        // 초대받은 펫을 선택
+        user.selectPet(pet.getId());
     }
 
     /**

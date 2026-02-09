@@ -27,7 +27,7 @@ public class PetResponse {
     private Boolean selected;
     private Boolean isOwner;
 
-    public static PetResponse of(Pet pet, Boolean selected, Boolean isOwner) {
+    public static PetResponse of(Pet pet, Long selectedPetId, Boolean isOwner) {
         return PetResponse.builder()
                 .id(pet.getId())
                 .name(pet.getName())
@@ -40,7 +40,7 @@ public class PetResponse {
                 .lifecycleStatus(pet.getLifecycleStatus())
                 .inviteCode(pet.getInviteCode())
                 .emergencyMode(pet.getEmergencyMode())
-                .selected(selected)
+                .selected(pet.getId().equals(selectedPetId))
                 .isOwner(isOwner)
                 .build();
     }

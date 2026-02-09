@@ -19,7 +19,7 @@ public class MemorialController {
     private final MemorialService memorialService;
 
     /**
-     * 긴급 대처 모드 - Memorial 생성 + 이별 가이드 반환
+     * 긴급 대처 모드 - 이별 가이드 반환
      */
     @PostMapping("/pets/{petId}/emergency")
     public ResponseEntity<ApiResponse<EmergencyResponse>> activateEmergencyMode(@PathVariable Long petId) {
@@ -47,12 +47,12 @@ public class MemorialController {
     /**
      * 댓글 작성
      */
-    @PostMapping("/memorials/{memorialId}/comments")
+    @PostMapping("/memorials/pet/{petId}/comments")
     public ResponseEntity<ApiResponse<CommentResponse>> createComment(
-            @PathVariable Long memorialId,
+            @PathVariable Long petId,
             @Valid @RequestBody CommentCreateRequest request) {
         Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(memorialService.createComment(userId, memorialId, request)));
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.createComment(userId, petId, request)));
     }
 
     /**

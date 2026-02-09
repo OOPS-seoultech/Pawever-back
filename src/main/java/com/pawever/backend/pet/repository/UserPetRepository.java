@@ -12,8 +12,6 @@ public interface UserPetRepository extends JpaRepository<UserPet, Long> {
 
     Optional<UserPet> findByUserIdAndPetId(Long userId, Long petId);
 
-    Optional<UserPet> findByUserIdAndSelectedTrue(Long userId);
-
     List<UserPet> findByPetId(Long petId);
 
     Optional<UserPet> findByPetIdAndIsOwnerTrue(Long petId);

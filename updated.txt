@@ -2,32 +2,8 @@
 Pawever Backend - 원본 SQL 스키마 대비 변경 사항 정리
 ============================================================
 
-1. [전체] Primary Key 방식 변경
-   - 변경 전: 복합키 (반려동물ID + 품종ID + 동물종류ID) 사용
-   - 변경 후: 모든 엔티티에 단일 auto-increment Long ID 사용
-   - 사유: JPA 복합키 관리 복잡성 제거, API 설계 간소화
-
-2. [반려동물(Pet)] 필드 추가
-   - lifecycleStatus (BEFORE_FAREWELL / AFTER_FAREWELL): 이별 전/후 상태 관리
-   - emergencyMode (boolean): 긴급 대처 모드 활성화 여부
-   - inviteCode (String, unique): 같이 기록하기 초대코드 (UUID 기반 자동 생성)
-
 3. [회원_반려동물(UserPet)] 필드 추가
    - selected (boolean): 현재 선택된 반려동물 여부 (전환 기능 지원)
-
-4. [댓글(Comment)] 구조 변경
-   - 변경 전: 복합키 (회원ID + 반려동물ID + 품종ID + 동물종류ID), 내용 필드 없음
-   - 변경 후: 단일 ID, content(TEXT) 필드 추가, memorial FK로 추모에 연결
-   - createdAt 필드 추가 (BaseTimeEntity 상속)
-
-5. [장례옵션후기(Review)] 구조 변경
-   - funeral_company_id FK 추가 (장례업체와 직접 연결)
-   - user_id FK 추가 (작성자 추적)
-   - createdAt 필드 추가
-
-6. [추모(Memorial)] 구조 변경
-   - pet과 OneToOne 관계로 변경 (pet_id unique)
-   - createdAt 필드 추가
 
 7. [이별계획] → ChecklistItem + PetChecklist로 변경
    - 변경 전: 이별계획 테이블 (계획ID, 반려동물ID, 업체이용여부)
@@ -58,12 +34,6 @@ Pawever Backend - 원본 SQL 스키마 대비 변경 사항 정리
     - 변경 전: 회원
     - 변경 후: users (SQL 예약어 충돌 방지)
     - 선택한 펫ID 필드 제거 → UserPet.selected 필드로 대체
-
-12. [회원_장례업체(UserFuneralCompany)] 등록 타입
-    - ENUM 사용: SAVED, BLOCKED
-
-13. [전체] 감사(Auditing) 필드 추가
-    - BaseTimeEntity를 상속하는 엔티티에 createdAt, updatedAt 자동 관리
 
 14. [로그인] TODO 처리
     - 카카오/네이버 소셜 로그인: TODO (AuthService에 주석 표시)

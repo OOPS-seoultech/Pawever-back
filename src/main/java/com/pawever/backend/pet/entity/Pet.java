@@ -5,10 +5,11 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "pet")
+@Table(name = "pets")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
@@ -45,6 +46,8 @@ public class Pet extends BaseTimeEntity {
     @Column(nullable = false)
     private LifecycleStatus lifecycleStatus;
 
+    private LocalDateTime deathDate;
+
     @PrePersist
     public void generateInviteCode() {
         if (this.inviteCode == null) {
@@ -67,6 +70,7 @@ public class Pet extends BaseTimeEntity {
     public void activateEmergencyMode() {
         this.emergencyMode = true;
         this.lifecycleStatus = LifecycleStatus.AFTER_FAREWELL;
+        this.deathDate = LocalDateTime.now();
     }
 
     public void regenerateInviteCode() {
