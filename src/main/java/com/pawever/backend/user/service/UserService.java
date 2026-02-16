@@ -1,5 +1,6 @@
 package com.pawever.backend.user.service;
 
+import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.user.dto.UserProfileResponse;
@@ -17,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final StorageService storageService;
 
     public UserProfileResponse getProfile(Long userId) {
         User user = findActiveUser(userId);
@@ -34,11 +36,10 @@ public class UserService {
     public UserProfileResponse updateProfileImage(Long userId, MultipartFile file) {
         User user = findActiveUser(userId);
 
-        // TODO: AWS S3 파일 업로드 구현
-        // 1. MultipartFile을 S3에 업로드
-        // 2. 업로드된 파일의 URL을 반환
-        // S3Service.upload(file, "profile/" + userId)
-        String imageUrl = "https://s3.ap-northeast-2.amazonaws.com/pawever-bucket/profile/" + userId + "/profile.jpg";
+        if (user.getProfileImageUrl() != null) {
+            storageService.delete(user.getProfileImageUrl());
+        }
+        String imageUrl = storageService.upload(file, "users/" + userId + "/profile");
 
         user.updateProfileImage(imageUrl);
         return UserProfileResponse.from(user);

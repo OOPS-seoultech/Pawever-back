@@ -1,5 +1,6 @@
 package com.pawever.backend.pet.service;
 
+import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.mission.entity.ChecklistItem;
@@ -35,6 +36,7 @@ public class PetService {
     private final PetMissionRepository petMissionRepository;
     private final ChecklistItemRepository checklistItemRepository;
     private final PetChecklistRepository petChecklistRepository;
+    private final StorageService storageService;
 
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
@@ -186,9 +188,10 @@ public class PetService {
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
-        // TODO: AWS S3 파일 업로드 구현
-        // String imageUrl = s3Service.upload(file, "pet/" + petId);
-        String imageUrl = "https://s3.ap-northeast-2.amazonaws.com/pawever-bucket/pet/" + petId + "/profile.jpg";
+        if (pet.getProfileImageUrl() != null) {
+            storageService.delete(pet.getProfileImageUrl());
+        }
+        String imageUrl = storageService.upload(file, "pets/" + petId + "/profile");
 
         pet.updateProfileImage(imageUrl);
 

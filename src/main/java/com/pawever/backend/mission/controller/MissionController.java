@@ -5,8 +5,10 @@ import com.pawever.backend.global.security.UserPrincipal;
 import com.pawever.backend.mission.dto.*;
 import com.pawever.backend.mission.service.MissionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/pets/{petId}")
@@ -27,12 +29,13 @@ public class MissionController {
     /**
      * 발자국 남기기 미션 완료 처리
      */
-    @PostMapping("/missions/{missionId}/complete")
+    @PostMapping(value = "/missions/{missionId}/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<MissionResponse>> completeMission(
             @PathVariable Long petId,
-            @PathVariable Long missionId) {
+            @PathVariable Long missionId,
+            @RequestPart(required = false) MultipartFile file) {
         Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(missionService.completeMission(userId, petId, missionId)));
+        return ResponseEntity.ok(ApiResponse.ok(missionService.completeMission(userId, petId, missionId, file)));
     }
 
     /**

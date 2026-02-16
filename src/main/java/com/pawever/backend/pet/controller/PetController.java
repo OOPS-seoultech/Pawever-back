@@ -10,6 +10,7 @@ import com.pawever.backend.pet.repository.BreedRepository;
 import com.pawever.backend.pet.service.PetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -97,7 +98,7 @@ public class PetController {
     @PostMapping("/{petId}/image")
     public ResponseEntity<ApiResponse<PetResponse>> uploadPetImage(
             @PathVariable Long petId,
-            @RequestParam("file") MultipartFile file) {
+            @RequestPart("file") MultipartFile file) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(petService.uploadPetImage(userId, petId, file)));
     }

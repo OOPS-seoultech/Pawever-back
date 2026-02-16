@@ -31,8 +31,16 @@ public class PetMission {
 
     private LocalDateTime completedAt;
 
+    private String imageUrl;
+
     public void complete() {
         this.completed = true;
         this.completedAt = LocalDateTime.now();
+    }
+
+    public void complete(String imageUrl) {
+        this.completed = true;
+        this.completedAt = LocalDateTime.now();
+        this.imageUrl = imageUrl;
     }
 }

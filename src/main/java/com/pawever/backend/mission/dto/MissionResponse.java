@@ -17,6 +17,7 @@ public class MissionResponse {
     private String description;
     private Boolean completed;
     private LocalDateTime completedAt;
+    private String imageUrl;
 
     public static MissionResponse of(Mission mission, PetMission petMission) {
         return MissionResponse.builder()
@@ -25,6 +26,7 @@ public class MissionResponse {
                 .description(mission.getDescription())
                 .completed(petMission != null && petMission.getCompleted())
                 .completedAt(petMission != null ? petMission.getCompletedAt() : null)
+                .imageUrl(petMission != null ? petMission.getImageUrl() : null)
                 .build();
     }
 }

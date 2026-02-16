@@ -1,5 +1,6 @@
 package com.pawever.backend.mission.service;
 
+import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.mission.dto.*;
@@ -12,6 +13,7 @@ import com.pawever.backend.pet.repository.UserPetRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +31,7 @@ public class MissionService {
     private final PetChecklistRepository petChecklistRepository;
     private final PetRepository petRepository;
     private final UserPetRepository userPetRepository;
+    private final StorageService storageService;
 
     /**
      * 발자국 남기기 미션 목록 + 달성 현황 조회
@@ -58,7 +61,7 @@ public class MissionService {
      * 발자국 남기기 미션 완료 처리
      */
     @Transactional
-    public MissionResponse completeMission(Long userId, Long petId, Long missionId) {
+    public MissionResponse completeMission(Long userId, Long petId, Long missionId, MultipartFile file) {
         validatePetAccess(userId, petId);
 
         Pet pet = petRepository.findById(petId)
@@ -76,7 +79,15 @@ public class MissionService {
                     return petMissionRepository.save(newPm);
                 });
 
-        petMission.complete();
+        if (file != null && !file.isEmpty()) {
+            if (petMission.getImageUrl() != null) {
+                storageService.delete(petMission.getImageUrl());
+            }
+            String imageUrl = storageService.upload(file, "pets/" + petId + "/missions/" + petMission.getId());
+            petMission.complete(imageUrl);
+        } else {
+            petMission.complete();
+        }
 
         return MissionResponse.of(mission, petMission);
     }
