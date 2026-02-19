@@ -4,10 +4,13 @@ import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.auth.service.AuthService;
 import com.pawever.backend.global.common.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Auth", description = "인증 관련 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -25,27 +28,19 @@ public class AuthController {
      * POST /api/auth/login/naver
      */
 
-    /**
-     * 개발용 임시 로그인 - 신규 사용자 생성 후 토큰 발급
-     */
+    @Operation(summary = "개발용 임시 로그인", description = "신규 사용자를 생성하고 JWT 토큰을 발급합니다.")
     @PostMapping("/dev-login")
     public ResponseEntity<ApiResponse<TokenResponse>> devLogin(@RequestBody DevLoginRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(authService.devLogin(request)));
     }
 
-    /**
-     * 개발용 기존 사용자 로그인
-     */
+    @Operation(summary = "개발용 기존 사용자 로그인", description = "기존 사용자의 userId로 JWT 토큰을 발급합니다.")
     @PostMapping("/dev-login/{userId}")
     public ResponseEntity<ApiResponse<TokenResponse>> devLoginExisting(@PathVariable Long userId) {
         return ResponseEntity.ok(ApiResponse.ok(authService.devLoginExisting(userId)));
     }
 
-    /**
-     * TODO: 로그아웃 (토큰 블랙리스트 처리)
-     * JWT 기반이므로 클라이언트에서 토큰 삭제로 처리 가능
-     * 서버 측 블랙리스트가 필요하면 Redis 등 활용
-     */
+    @Operation(summary = "로그아웃", description = "로그아웃 처리합니다. (토큰 블랙리스트 미구현)")
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout() {
         // TODO: 토큰 블랙리스트 처리 (Redis 등)
