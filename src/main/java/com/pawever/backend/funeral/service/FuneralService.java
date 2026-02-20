@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -30,16 +31,24 @@ public class FuneralService {
     private final PetRepository petRepository;
     private final UserPetRepository userPetRepository;
 
+    private static final double DEFAULT_LATITUDE = 37.5559;   // 서울역
+    private static final double DEFAULT_LONGITUDE = 126.9723;
+
     /**
-     * 장례업체 목록 조회
+     * 장례업체 목록 조회 (거리순 오름차순)
      */
-    public List<FuneralCompanyListResponse> getFuneralCompanyList(Long userId) {
-        List<FuneralCompany> companies = funeralCompanyRepository.findAll();
+    public List<FuneralCompanyListResponse> getFuneralCompanyList(Long userId, Double latitude, Double longitude) {
+        double userLat = latitude != null ? latitude : DEFAULT_LATITUDE;
+        double userLng = longitude != null ? longitude : DEFAULT_LONGITUDE;
 
         Map<Long, RegistrationType> userRegistrations = buildUserRegistrationMap(userId);
 
-        return companies.stream()
-                .map(company -> FuneralCompanyListResponse.of(company, userRegistrations.get(company.getId())))
+        return funeralCompanyRepository.findAll().stream()
+                .map(company -> {
+                    Double distance = calculateDistance(userLat, userLng, company.getLatitude(), company.getLongitude());
+                    return FuneralCompanyListResponse.of(company, userRegistrations.get(company.getId()), distance);
+                })
+                .sorted(Comparator.comparingDouble(r -> r.getDistanceKm() != null ? r.getDistanceKm() : Double.MAX_VALUE))
                 .toList();
     }
 
@@ -163,6 +172,17 @@ public class FuneralService {
                 throw new CustomException(ErrorCode.BLOCKED_COMPANY_LIMIT_EXCEEDED);
             }
         }
+    }
+
+    private Double calculateDistance(double userLat, double userLng, Double companyLat, Double companyLng) {
+        if (companyLat == null || companyLng == null) return null;
+        final double R = 6371.0;
+        double dLat = Math.toRadians(companyLat - userLat);
+        double dLng = Math.toRadians(companyLng - userLng);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(userLat)) * Math.cos(Math.toRadians(companyLat))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     private Map<Long, RegistrationType> buildUserRegistrationMap(Long userId) {

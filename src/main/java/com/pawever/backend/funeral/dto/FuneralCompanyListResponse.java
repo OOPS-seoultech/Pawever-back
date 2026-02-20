@@ -13,13 +13,15 @@ public class FuneralCompanyListResponse {
     private Long id;
     private String name;
     private String location;
+    private Double distanceKm;
     private RegistrationType userRegistrationType;
 
-    public static FuneralCompanyListResponse of(FuneralCompany company, RegistrationType userType) {
+    public static FuneralCompanyListResponse of(FuneralCompany company, RegistrationType userType, Double distanceKm) {
         return FuneralCompanyListResponse.builder()
                 .id(company.getId())
                 .name(company.getName())
                 .location(company.getLocation())
+                .distanceKm(distanceKm)
                 .userRegistrationType(userType)
                 .build();
     }

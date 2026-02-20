@@ -21,11 +21,13 @@ public class FuneralController {
 
     private final FuneralService funeralService;
 
-    @Operation(summary = "장례업체 목록 조회", description = "장례업체 전체 목록을 조회합니다. 저장/피하기 상태가 포함됩니다.")
+    @Operation(summary = "장례업체 목록 조회", description = "장례업체 전체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
     @GetMapping
-    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getFuneralCompanyList() {
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getFuneralCompanyList(
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude) {
         Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(funeralService.getFuneralCompanyList(userId)));
+        return ResponseEntity.ok(ApiResponse.ok(funeralService.getFuneralCompanyList(userId, latitude, longitude)));
     }
 
     @Operation(summary = "장례업체 상세 조회", description = "특정 장례업체의 상세 정보를 조회합니다.")
