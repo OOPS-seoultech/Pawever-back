@@ -155,15 +155,20 @@ CREATE TABLE `funeral_companies` (
     `id`                      BIGINT          NOT NULL AUTO_INCREMENT,
     `name`                    VARCHAR(255)    NOT NULL,
     `location`                VARCHAR(255)    NULL,
+    `latitude`                DOUBLE          NULL,
+    `longitude`               DOUBLE          NULL,
+    `phone`                   VARCHAR(20)     NULL,
+    `email`                   VARCHAR(255)    NULL,
     `introduction`            TEXT            NULL,
     `guide_text`              TEXT            NULL,
     `service_description`     TEXT            NULL,
     `full_observation`        BOOLEAN         DEFAULT FALSE,
-    `available24_hours`       BOOLEAN         DEFAULT FALSE,
+    `open24_hours`            BOOLEAN         DEFAULT FALSE,
     `pickup_service`          BOOLEAN         DEFAULT FALSE,
     `memorial_stone`          BOOLEAN         DEFAULT FALSE,
     `private_memorial_room`   BOOLEAN         DEFAULT FALSE,
     `ossuary`                 BOOLEAN         DEFAULT FALSE,
+    `free_basic_urn`          BOOLEAN         DEFAULT FALSE,
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

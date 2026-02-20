@@ -15,5 +15,7 @@ public interface UserFuneralCompanyRepository extends JpaRepository<UserFuneralC
 
     List<UserFuneralCompany> findByUserIdAndType(Long userId, RegistrationType type);
 
+    int countByUserIdAndType(Long userId, RegistrationType type);
+
     void deleteByUserIdAndFuneralCompanyId(Long userId, Long funeralCompanyId);
 }

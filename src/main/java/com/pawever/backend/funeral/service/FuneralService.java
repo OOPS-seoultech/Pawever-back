@@ -73,13 +73,20 @@ public class FuneralService {
                 .findByUserIdAndFuneralCompanyId(userId, companyId)
                 .orElse(null);
 
+        RegistrationType newType = request.getType();
+
+        // 타입이 변경되거나 새로 등록하는 경우에만 한도 체크
+        if (existing == null || existing.getType() != newType) {
+            validateRegistrationLimit(userId, newType);
+        }
+
         if (existing != null) {
-            existing.updateType(request.getType());
+            existing.updateType(newType);
         } else {
             UserFuneralCompany ufc = UserFuneralCompany.builder()
                     .user(user)
                     .funeralCompany(company)
-                    .type(request.getType())
+                    .type(newType)
                     .build();
             userFuneralCompanyRepository.save(ufc);
         }
@@ -144,6 +151,18 @@ public class FuneralService {
         }
 
         reviewRepository.delete(review);
+    }
+
+    private void validateRegistrationLimit(Long userId, RegistrationType type) {
+        if (type == RegistrationType.SAVED) {
+            if (userFuneralCompanyRepository.countByUserIdAndType(userId, RegistrationType.SAVED) >= 5) {
+                throw new CustomException(ErrorCode.SAVED_COMPANY_LIMIT_EXCEEDED);
+            }
+        } else if (type == RegistrationType.BLOCKED) {
+            if (userFuneralCompanyRepository.countByUserIdAndType(userId, RegistrationType.BLOCKED) >= 15) {
+                throw new CustomException(ErrorCode.BLOCKED_COMPANY_LIMIT_EXCEEDED);
+            }
+        }
     }
 
     private Map<Long, RegistrationType> buildUserRegistrationMap(Long userId) {

@@ -38,6 +38,8 @@ public enum ErrorCode {
 
     // Funeral
     FUNERAL_COMPANY_NOT_FOUND(HttpStatus.NOT_FOUND, "장례업체를 찾을 수 없습니다."),
+    SAVED_COMPANY_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "저장 가능한 장례업체는 최대 5개입니다."),
+    BLOCKED_COMPANY_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "피하기 가능한 장례업체는 최대 15개입니다."),
     REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "후기를 찾을 수 없습니다."),
 
     // Sharing
