@@ -1,6 +1,8 @@
 package com.pawever.backend.auth.service;
 
+import com.pawever.backend.auth.client.KakaoApiClient;
 import com.pawever.backend.auth.dto.DevLoginRequest;
+import com.pawever.backend.auth.dto.KakaoLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.global.security.JwtTokenProvider;
 import com.pawever.backend.user.entity.User;
@@ -16,13 +18,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
-
-    /**
-     * TODO: 카카오 소셜 로그인 구현
-     * 1. 카카오 accessToken으로 카카오 API 호출하여 사용자 정보 조회
-     * 2. kakaoId로 기존 회원 조회 또는 신규 생성
-     * 3. JWT 토큰 발급
-     */
+    private final KakaoApiClient kakaoApiClient;
 
     /**
      * TODO: 네이버 소셜 로그인 구현
@@ -30,6 +26,31 @@ public class AuthService {
      * 2. naverId로 기존 회원 조회 또는 신규 생성
      * 3. JWT 토큰 발급
      */
+
+    @Transactional
+    public TokenResponse kakaoLogin(KakaoLoginRequest request) {
+        KakaoApiClient.KakaoUserInfo userInfo = kakaoApiClient.getUserInfo(request.getAccessToken());
+
+        return userRepository.findByKakaoId(userInfo.getKakaoId())
+                .map(user -> TokenResponse.builder()
+                        .accessToken(jwtTokenProvider.createToken(user.getId()))
+                        .userId(user.getId())
+                        .isNewUser(false)
+                        .build())
+                .orElseGet(() -> {
+                    User newUser = User.builder()
+                            .kakaoId(userInfo.getKakaoId())
+                            .nickname(userInfo.getNickname())
+                            .profileImageUrl(userInfo.getProfileImageUrl())
+                            .build();
+                    User saved = userRepository.save(newUser);
+                    return TokenResponse.builder()
+                            .accessToken(jwtTokenProvider.createToken(saved.getId()))
+                            .userId(saved.getId())
+                            .isNewUser(true)
+                            .build();
+                });
+    }
 
     /**
      * 개발용 임시 로그인 (소셜 로그인 구현 전까지 사용)

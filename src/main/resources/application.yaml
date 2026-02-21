@@ -32,6 +32,9 @@ jwt:
   secret: pawever-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
   expiration: 86400000  # 24 hours
 
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY}
+
 cloud:
   ncp:
     credentials:

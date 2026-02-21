@@ -1,11 +1,13 @@
 package com.pawever.backend.auth.controller;
 
 import com.pawever.backend.auth.dto.DevLoginRequest;
+import com.pawever.backend.auth.dto.KakaoLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.auth.service.AuthService;
 import com.pawever.backend.global.common.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,10 +20,11 @@ public class AuthController {
 
     private final AuthService authService;
 
-    /**
-     * TODO: 카카오 소셜 로그인
-     * POST /api/auth/login/kakao
-     */
+    @Operation(summary = "카카오 소셜 로그인", description = "카카오 accessToken으로 로그인 또는 회원가입 후 JWT를 발급합니다.")
+    @PostMapping("/login/kakao")
+    public ResponseEntity<ApiResponse<TokenResponse>> kakaoLogin(@Valid @RequestBody KakaoLoginRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.kakaoLogin(request)));
+    }
 
     /**
      * TODO: 네이버 소셜 로그인
