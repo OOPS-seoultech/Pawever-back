@@ -22,6 +22,8 @@ services:
     build: .
     ports:
       - "28080:8080"
+    env_file:
+      - .env
     environment:
       SPRING_PROFILES_ACTIVE: docker
     depends_on:
