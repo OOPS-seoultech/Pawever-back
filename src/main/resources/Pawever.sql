@@ -172,16 +172,16 @@ CREATE TABLE `funeral_companies` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 14. 회원_장례업체 (user_funeral_companies)
-CREATE TABLE `user_funeral_companies` (
+-- 14. 반려동물_장례업체 (pet_funeral_companies)
+CREATE TABLE `pet_funeral_companies` (
     `id`                  BIGINT          NOT NULL AUTO_INCREMENT,
-    `user_id`             BIGINT          NOT NULL,
+    `pet_id`              BIGINT          NOT NULL,
     `funeral_company_id`  BIGINT          NOT NULL,
     `type`                VARCHAR(10)     NOT NULL    COMMENT 'SAVED / BLOCKED',
     PRIMARY KEY (`id`),
-    CONSTRAINT `FK_users_TO_user_funeral_companies`
-        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
-    CONSTRAINT `FK_funeral_companies_TO_user_funeral_companies`
+    CONSTRAINT `FK_pets_TO_pet_funeral_companies`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
+    CONSTRAINT `FK_funeral_companies_TO_pet_funeral_companies`
         FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

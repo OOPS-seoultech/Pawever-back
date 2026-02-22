@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 public class FuneralService {
 
     private final FuneralCompanyRepository funeralCompanyRepository;
-    private final UserFuneralCompanyRepository userFuneralCompanyRepository;
+    private final PetFuneralCompanyRepository petFuneralCompanyRepository;
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final PetRepository petRepository;
@@ -37,16 +37,18 @@ public class FuneralService {
     /**
      * 장례업체 목록 조회 (거리순 오름차순)
      */
-    public List<FuneralCompanyListResponse> getFuneralCompanyList(Long userId, Double latitude, Double longitude) {
+    public List<FuneralCompanyListResponse> getFuneralCompanyList(Long userId, Long petId, Double latitude, Double longitude) {
+        validatePetAccess(userId, petId);
+
         double userLat = latitude != null ? latitude : DEFAULT_LATITUDE;
         double userLng = longitude != null ? longitude : DEFAULT_LONGITUDE;
 
-        Map<Long, RegistrationType> userRegistrations = buildUserRegistrationMap(userId);
+        Map<Long, RegistrationType> petRegistrations = buildPetRegistrationMap(petId);
 
         return funeralCompanyRepository.findAll().stream()
                 .map(company -> {
                     Double distance = calculateDistance(userLat, userLng, company.getLatitude(), company.getLongitude());
-                    return FuneralCompanyListResponse.of(company, userRegistrations.get(company.getId()), distance);
+                    return FuneralCompanyListResponse.of(company, petRegistrations.get(company.getId()), distance);
                 })
                 .sorted(Comparator.comparingDouble(r -> r.getDistanceKm() != null ? r.getDistanceKm() : Double.MAX_VALUE))
                 .toList();
@@ -55,16 +57,18 @@ public class FuneralService {
     /**
      * 장례업체 상세 조회
      */
-    public FuneralCompanyResponse getFuneralCompanyDetail(Long userId, Long companyId) {
+    public FuneralCompanyResponse getFuneralCompanyDetail(Long userId, Long petId, Long companyId) {
+        validatePetAccess(userId, petId);
+
         FuneralCompany company = funeralCompanyRepository.findById(companyId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FUNERAL_COMPANY_NOT_FOUND));
 
-        RegistrationType userType = userFuneralCompanyRepository
-                .findByUserIdAndFuneralCompanyId(userId, companyId)
-                .map(UserFuneralCompany::getType)
+        RegistrationType petType = petFuneralCompanyRepository
+                .findByPetIdAndFuneralCompanyId(petId, companyId)
+                .map(PetFuneralCompany::getType)
                 .orElse(null);
 
-        return FuneralCompanyResponse.of(company, userType);
+        return FuneralCompanyResponse.of(company, petType);
     }
 
     /**
@@ -72,32 +76,34 @@ public class FuneralService {
      */
     @Transactional
     public void registerFuneralCompany(Long userId, Long companyId, RegisterFuneralCompanyRequest request) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+        Long petId = request.getPetId();
+        validatePetAccess(userId, petId);
+
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
         FuneralCompany company = funeralCompanyRepository.findById(companyId)
                 .orElseThrow(() -> new CustomException(ErrorCode.FUNERAL_COMPANY_NOT_FOUND));
 
-        UserFuneralCompany existing = userFuneralCompanyRepository
-                .findByUserIdAndFuneralCompanyId(userId, companyId)
+        PetFuneralCompany existing = petFuneralCompanyRepository
+                .findByPetIdAndFuneralCompanyId(petId, companyId)
                 .orElse(null);
 
         RegistrationType newType = request.getType();
 
-        // 타입이 변경되거나 새로 등록하는 경우에만 한도 체크
         if (existing == null || existing.getType() != newType) {
-            validateRegistrationLimit(userId, newType);
+            validateRegistrationLimit(petId, newType);
         }
 
         if (existing != null) {
             existing.updateType(newType);
         } else {
-            UserFuneralCompany ufc = UserFuneralCompany.builder()
-                    .user(user)
+            PetFuneralCompany pfc = PetFuneralCompany.builder()
+                    .pet(pet)
                     .funeralCompany(company)
                     .type(newType)
                     .build();
-            userFuneralCompanyRepository.save(ufc);
+            petFuneralCompanyRepository.save(pfc);
         }
     }
 
@@ -105,8 +111,9 @@ public class FuneralService {
      * 장례업체 저장/피하기 해제
      */
     @Transactional
-    public void unregisterFuneralCompany(Long userId, Long companyId) {
-        userFuneralCompanyRepository.deleteByUserIdAndFuneralCompanyId(userId, companyId);
+    public void unregisterFuneralCompany(Long userId, Long petId, Long companyId) {
+        validatePetAccess(userId, petId);
+        petFuneralCompanyRepository.deleteByPetIdAndFuneralCompanyId(petId, companyId);
     }
 
     /**
@@ -162,13 +169,18 @@ public class FuneralService {
         reviewRepository.delete(review);
     }
 
-    private void validateRegistrationLimit(Long userId, RegistrationType type) {
+    private void validatePetAccess(Long userId, Long petId) {
+        userPetRepository.findByUserIdAndPetId(userId, petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
+    }
+
+    private void validateRegistrationLimit(Long petId, RegistrationType type) {
         if (type == RegistrationType.SAVED) {
-            if (userFuneralCompanyRepository.countByUserIdAndType(userId, RegistrationType.SAVED) >= 5) {
+            if (petFuneralCompanyRepository.countByPetIdAndType(petId, RegistrationType.SAVED) >= 5) {
                 throw new CustomException(ErrorCode.SAVED_COMPANY_LIMIT_EXCEEDED);
             }
         } else if (type == RegistrationType.BLOCKED) {
-            if (userFuneralCompanyRepository.countByUserIdAndType(userId, RegistrationType.BLOCKED) >= 15) {
+            if (petFuneralCompanyRepository.countByPetIdAndType(petId, RegistrationType.BLOCKED) >= 15) {
                 throw new CustomException(ErrorCode.BLOCKED_COMPANY_LIMIT_EXCEEDED);
             }
         }
@@ -185,11 +197,11 @@ public class FuneralService {
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    private Map<Long, RegistrationType> buildUserRegistrationMap(Long userId) {
-        return userFuneralCompanyRepository.findByUserId(userId).stream()
+    private Map<Long, RegistrationType> buildPetRegistrationMap(Long petId) {
+        return petFuneralCompanyRepository.findByPetId(petId).stream()
                 .collect(Collectors.toMap(
-                        ufc -> ufc.getFuneralCompany().getId(),
-                        UserFuneralCompany::getType
+                        pfc -> pfc.getFuneralCompany().getId(),
+                        PetFuneralCompany::getType
                 ));
     }
 }
