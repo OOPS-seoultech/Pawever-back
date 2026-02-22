@@ -45,10 +45,9 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(authService.devLoginExisting(userId)));
     }
 
-    @Operation(summary = "로그아웃", description = "로그아웃 처리합니다. (토큰 블랙리스트 미구현)")
-    @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout() {
-        // TODO: 토큰 블랙리스트 처리 (Redis 등)
-        return ResponseEntity.ok(ApiResponse.ok());
-    }
+//    @Operation(summary = "로그아웃", description = "로그아웃 처리합니다. (토큰 블랙리스트 미구현)")
+//    @PostMapping("/logout")
+//    public ResponseEntity<ApiResponse<Void>> logout() { // TODO: 토큰 블랙리스트 처리 (Redis 등)
+//        return ResponseEntity.ok(ApiResponse.ok());
+//    }
 }

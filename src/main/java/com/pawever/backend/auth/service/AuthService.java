@@ -32,6 +32,7 @@ public class AuthService {
                         .accessToken(jwtTokenProvider.createToken(user.getId()))
                         .userId(user.getId())
                         .isNewUser(false)
+                        .selectedPetId(user.getSelectedPetId())
                         .build())
                 .orElseGet(() -> {
                     User newUser = User.builder()
@@ -45,6 +46,7 @@ public class AuthService {
                             .accessToken(jwtTokenProvider.createToken(saved.getId()))
                             .userId(saved.getId())
                             .isNewUser(true)
+                            .selectedPetId(null)
                             .build();
                 });
     }
@@ -58,6 +60,7 @@ public class AuthService {
                         .accessToken(jwtTokenProvider.createToken(user.getId()))
                         .userId(user.getId())
                         .isNewUser(false)
+                        .selectedPetId(user.getSelectedPetId())
                         .build())
                 .orElseGet(() -> {
                     User newUser = User.builder()
@@ -70,6 +73,7 @@ public class AuthService {
                             .accessToken(jwtTokenProvider.createToken(saved.getId()))
                             .userId(saved.getId())
                             .isNewUser(true)
+                            .selectedPetId(null)
                             .build();
                 });
     }
