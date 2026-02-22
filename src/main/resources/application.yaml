@@ -32,6 +32,14 @@ jwt:
   secret: pawever-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
   expiration: 86400000  # 24 hours
 
+kakao:
+  rest-api-key: ${KAKAO_REST_API_KEY}
+
+naver:
+  client-id: ${NAVER_CLIENT_ID}
+  client-secret: ${NAVER_CLIENT_SECRET}
+  redirect-uri: http://localhost:28080/oauth/naver/callback
+
 cloud:
   ncp:
     credentials:
