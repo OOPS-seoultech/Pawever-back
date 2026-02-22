@@ -29,6 +29,9 @@ public class UserService {
     public UserProfileResponse updateProfile(Long userId, UserUpdateRequest request) {
         User user = findActiveUser(userId);
         user.updateProfile(request.getName(), request.getNickname(), request.getPhone());
+        if (request.getReferralType() != null) {
+            user.updateReferral(request.getReferralType(), request.getReferralMemo());
+        }
         return UserProfileResponse.from(user);
     }
 
