@@ -32,6 +32,13 @@ public class User extends BaseTimeEntity {
 
     private Long selectedPetId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private ReferralType referralType;
+
+    @Column(length = 255)
+    private String referralMemo;
+
     private LocalDateTime deletedAt;
 
     public void selectPet(Long petId) {
@@ -42,6 +49,11 @@ public class User extends BaseTimeEntity {
         this.name = name;
         this.nickname = nickname;
         this.phone = phone;
+    }
+
+    public void updateReferral(ReferralType referralType, String referralMemo) {
+        this.referralType = referralType;
+        this.referralMemo = referralType == ReferralType.OTHER ? referralMemo : null;
     }
 
     public void updateProfileImage(String profileImageUrl) {
