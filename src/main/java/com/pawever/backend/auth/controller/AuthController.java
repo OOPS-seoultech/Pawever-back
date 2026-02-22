@@ -2,6 +2,7 @@ package com.pawever.backend.auth.controller;
 
 import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.KakaoLoginRequest;
+import com.pawever.backend.auth.dto.NaverLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.auth.service.AuthService;
 import com.pawever.backend.global.common.ApiResponse;
@@ -26,10 +27,11 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(authService.kakaoLogin(request)));
     }
 
-    /**
-     * TODO: 네이버 소셜 로그인
-     * POST /api/auth/login/naver
-     */
+    @Operation(summary = "네이버 소셜 로그인", description = "네이버 accessToken으로 로그인 또는 회원가입 후 JWT를 발급합니다.")
+    @PostMapping("/login/naver")
+    public ResponseEntity<ApiResponse<TokenResponse>> naverLogin(@Valid @RequestBody NaverLoginRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.naverLogin(request)));
+    }
 
     @Operation(summary = "개발용 임시 로그인", description = "신규 사용자를 생성하고 JWT 토큰을 발급합니다.")
     @PostMapping("/dev-login")

@@ -1,8 +1,10 @@
 package com.pawever.backend.auth.service;
 
 import com.pawever.backend.auth.client.KakaoApiClient;
+import com.pawever.backend.auth.client.NaverApiClient;
 import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.KakaoLoginRequest;
+import com.pawever.backend.auth.dto.NaverLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.global.security.JwtTokenProvider;
 import com.pawever.backend.user.entity.User;
@@ -19,13 +21,33 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final KakaoApiClient kakaoApiClient;
+    private final NaverApiClient naverApiClient;
 
-    /**
-     * TODO: 네이버 소셜 로그인 구현
-     * 1. 네이버 accessToken으로 네이버 API 호출하여 사용자 정보 조회
-     * 2. naverId로 기존 회원 조회 또는 신규 생성
-     * 3. JWT 토큰 발급
-     */
+    @Transactional
+    public TokenResponse naverLogin(NaverLoginRequest request) {
+        NaverApiClient.NaverUserInfo userInfo = naverApiClient.getUserInfo(request.getAccessToken());
+
+        return userRepository.findByNaverId(userInfo.getId())
+                .map(user -> TokenResponse.builder()
+                        .accessToken(jwtTokenProvider.createToken(user.getId()))
+                        .userId(user.getId())
+                        .isNewUser(false)
+                        .build())
+                .orElseGet(() -> {
+                    User newUser = User.builder()
+                            .naverId(userInfo.getId())
+                            .nickname(userInfo.getNickname())
+                            .name(userInfo.getName())
+                            .profileImageUrl(userInfo.getProfileImage())
+                            .build();
+                    User saved = userRepository.save(newUser);
+                    return TokenResponse.builder()
+                            .accessToken(jwtTokenProvider.createToken(saved.getId()))
+                            .userId(saved.getId())
+                            .isNewUser(true)
+                            .build();
+                });
+    }
 
     @Transactional
     public TokenResponse kakaoLogin(KakaoLoginRequest request) {
