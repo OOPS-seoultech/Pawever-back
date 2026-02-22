@@ -26,6 +26,10 @@ services:
       - .env
     environment:
       SPRING_PROFILES_ACTIVE: docker
+      NCP_ACCESS_KEY: ${NCP_ACCESS_KEY:-}
+      NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
+      NCP_BUCKET: ${NCP_BUCKET:-}
+      NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
     depends_on:
       mariadb:
         condition: service_healthy
