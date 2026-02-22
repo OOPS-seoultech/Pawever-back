@@ -11,4 +11,5 @@ public class TokenResponse {
     private String accessToken;
     private Long userId;
     private boolean isNewUser;
+    private Long selectedPetId;
 }
