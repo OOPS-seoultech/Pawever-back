@@ -100,6 +100,7 @@ public class PetService {
                         .name(userPet.getPet().getName())
                         .profileImageUrl(userPet.getPet().getProfileImageUrl())
                         .selected(userPet.getPet().getId().equals(selectedPetId))
+                        .isOwner(userPet.getIsOwner())
                         .build())
                 .toList();
     }

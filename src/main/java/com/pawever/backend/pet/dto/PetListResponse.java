@@ -12,4 +12,5 @@ public class PetListResponse {
     private String name;
     private String profileImageUrl;
     private Boolean selected;
+    private Boolean isOwner;
 }
