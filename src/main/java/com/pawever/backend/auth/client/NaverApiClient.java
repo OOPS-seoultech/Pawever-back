@@ -57,5 +57,20 @@ public class NaverApiClient {
 
         @JsonProperty("profile_image")
         private String profileImage;
+
+        /** 성별: "M" | "F" | "U" */
+        private String gender;
+
+        /** 생일: "MM-DD" */
+        private String birthday;
+
+        /** 출생연도: "YYYY" */
+        private String birthyear;
+
+        /** 연령대: "20-29" */
+        private String age;
+
+        /** 전화번호: "010-1234-5678" */
+        private String mobile;
     }
 }

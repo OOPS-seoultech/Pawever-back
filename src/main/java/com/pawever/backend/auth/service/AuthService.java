@@ -6,6 +6,9 @@ import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.KakaoLoginRequest;
 import com.pawever.backend.auth.dto.NaverLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
+import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.global.security.JwtTokenProvider;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
@@ -22,6 +25,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final KakaoApiClient kakaoApiClient;
     private final NaverApiClient naverApiClient;
+    private final HmacHasher hmacHasher;
 
     @Transactional
     public TokenResponse naverLogin(NaverLoginRequest request) {
@@ -35,10 +39,20 @@ public class AuthService {
                         .selectedPetId(user.getSelectedPetId())
                         .build())
                 .orElseGet(() -> {
+                    String phoneHash = hashPhone(userInfo.getMobile());
+                    checkDuplicatePhone(phoneHash);
+
                     User newUser = User.builder()
                             .naverId(userInfo.getId())
                             .nickname(userInfo.getNickname())
                             .name(userInfo.getName())
+                            .email(userInfo.getEmail())
+                            .phone(userInfo.getMobile())
+                            .phoneHash(phoneHash)
+                            .gender(userInfo.getGender())
+                            .birthday(userInfo.getBirthday())
+                            .birthYear(userInfo.getBirthyear())
+                            .ageRange(userInfo.getAge())
                             .profileImageUrl(userInfo.getProfileImage())
                             .build();
                     User saved = userRepository.save(newUser);
@@ -63,9 +77,20 @@ public class AuthService {
                         .selectedPetId(user.getSelectedPetId())
                         .build())
                 .orElseGet(() -> {
+                    String phoneHash = hashPhone(userInfo.getPhone());
+                    checkDuplicatePhone(phoneHash);
+
                     User newUser = User.builder()
                             .kakaoId(userInfo.getKakaoId())
                             .nickname(userInfo.getNickname())
+                            .name(userInfo.getName())
+                            .email(userInfo.getEmail())
+                            .phone(userInfo.getPhone())
+                            .phoneHash(phoneHash)
+                            .gender(userInfo.getGender())
+                            .birthday(userInfo.getBirthday())
+                            .birthYear(userInfo.getBirthYear())
+                            .ageRange(userInfo.getAgeRange())
                             .profileImageUrl(userInfo.getProfileImageUrl())
                             .build();
                     User saved = userRepository.save(newUser);
@@ -103,8 +128,7 @@ public class AuthService {
      */
     public TokenResponse devLoginExisting(Long userId) {
         userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new com.pawever.backend.global.exception.CustomException(
-                        com.pawever.backend.global.exception.ErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         String token = jwtTokenProvider.createToken(userId);
 
@@ -113,5 +137,17 @@ public class AuthService {
                 .userId(userId)
                 .isNewUser(false)
                 .build();
+    }
+
+    private String hashPhone(String phone) {
+        if (phone == null || phone.isBlank()) return null;
+        return hmacHasher.hash(phone);
+    }
+
+    private void checkDuplicatePhone(String phoneHash) {
+        if (phoneHash == null) return;
+        if (userRepository.existsByPhoneHashAndDeletedAtIsNull(phoneHash)) {
+            throw new CustomException(ErrorCode.DUPLICATE_PHONE);
+        }
     }
 }

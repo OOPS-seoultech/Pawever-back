@@ -1,6 +1,7 @@
 package com.pawever.backend.user.entity;
 
 import com.pawever.backend.global.common.BaseTimeEntity;
+import com.pawever.backend.global.common.EncryptedStringConverter;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -18,11 +19,31 @@ public class User extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(length = 500)
     private String name;
 
     private String nickname;
 
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(length = 500)
     private String phone;
+
+    /** 전화번호 중복 검색용 Blind Index (HMAC-SHA256) */
+    @Column(unique = true)
+    private String phoneHash;
+
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(length = 500)
+    private String email;
+
+    private String gender;
+
+    private String birthday;
+
+    private String birthYear;
+
+    private String ageRange;
 
     private String kakaoId;
 
@@ -45,10 +66,11 @@ public class User extends BaseTimeEntity {
         this.selectedPetId = petId;
     }
 
-    public void updateProfile(String name, String nickname, String phone) {
+    public void updateProfile(String name, String nickname, String phone, String phoneHash) {
         this.name = name;
         this.nickname = nickname;
         this.phone = phone;
+        this.phoneHash = phoneHash;
     }
 
     public void updateReferral(ReferralType referralType, String referralMemo) {

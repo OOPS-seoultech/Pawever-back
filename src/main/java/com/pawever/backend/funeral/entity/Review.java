@@ -1,6 +1,7 @@
 package com.pawever.backend.funeral.entity;
 
 import com.pawever.backend.global.common.BaseTimeEntity;
+import com.pawever.backend.global.common.EncryptedStringConverter;
 import com.pawever.backend.pet.entity.Pet;
 import com.pawever.backend.user.entity.User;
 import jakarta.persistence.*;
@@ -33,6 +34,7 @@ public class Review extends BaseTimeEntity {
     @Column(nullable = false)
     private Integer rating;
 
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(columnDefinition = "TEXT")
     private String content;
 }
