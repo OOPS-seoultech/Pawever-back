@@ -19,3 +19,7 @@ spring:
   docker:
     compose:
       enabled: false
+
+encryption:
+  secret-key: ${ENCRYPTION_SECRET_KEY}
+  hash-key: ${ENCRYPTION_HASH_KEY}

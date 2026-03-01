@@ -32,6 +32,13 @@ jwt:
   secret: pawever-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
   expiration: 86400000  # 24 hours
 
+# AES-256 암호화 키 (Base64 인코딩된 32바이트)
+# 운영 환경에서는 반드시 환경변수로 교체: ENCRYPTION_SECRET_KEY
+encryption:
+  secret-key: ${ENCRYPTION_SECRET_KEY:cGF3ZXZlci1hZXMtMjU2LWtleS0zMmJ5dGVzLWxvbmc=}
+  # AES 키와 반드시 다른 키 사용 (분리 관리)
+  hash-key: ${ENCRYPTION_HASH_KEY:aGFzaC1rZXktZm9yLWJsaW5kLWluZGV4LTMyYnl0ZXM=}
+
 kakao:
   rest-api-key: ${KAKAO_REST_API_KEY}
 

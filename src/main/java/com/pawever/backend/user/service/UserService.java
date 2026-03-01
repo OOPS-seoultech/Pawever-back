@@ -3,6 +3,7 @@ package com.pawever.backend.user.service;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.user.dto.UserProfileResponse;
 import com.pawever.backend.user.dto.UserUpdateRequest;
 import com.pawever.backend.user.entity.User;
@@ -19,6 +20,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final StorageService storageService;
+    private final HmacHasher hmacHasher;
 
     public UserProfileResponse getProfile(Long userId) {
         User user = findActiveUser(userId);
@@ -28,7 +30,20 @@ public class UserService {
     @Transactional
     public UserProfileResponse updateProfile(Long userId, UserUpdateRequest request) {
         User user = findActiveUser(userId);
-        user.updateProfile(request.getName(), request.getNickname(), request.getPhone());
+
+        String newPhone = request.getPhone();
+        String newPhoneHash = (newPhone != null && !newPhone.isBlank())
+                ? hmacHasher.hash(newPhone)
+                : null;
+
+        // 다른 사용자가 해당 전화번호를 사용 중인지 확인
+        if (newPhoneHash != null
+                && !newPhoneHash.equals(user.getPhoneHash())
+                && userRepository.existsByPhoneHashAndDeletedAtIsNull(newPhoneHash)) {
+            throw new CustomException(ErrorCode.DUPLICATE_PHONE);
+        }
+
+        user.updateProfile(request.getName(), request.getNickname(), newPhone, newPhoneHash);
         if (request.getReferralType() != null) {
             user.updateReferral(request.getReferralType(), request.getReferralMemo());
         }
