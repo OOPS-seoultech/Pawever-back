@@ -33,16 +33,10 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(authService.naverLogin(request)));
     }
 
-    @Operation(summary = "개발용 임시 로그인", description = "신규 사용자를 생성하고 JWT 토큰을 발급합니다.")
+    @Operation(summary = "개발용 로그인", description = "비밀번호 검증 후 기존 사용자의 JWT 토큰을 발급합니다.")
     @PostMapping("/dev-login")
     public ResponseEntity<ApiResponse<TokenResponse>> devLogin(@RequestBody DevLoginRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(authService.devLogin(request)));
-    }
-
-    @Operation(summary = "개발용 기존 사용자 로그인", description = "기존 사용자의 userId로 JWT 토큰을 발급합니다.")
-    @PostMapping("/dev-login/{userId}")
-    public ResponseEntity<ApiResponse<TokenResponse>> devLoginExisting(@PathVariable Long userId) {
-        return ResponseEntity.ok(ApiResponse.ok(authService.devLoginExisting(userId)));
     }
 
 //    @Operation(summary = "로그아웃", description = "로그아웃 처리합니다. (토큰 블랙리스트 미구현)")

@@ -3,9 +3,9 @@ spring:
     name: pawever-backend
 
   datasource:
-    url: jdbc:mariadb://localhost:23306/pawever
-    username: pawever
-    password: pawever1234
+    url: jdbc:mariadb://${DB_HOST:localhost:23306}/${DB_NAME:pawever}
+    username: ${DB_USER:pawever}
+    password: ${DB_PASSWORD:pawever1234}
     driver-class-name: org.mariadb.jdbc.Driver
 
   jpa:
@@ -29,23 +29,24 @@ spring:
       max-request-size: 10MB
 
 jwt:
-  secret: pawever-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm
+  secret: ${JWT_SECRET:pawever-jwt-secret-key-must-be-at-least-256-bits-long-for-hs256-algorithm}
   expiration: 86400000  # 24 hours
 
-# AES-256 암호화 키 (Base64 인코딩된 32바이트)
-# 운영 환경에서는 반드시 환경변수로 교체: ENCRYPTION_SECRET_KEY
+dev:
+  login:
+    password: ${DEV_LOGIN_PASSWORD:}
+
 encryption:
   secret-key: ${ENCRYPTION_SECRET_KEY:cGF3ZXZlci1hZXMtMjU2LWtleS0zMmJ5dGVzLWxvbmc=}
-  # AES 키와 반드시 다른 키 사용 (분리 관리)
   hash-key: ${ENCRYPTION_HASH_KEY:aGFzaC1rZXktZm9yLWJsaW5kLWluZGV4LTMyYnl0ZXM=}
 
 kakao:
-  rest-api-key: ${KAKAO_REST_API_KEY}
+  rest-api-key: ${KAKAO_REST_API_KEY:}
 
 naver:
-  client-id: ${NAVER_CLIENT_ID}
-  client-secret: ${NAVER_CLIENT_SECRET}
-  redirect-uri: http://localhost:28080/oauth/naver/callback
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+  redirect-uri: ${NAVER_REDIRECT_URI:http://localhost:28080/oauth/naver/callback}
 
 cloud:
   ncp:
@@ -58,4 +59,3 @@ cloud:
       bucket: ${NCP_BUCKET:}
     cdn:
       domain: ${NCP_CDN_DOMAIN:}
-

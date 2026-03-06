@@ -23,7 +23,7 @@ docker compose up --build
 
 1. Swagger UI에서 `POST /api/auth/dev-login` 실행:
    ```json
-   { "name": "테스트", "nickname": "tester" }
+   { "password": "DEV_LOGIN_PASSWORD 값" }
    ```
 2. 응답의 `accessToken` 복사
 3. Swagger 상단 **Authorize** 클릭 → 토큰 값만 붙여넣기 → Authorize

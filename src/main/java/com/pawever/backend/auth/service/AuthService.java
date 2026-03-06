@@ -13,6 +13,7 @@ import com.pawever.backend.global.security.JwtTokenProvider;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,9 @@ public class AuthService {
     private final KakaoApiClient kakaoApiClient;
     private final NaverApiClient naverApiClient;
     private final HmacHasher hmacHasher;
+
+    @Value("${dev.login.password:}")
+    private String devLoginPassword;
 
     @Transactional
     public TokenResponse naverLogin(NaverLoginRequest request) {
@@ -104,38 +108,20 @@ public class AuthService {
     }
 
     /**
-     * 개발용 임시 로그인 (소셜 로그인 구현 전까지 사용)
+     * 개발용 로그인 (비밀번호 검증 후 테스트 유저 생성 및 JWT 발급)
      */
     @Transactional
     public TokenResponse devLogin(DevLoginRequest request) {
-        User user = User.builder()
-                .name(request.getName())
-                .nickname(request.getNickname())
-                .build();
-        user = userRepository.save(user);
+        if (devLoginPassword.isBlank() || !devLoginPassword.equals(request.getPassword())) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
 
-        String token = jwtTokenProvider.createToken(user.getId());
+        User user = userRepository.save(User.builder().build());
 
         return TokenResponse.builder()
-                .accessToken(token)
+                .accessToken(jwtTokenProvider.createToken(user.getId()))
                 .userId(user.getId())
                 .isNewUser(true)
-                .build();
-    }
-
-    /**
-     * 개발용 기존 사용자 로그인
-     */
-    public TokenResponse devLoginExisting(Long userId) {
-        userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
-
-        String token = jwtTokenProvider.createToken(userId);
-
-        return TokenResponse.builder()
-                .accessToken(token)
-                .userId(userId)
-                .isNewUser(false)
                 .build();
     }
 

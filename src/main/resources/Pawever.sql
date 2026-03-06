@@ -8,13 +8,21 @@
 -- 1. 회원 (users) - BaseTimeEntity 상속 → created_at, updated_at
 CREATE TABLE `users` (
     `id`                BIGINT          NOT NULL AUTO_INCREMENT,
-    `name`              VARCHAR(255)    NULL,
+    `name`              VARCHAR(500)    NULL,
     `nickname`          VARCHAR(255)    NULL,
-    `phone`             VARCHAR(255)    NULL,
+    `phone`             VARCHAR(500)    NULL,
+    `phone_hash`        VARCHAR(255)    NULL UNIQUE,
+    `email`             VARCHAR(500)    NULL,
+    `gender`            VARCHAR(20)     NULL,
+    `birthday`          VARCHAR(10)     NULL,
+    `birth_year`        VARCHAR(10)     NULL,
+    `age_range`         VARCHAR(20)     NULL,
     `kakao_id`          VARCHAR(255)    NULL,
     `naver_id`          VARCHAR(255)    NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `selected_pet_id`   BIGINT          NULL,
+    `referral_type`     VARCHAR(20)     NULL     COMMENT 'FRIEND / THREADS / INSTAGRAM / OFFLINE / OTHER',
+    `referral_memo`     VARCHAR(255)    NULL,
     `deleted_at`        DATETIME(6)     NULL,
     `created_at`        DATETIME(6)     NULL,
     `updated_at`        DATETIME(6)     NULL,
@@ -50,6 +58,7 @@ CREATE TABLE `pets` (
     `profile_image_url` VARCHAR(255)    NULL,
     `emergency_mode`    BOOLEAN         DEFAULT FALSE,
     `lifecycle_status`  VARCHAR(20)     NOT NULL    COMMENT 'BEFORE_FAREWELL / AFTER_FAREWELL',
+    `death_date`        DATETIME(6)     NULL,
     `created_at`        DATETIME(6)     NULL,
     `updated_at`        DATETIME(6)     NULL,
     PRIMARY KEY (`id`),
@@ -58,7 +67,7 @@ CREATE TABLE `pets` (
         FOREIGN KEY (`breed_id`) REFERENCES `breeds` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 5. 회원_반려동물 (user_pets) - selected는 User.selected_pet_id로 관리
+-- 5. 회원_반려동물 (user_pets)
 CREATE TABLE `user_pets` (
     `id`        BIGINT      NOT NULL AUTO_INCREMENT,
     `user_id`   BIGINT      NOT NULL,
@@ -86,6 +95,7 @@ CREATE TABLE `pet_missions` (
     `mission_id`    BIGINT      NOT NULL,
     `completed`     BOOLEAN     DEFAULT FALSE,
     `completed_at`  DATETIME(6) NULL,
+    `image_url`     VARCHAR(255) NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_pets_TO_pet_missions`
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
@@ -116,7 +126,7 @@ CREATE TABLE `pet_checklists` (
         FOREIGN KEY (`checklist_item_id`) REFERENCES `checklist_items` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 10. 댓글 (comments) - pet_id 기준 (별도 memorial 엔티티 없음)
+-- 10. 댓글 (comments)
 CREATE TABLE `comments` (
     `id`            BIGINT      NOT NULL AUTO_INCREMENT,
     `user_id`       BIGINT      NOT NULL,
@@ -208,7 +218,7 @@ CREATE TABLE `reviews` (
 CREATE TABLE `faqs` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
     `question`      TEXT            NOT NULL,
-    `answer`         TEXT            NOT NULL,
+    `answer`        TEXT            NOT NULL,
     `order_index`   INT             NULL,
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -311,7 +321,7 @@ INSERT INTO `guide_steps` (`guide_id`, `title`, `description`, `order_index`) VA
 -- 초기 데이터 (자주 묻는 질문 - Figma Q&A 화면 기준)
 -- ============================================================
 
-INSERT INTO `faqs` (`question`, `answer`, `order_index`) VALUES ('이별 후에는 장례식장을 찾아볼 수 없는 건 가요?', '이별 후에도 포에버 앱에서 등록된 반려동물 장례업체 목록을 계속 조회하실 수 있습니다. 다만 이별 전에 미리 장례업체를 알아보고 저장해두시면, 급한 상황에서 더 빠르게 연락하실 수 있습니다.', 1);
+INSERT INTO `faqs` (`question`, `answer`, `order_index`) VALUES ('이별 후에는 장례식장을 찾아볼 수 없는 건가요?', '이별 후에도 포에버 앱에서 등록된 반려동물 장례업체 목록을 계속 조회하실 수 있습니다. 다만 이별 전에 미리 장례업체를 알아보고 저장해두시면, 급한 상황에서 더 빠르게 연락하실 수 있습니다.', 1);
 INSERT INTO `faqs` (`question`, `answer`, `order_index`) VALUES ('음성 녹음만 업로드 할 수 있나요?', '아니요. 포에버에서는 사진, 영상, 음성 녹음 등 다양한 형태의 추억을 남기실 수 있습니다. 발자국 남기기 미션을 통해 원하시는 방식으로 소중한 순간을 기록해보세요.', 2);
 INSERT INTO `faqs` (`question`, `answer`, `order_index`) VALUES ('이별 전에 별자리 추모관을 보여주는 이유가 무엇인가요?', '이별 전에 별자리 추모관을 미리 보여드리는 것은, 반려동물과 함께할 수 있는 시간을 더 의미 있게 쓰실 수 있도록 돕기 위함입니다. 미리 알아두시면 이별 후에도 추모 공간을 편하게 이용하실 수 있습니다.', 3);
 INSERT INTO `faqs` (`question`, `answer`, `order_index`) VALUES ('그 외 기타 질문 내용', '기타 문의가 있으시면 pawever01@gmail.com 로 메일을 보내주세요. 영업시간 10:00 - 19:00 (24시간 이내 답변) 안내드리겠습니다.', 4);

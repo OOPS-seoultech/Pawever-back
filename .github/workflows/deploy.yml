@@ -1,0 +1,61 @@
+name: Deploy to NCP
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 서버에 배포
+        uses: appleboy/ssh-action@master
+        with:
+          host: 110.165.17.60
+          username: root
+          password: ${{ secrets.SERVER_PASSWORD }}
+          envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD
+          script: |
+            cd /root/Pawever-back
+
+            git pull origin main
+
+            cat > .env << EOF
+            DB_NAME=$DB_NAME
+            DB_USER=$DB_USER
+            DB_PASSWORD=$DB_PASSWORD
+            DB_ROOT_PASSWORD=$DB_ROOT_PASSWORD
+            JWT_SECRET=$JWT_SECRET
+            ENCRYPTION_SECRET_KEY=$ENCRYPTION_SECRET_KEY
+            ENCRYPTION_HASH_KEY=$ENCRYPTION_HASH_KEY
+            KAKAO_REST_API_KEY=$KAKAO_REST_API_KEY
+            NAVER_CLIENT_ID=$NAVER_CLIENT_ID
+            NAVER_CLIENT_SECRET=$NAVER_CLIENT_SECRET
+            NAVER_REDIRECT_URI=$NAVER_REDIRECT_URI
+            NCP_ACCESS_KEY=$NCP_ACCESS_KEY
+            NCP_SECRET_KEY=$NCP_SECRET_KEY
+            NCP_BUCKET=$NCP_BUCKET
+            NCP_CDN_DOMAIN=$NCP_CDN_DOMAIN
+            DEV_LOGIN_PASSWORD=$DEV_LOGIN_PASSWORD
+            EOF
+
+            docker compose down
+            docker compose up -d --build
+        env:
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ENCRYPTION_SECRET_KEY: ${{ secrets.ENCRYPTION_SECRET_KEY }}
+          ENCRYPTION_HASH_KEY: ${{ secrets.ENCRYPTION_HASH_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          NAVER_REDIRECT_URI: ${{ secrets.NAVER_REDIRECT_URI }}
+          NCP_ACCESS_KEY: ${{ secrets.NCP_ACCESS_KEY }}
+          NCP_SECRET_KEY: ${{ secrets.NCP_SECRET_KEY }}
+          NCP_BUCKET: ${{ secrets.NCP_BUCKET }}
+          NCP_CDN_DOMAIN: ${{ secrets.NCP_CDN_DOMAIN }}
+          DEV_LOGIN_PASSWORD: ${{ secrets.DEV_LOGIN_PASSWORD }}

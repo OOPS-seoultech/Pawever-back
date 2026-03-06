@@ -1,0 +1,18 @@
+# 로그 파일 경로 (NCP 서버에서는 /var/log/pawever 등으로 설정 가능)
+logging:
+  file:
+    path: ${LOG_PATH:-./logs}
+
+spring:
+  datasource:
+    url: jdbc:mariadb://mariadb:3306/${DB_NAME:pawever}
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  docker:
+    compose:
+      enabled: false
