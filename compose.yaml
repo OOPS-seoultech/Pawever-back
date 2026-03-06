@@ -26,10 +26,13 @@ services:
       - .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      LOG_PATH: /app/logs
       NCP_ACCESS_KEY: ${NCP_ACCESS_KEY:-}
       NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
       NCP_BUCKET: ${NCP_BUCKET:-}
       NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
+    volumes:
+      - app-logs:/app/logs
     depends_on:
       mariadb:
         condition: service_healthy
@@ -38,6 +41,7 @@ services:
 
 volumes:
   mariadb-data:
+  app-logs:
 
 networks:
   pawever-net:
