@@ -14,7 +14,7 @@ jobs:
         with:
           host: 110.165.17.60
           username: root
-          password: ${{ secrets.SERVER_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD
           script: |
             cd /root/Pawever-back
