@@ -12,7 +12,7 @@ jobs:
       - name: 서버에 배포
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 110.165.17.60
+          host: 211.188.62.74
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD
