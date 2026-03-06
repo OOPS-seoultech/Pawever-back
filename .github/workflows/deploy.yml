@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: 서버에 배포
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 110.165.17.60
           username: root
