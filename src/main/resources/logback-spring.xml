@@ -33,21 +33,23 @@
         </appender>
     </springProfile>
 
-    <!-- 앱 로그 파일: 로컬은 INFO 이상, prod는 WARN 이상(핵심만) -->
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_PATH}/app.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>20MB</maxFileSize>
-            <maxHistory>14</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>${FILE_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-    </appender>
+    <!-- 앱 로그: 로컬은 FILE(INFO+), prod는 FILE만 사용하고 WARN 필터 적용 (같은 파일 중복 정의 방지) -->
+    <springProfile name="default,local,docker">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/app.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>14</maxHistory>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${FILE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+    </springProfile>
     <springProfile name="prod">
-        <appender name="FILE_WARN" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH}/app.log</file>
             <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
                 <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
@@ -95,7 +97,7 @@
         </encoder>
     </appender>
 
-    <!-- 자사 패키지: 로컬은 INFO+ → FILE, prod는 WARN+ → FILE_WARN (핵심만) -->
+    <!-- 자사 패키지: 로컬 INFO+ → FILE, prod WARN+ → FILE (같은 이름, 프로파일별 정의) -->
     <springProfile name="default,local,docker">
         <logger name="com.pawever" level="INFO" additivity="false">
             <appender-ref ref="CONSOLE"/>
@@ -106,7 +108,7 @@
     <springProfile name="prod">
         <logger name="com.pawever" level="WARN" additivity="false">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE_WARN"/>
+            <appender-ref ref="FILE"/>
             <appender-ref ref="FILE_ERROR"/>
         </logger>
     </springProfile>
@@ -132,7 +134,7 @@
     <springProfile name="prod">
         <root level="WARN">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE_WARN"/>
+            <appender-ref ref="FILE"/>
             <appender-ref ref="FILE_ERROR"/>
         </root>
     </springProfile>
