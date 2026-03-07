@@ -44,6 +44,8 @@ jobs:
             if docker compose up -d --build > /tmp/deploy.log 2>&1; then
               echo "--- Deploy 성공 ---"
               docker compose ps
+              echo "--- 미사용 컨테이너·이미지·빌드 캐시 정리 ---"
+              docker system prune -af
             else
               echo "--- Deploy 실패 (마지막 50줄) ---"
               tail -50 /tmp/deploy.log
