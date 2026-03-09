@@ -2,6 +2,7 @@ package com.pawever.backend.user.controller;
 
 import com.pawever.backend.global.common.ApiResponse;
 import com.pawever.backend.global.security.UserPrincipal;
+import com.pawever.backend.user.dto.NicknameCheckResponse;
 import com.pawever.backend.user.dto.UserProfileResponse;
 import com.pawever.backend.user.dto.UserUpdateRequest;
 import com.pawever.backend.user.service.UserService;
@@ -21,6 +22,14 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+
+    @Operation(summary = "닉네임 중복 확인", description = "사용 가능한 닉네임인지 확인합니다. 본인 닉네임은 사용 가능으로 응답합니다.")
+    @GetMapping("/nickname/check")
+    public ResponseEntity<ApiResponse<NicknameCheckResponse>> checkNickname(
+            @RequestParam String nickname) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(userService.checkNicknameAvailable(userId, nickname)));
+    }
 
     @Operation(summary = "내 프로필 조회", description = "현재 로그인한 사용자의 프로필 정보를 조회합니다.")
     @GetMapping("/me")

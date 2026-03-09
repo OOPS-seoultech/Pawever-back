@@ -14,4 +14,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByIdAndDeletedAtIsNull(Long id);
 
     boolean existsByPhoneHashAndDeletedAtIsNull(String phoneHash);
+
+    /** 닉네임 중복 확인 (탈퇴 유저 제외, 특정 유저 제외 가능) */
+    boolean existsByNicknameAndDeletedAtIsNullAndIdNot(String nickname, Long excludeUserId);
 }
