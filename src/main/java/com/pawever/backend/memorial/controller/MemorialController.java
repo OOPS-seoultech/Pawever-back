@@ -67,6 +67,22 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
+    @Operation(summary = "댓글 신고 사유 목록", description = "추모관 댓글 신고 시 선택할 수 있는 사유 목록을 조회합니다.")
+    @GetMapping("/report-reasons")
+    public ResponseEntity<ApiResponse<List<ReportReasonResponse>>> getReportReasons() {
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.getReportReasons()));
+    }
+
+    @Operation(summary = "댓글 신고", description = "추모관 댓글을 신고합니다. 사유를 여러 개 선택하거나, 해당 없으면 직접 입력할 수 있습니다.")
+    @PostMapping("/comments/{commentId}/report")
+    public ResponseEntity<ApiResponse<Void>> reportComment(
+            @PathVariable Long commentId,
+            @Valid @RequestBody CommentReportRequest request) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        memorialService.reportComment(userId, commentId, request);
+        return ResponseEntity.ok(ApiResponse.ok());
+    }
+
     @Operation(summary = "이별 가이드 조회", description = "이별 가이드 데이터 목록을 조회합니다.")
     @GetMapping("/guides")
     public ResponseEntity<ApiResponse<List<GuideResponse>>> getGuides() {

@@ -80,6 +80,13 @@ INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) V
 INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (11, 3, '주변에 도움 구하기', '같은 경험을 한 사람들과 이야기를 나눠보세요.', 3);
 INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (12, 3, '일상 회복하기', '천천히 일상으로 돌아가세요. 시간이 필요합니다.', 4);
 
+-- 댓글 신고 사유 (report_reasons) - 추모관 댓글 신고용
+INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (1, '비하 및 모욕', 1);
+INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (2, '부적절한 홍보', 2);
+INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (3, '종교 및 정치적 분쟁', 3);
+INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (4, '개인정보 노출', 4);
+INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (5, '자해 및 위험한 콘텐츠', 5);
+
 -- 자주 묻는 질문 (faqs) - Figma Q&A 화면 기준
 INSERT IGNORE INTO faqs (id, question, answer, order_index) VALUES (1, '이별 후에는 장례식장을 찾아볼 수 없는 건가요?', '이별 후에도 포에버 앱에서 등록된 반려동물 장례업체 목록을 계속 조회하실 수 있습니다. 다만 이별 전에 미리 장례업체를 알아보고 저장해두시면, 급한 상황에서 더 빠르게 연락하실 수 있습니다.', 1);
 INSERT IGNORE INTO faqs (id, question, answer, order_index) VALUES (2, '음성 녹음만 업로드 할 수 있나요?', '아니요. 포에버에서는 사진, 영상, 음성 녹음 등 다양한 형태의 추억을 남기실 수 있습니다. 발자국 남기기 미션을 통해 원하시는 방식으로 소중한 순간을 기록해보세요.', 2);

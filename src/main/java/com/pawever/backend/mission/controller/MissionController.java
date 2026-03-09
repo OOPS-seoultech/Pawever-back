@@ -27,7 +27,7 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getMissionProgress(userId, petId)));
     }
 
-    @Operation(summary = "미션 완료 처리", description = "발자국 남기기 미션을 완료 처리합니다. 인증 사진을 첨부할 수 있습니다.")
+    @Operation(summary = "미션 완료 처리", description = "발자국 남기기 미션을 완료 처리합니다. 인증 파일을 첨부할 수 있습니다.")
     @PostMapping(value = "/missions/{missionId}/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<MissionResponse>> completeMission(
             @PathVariable Long petId,

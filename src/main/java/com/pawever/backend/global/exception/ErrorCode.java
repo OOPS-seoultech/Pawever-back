@@ -40,6 +40,7 @@ public enum ErrorCode {
     MEMORIAL_NOT_FOUND(HttpStatus.NOT_FOUND, "추모 정보를 찾을 수 없습니다."),
     MEMORIAL_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "이미 추모가 생성되었습니다."),
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
+    REPORT_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "신고 사유를 선택하거나 직접 입력해 주세요."),
 
     // Funeral
     FUNERAL_COMPANY_NOT_FOUND(HttpStatus.NOT_FOUND, "장례업체를 찾을 수 없습니다."),

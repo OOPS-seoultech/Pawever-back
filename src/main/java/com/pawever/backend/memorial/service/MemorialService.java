@@ -4,9 +4,13 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.dto.*;
 import com.pawever.backend.memorial.entity.Comment;
+import com.pawever.backend.memorial.entity.CommentReport;
 import com.pawever.backend.memorial.entity.Guide;
+import com.pawever.backend.memorial.entity.ReportReason;
+import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
 import com.pawever.backend.memorial.repository.GuideRepository;
+import com.pawever.backend.memorial.repository.ReportReasonRepository;
 import com.pawever.backend.pet.entity.LifecycleStatus;
 import com.pawever.backend.pet.entity.Pet;
 import com.pawever.backend.pet.repository.PetRepository;
@@ -28,8 +32,10 @@ import java.util.stream.Collectors;
 public class MemorialService {
 
     private final CommentRepository commentRepository;
+    private final CommentReportRepository commentReportRepository;
     private final GuideRepository guideRepository;
     private final PetRepository petRepository;
+    private final ReportReasonRepository reportReasonRepository;
     private final UserPetRepository userPetRepository;
     private final UserRepository userRepository;
 
@@ -181,5 +187,51 @@ public class MemorialService {
         return guideRepository.findAll().stream()
                 .map(GuideResponse::from)
                 .toList();
+    }
+
+    /**
+     * 댓글 신고 사유 목록 조회 (추모관 댓글 신고용)
+     */
+    public List<ReportReasonResponse> getReportReasons() {
+        return reportReasonRepository.findAllByOrderByOrderIndexAscIdAsc().stream()
+                .map(ReportReasonResponse::from)
+                .toList();
+    }
+
+    /**
+     * 추모관 댓글 신고. 사유는 N개 선택 가능하고, 해당 없으면 customText만 입력 가능.
+     */
+    @Transactional
+    public void reportComment(Long userId, Long commentId, CommentReportRequest request) {
+        Comment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new CustomException(ErrorCode.COMMENT_NOT_FOUND));
+
+        User reporter = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        boolean hasReasons = request.getReasonIds() != null && !request.getReasonIds().isEmpty();
+        boolean hasCustomText = request.getCustomText() != null && !request.getCustomText().isBlank();
+
+        if (!hasReasons && !hasCustomText) {
+            throw new CustomException(ErrorCode.REPORT_REASON_REQUIRED);
+        }
+
+        List<ReportReason> reasons = List.of();
+        if (hasReasons) {
+            reasons = reportReasonRepository.findAllById(request.getReasonIds());
+            if (reasons.size() != request.getReasonIds().size()) {
+                throw new CustomException(ErrorCode.INVALID_INPUT);
+            }
+        }
+
+        String customText = hasCustomText ? request.getCustomText().trim() : null;
+
+        CommentReport report = CommentReport.builder()
+                .comment(comment)
+                .reporter(reporter)
+                .customText(customText)
+                .reasons(reasons)
+                .build();
+        commentReportRepository.save(report);
     }
 }

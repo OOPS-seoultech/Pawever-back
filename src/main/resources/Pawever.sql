@@ -143,6 +143,40 @@ CREATE TABLE `comments` (
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 10-1. 댓글 신고 사유 (report_reasons)
+CREATE TABLE `report_reasons` (
+    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
+    `name`          VARCHAR(100)    NOT NULL,
+    `order_index`   INT             NULL,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 10-2. 댓글 신고 (comment_reports)
+CREATE TABLE `comment_reports` (
+    `id`            BIGINT      NOT NULL AUTO_INCREMENT,
+    `comment_id`    BIGINT      NOT NULL,
+    `reporter_id`   BIGINT      NOT NULL,
+    `custom_text`   TEXT        NULL,
+    `created_at`    DATETIME(6) NULL,
+    `updated_at`    DATETIME(6) NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_comments_TO_comment_reports`
+        FOREIGN KEY (`comment_id`) REFERENCES `comments` (`id`),
+    CONSTRAINT `FK_users_TO_comment_reports`
+        FOREIGN KEY (`reporter_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 10-3. 댓글 신고-사유 매핑 (comment_report_reasons)
+CREATE TABLE `comment_report_reasons` (
+    `comment_report_id` BIGINT NOT NULL,
+    `report_reason_id`  BIGINT NOT NULL,
+    PRIMARY KEY (`comment_report_id`, `report_reason_id`),
+    CONSTRAINT `FK_comment_reports_TO_comment_report_reasons`
+        FOREIGN KEY (`comment_report_id`) REFERENCES `comment_reports` (`id`),
+    CONSTRAINT `FK_report_reasons_TO_comment_report_reasons`
+        FOREIGN KEY (`report_reason_id`) REFERENCES `report_reasons` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 11. 가이드라인 (guides)
 CREATE TABLE `guides` (
     `id`    BIGINT          NOT NULL AUTO_INCREMENT,
