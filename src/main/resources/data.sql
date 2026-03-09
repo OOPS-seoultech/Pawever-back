@@ -1,51 +1,6 @@
--- 동물 종류 (animal_types)
-INSERT IGNORE INTO animal_types (id, name) VALUES (1, '강아지');
-INSERT IGNORE INTO animal_types (id, name) VALUES (2, '고양이');
-INSERT IGNORE INTO animal_types (id, name) VALUES (3, '기타');
+-- 동물 종류·품종은 breeds_data.sql에서 로드
 
--- 강아지 품종 (breeds)
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (1, 1, '골든 리트리버');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (2, 1, '래브라도 리트리버');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (3, 1, '포메라니안');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (4, 1, '말티즈');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (5, 1, '푸들');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (6, 1, '시바 이누');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (7, 1, '비숑 프리제');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (8, 1, '웰시 코기');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (9, 1, '치와와');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (10, 1, '요크셔 테리어');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (11, 1, '기타');
-
--- 고양이 품종
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (12, 2, '코리안 숏헤어');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (13, 2, '페르시안');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (14, 2, '러시안 블루');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (15, 2, '브리티시 숏헤어');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (16, 2, '스코티시 폴드');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (17, 2, '먼치킨');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (18, 2, '랙돌');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (19, 2, '샴');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (20, 2, '아메리칸 숏헤어');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (21, 2, '기타');
-
--- 기타 품종
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (22, 3, '토끼');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (23, 3, '햄스터');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (24, 3, '앵무새');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (25, 3, '거북이');
-INSERT IGNORE INTO breeds (id, animal_type_id, name) VALUES (26, 3, '기타');
-
--- 미션 (발자국 남기기) - missions
-INSERT IGNORE INTO missions (id, name, description) VALUES (1, '함께 산책하기', '반려동물과 특별한 산책을 떠나보세요. 평소 가지 않았던 새로운 길을 함께 걸어보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (2, '좋아하는 간식 주기', '반려동물이 가장 좋아하는 간식을 준비해주세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (3, '함께 사진 찍기', '반려동물과 함께 특별한 사진을 남겨보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (4, '발도장 찍기', '반려동물의 발도장을 기념으로 남겨보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (5, '편지 쓰기', '반려동물에게 마음을 담은 편지를 써보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (6, '함께 놀아주기', '반려동물이 좋아하는 놀이를 함께 해보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (7, '특별한 날 만들기', '반려동물을 위한 특별한 하루를 계획해보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (8, '영상 남기기', '반려동물의 일상 영상을 촬영해보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (9, '함께 낮잠 자기', '반려동물과 함께 편안한 낮잠 시간을 가져보세요.');
-INSERT IGNORE INTO missions (id, name, description) VALUES (10, '목욕시켜주기', '반려동물을 깨끗이 목욕시켜주세요.');
+-- 미션(발자국 남기기) 54개는 missions_data.sql에서 로드 (ON DUPLICATE KEY UPDATE 사용)
 
 -- 체크리스트 (이별준비) - checklist_items
 INSERT IGNORE INTO checklist_items (id, title, description, order_index) VALUES (1, '장례업체 알아보기', '주변 반려동물 장례업체를 미리 알아두세요.', 1);

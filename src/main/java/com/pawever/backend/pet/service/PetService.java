@@ -228,7 +228,7 @@ public class PetService {
     }
 
     private void initializeMissions(Pet pet) {
-        List<Mission> missions = missionRepository.findAll();
+        List<Mission> missions = missionRepository.findAllByOrderByOrderIndexAscIdAsc();
         for (Mission mission : missions) {
             PetMission petMission = PetMission.builder()
                     .pet(pet)

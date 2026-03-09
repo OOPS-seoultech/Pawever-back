@@ -39,7 +39,7 @@ public class MissionService {
     public MissionProgressResponse getMissionProgress(Long userId, Long petId) {
         validatePetAccess(userId, petId);
 
-        List<Mission> allMissions = missionRepository.findAll();
+        List<Mission> allMissions = missionRepository.findAllByOrderByOrderIndexAscIdAsc();
         List<PetMission> petMissions = petMissionRepository.findByPetId(petId);
         Map<Long, PetMission> petMissionMap = petMissions.stream()
                 .collect(Collectors.toMap(pm -> pm.getMission().getId(), Function.identity()));
