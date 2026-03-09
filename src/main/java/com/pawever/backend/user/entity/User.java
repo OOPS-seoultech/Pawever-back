@@ -78,11 +78,6 @@ public class User extends BaseTimeEntity {
         this.referralMemo = referralType == ReferralType.OTHER ? referralMemo : null;
     }
 
-    public void updateReferral(ReferralType referralType, String referralMemo) {
-        this.referralType = referralType;
-        this.referralMemo = referralType == ReferralType.OTHER ? referralMemo : null;
-    }
-
     public void updateProfileImage(String profileImageUrl) {
         this.profileImageUrl = profileImageUrl;
     }
