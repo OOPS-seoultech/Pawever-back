@@ -18,4 +18,9 @@ public class UserUpdateRequest {
     private ReferralType referralType;
 
     private String referralMemo;
+
+    /** 알림(푸시) 수신 동의 여부. null이면 변경 없음 */
+    private Boolean notificationEnabled;
+    /** 마케팅 수신 동의 여부. null이면 변경 없음 */
+    private Boolean marketingEnabled;
 }

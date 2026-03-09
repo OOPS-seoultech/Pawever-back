@@ -51,6 +51,12 @@ public class UserService {
         if (request.getReferralType() != null) {
             user.updateReferral(request.getReferralType(), request.getReferralMemo());
         }
+        if (request.getNotificationEnabled() != null) {
+            user.updateNotificationConsent(request.getNotificationEnabled());
+        }
+        if (request.getMarketingEnabled() != null) {
+            user.updateMarketingConsent(request.getMarketingEnabled());
+        }
         return UserProfileResponse.from(user);
     }
 

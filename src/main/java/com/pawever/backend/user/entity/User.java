@@ -62,6 +62,12 @@ public class User extends BaseTimeEntity {
 
     private LocalDateTime deletedAt;
 
+    /** 알림(푸시) 수신 동의 시각. null이면 미동의 */
+    private LocalDateTime notificationAgreedAt;
+
+    /** 마케팅 수신 동의 시각. null이면 미동의 */
+    private LocalDateTime marketingAgreedAt;
+
     public void selectPet(Long petId) {
         this.selectedPetId = petId;
     }
@@ -88,5 +94,21 @@ public class User extends BaseTimeEntity {
 
     public boolean isDeleted() {
         return this.deletedAt != null;
+    }
+
+    public void updateNotificationConsent(boolean enabled) {
+        this.notificationAgreedAt = enabled ? LocalDateTime.now() : null;
+    }
+
+    public void updateMarketingConsent(boolean enabled) {
+        this.marketingAgreedAt = enabled ? LocalDateTime.now() : null;
+    }
+
+    public boolean isNotificationEnabled() {
+        return this.notificationAgreedAt != null;
+    }
+
+    public boolean isMarketingEnabled() {
+        return this.marketingAgreedAt != null;
     }
 }
