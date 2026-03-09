@@ -80,11 +80,15 @@ CREATE TABLE `user_pets` (
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 6. 추억남기기 미션 (missions)
+-- 6. 추억남기기 미션 (missions) - 발자국 남기기
 CREATE TABLE `missions` (
-    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
-    `name`          VARCHAR(255)    NOT NULL,
-    `description`   TEXT            NULL,
+    `id`                    BIGINT          NOT NULL AUTO_INCREMENT,
+    `category`              VARCHAR(50)     NULL     COMMENT '추억 남기기 / 음성 녹음 / 마음 전하기',
+    `name`                  VARCHAR(255)    NOT NULL,
+    `description`           TEXT            NULL     COMMENT '부연 설명',
+    `action_guide`          TEXT            NULL     COMMENT '행동하는 법',
+    `illustration_prompt`   TEXT            NULL     COMMENT '일러스트 AI 프롬프트',
+    `order_index`           INT             NULL,
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -264,19 +268,9 @@ INSERT INTO `breeds` (`animal_type_id`, `name`) VALUES (3, '거북이');
 INSERT INTO `breeds` (`animal_type_id`, `name`) VALUES (3, '기타');
 
 -- ============================================================
--- 초기 데이터 (미션 - 발자국 남기기)
+-- 초기 데이터 (미션 - 발자국 남기기 54개)
+-- → application에서 missions_data.sql 로 로드 (ON DUPLICATE KEY UPDATE)
 -- ============================================================
-
-INSERT INTO `missions` (`name`, `description`) VALUES ('함께 산책하기', '반려동물과 특별한 산책을 떠나보세요. 평소 가지 않았던 새로운 길을 함께 걸어보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('좋아하는 간식 주기', '반려동물이 가장 좋아하는 간식을 준비해주세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('함께 사진 찍기', '반려동물과 함께 특별한 사진을 남겨보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('발도장 찍기', '반려동물의 발도장을 기념으로 남겨보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('편지 쓰기', '반려동물에게 마음을 담은 편지를 써보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('함께 놀아주기', '반려동물이 좋아하는 놀이를 함께 해보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('특별한 날 만들기', '반려동물을 위한 특별한 하루를 계획해보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('영상 남기기', '반려동물의 일상 영상을 촬영해보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('함께 낮잠 자기', '반려동물과 함께 편안한 낮잠 시간을 가져보세요.');
-INSERT INTO `missions` (`name`, `description`) VALUES ('목욕시켜주기', '반려동물을 깨끗이 목욕시켜주세요.');
 
 -- ============================================================
 -- 초기 데이터 (체크리스트 - 이별준비)
