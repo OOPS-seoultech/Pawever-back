@@ -114,10 +114,23 @@ public class PetService {
             throw new CustomException(ErrorCode.PET_NOT_FOUND);
         }
 
-        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, selectedPetId)
-                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
-
+        var userPetOpt = userPetRepository.findByUserIdAndPetId(userId, selectedPetId);
+        if (userPetOpt.isEmpty()) {
+            clearSelectedPetAndThrowDeleted(user);
+        }
+        UserPet userPet = userPetOpt.get();
         return PetResponse.of(userPet.getPet(), selectedPetId, userPet.getIsOwner());
+    }
+
+    /**
+     * 선택된 반려동물이 이미 삭제된 경우(owner 탈퇴 등): selectedPetId 초기화 후 SELECTED_PET_DELETED 예외.
+     * 클라이언트는 "이용 중이던 반려동물 프로필이 삭제되었습니다" 메시지 표시 후 선택 해제 상태로 전환.
+     */
+    @Transactional
+    public PetResponse clearSelectedPetAndThrowDeleted(User user) {
+        user.selectPet(null);
+        userRepository.save(user);
+        throw new CustomException(ErrorCode.SELECTED_PET_DELETED);
     }
 
     @Transactional
@@ -162,6 +175,17 @@ public class PetService {
         List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
         userPetRepository.deleteAll(allUserPets);
 
+        petRepository.deleteById(petId);
+    }
+
+    /**
+     * Pet과 연결된 모든 UserPet 삭제 후 Pet 삭제.
+     * 유저 탈퇴 시 owner인 펫 정리용으로 사용 (권한/selectedPet 갱신 없음).
+     */
+    @Transactional
+    public void deletePetCascade(Long petId) {
+        List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
+        userPetRepository.deleteAll(allUserPets);
         petRepository.deleteById(petId);
     }
 

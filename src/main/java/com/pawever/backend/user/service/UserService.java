@@ -4,6 +4,8 @@ import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
+import com.pawever.backend.pet.repository.UserPetRepository;
+import com.pawever.backend.pet.service.PetService;
 import com.pawever.backend.user.dto.UserProfileResponse;
 import com.pawever.backend.user.dto.UserUpdateRequest;
 import com.pawever.backend.user.entity.User;
@@ -19,6 +21,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserPetRepository userPetRepository;
+    private final PetService petService;
     private final StorageService storageService;
     private final HmacHasher hmacHasher;
 
@@ -69,7 +73,19 @@ public class UserService {
         if (user.isDeleted()) {
             throw new CustomException(ErrorCode.USER_ALREADY_DELETED);
         }
+
+        // 해당 유저가 owner인 반려동물 모두 삭제 (Pet + UserPet).
+        // 공유하던 다른 유저의 selectedPetId는 갱신하지 않음 → 홈 접근 시 410 SELECTED_PET_DELETED로 안내 후 반려동물 전환 페이지 유도.
+        var ownedPetIds = userPetRepository.findByUserId(userId).stream()
+                .filter(up -> Boolean.TRUE.equals(up.getIsOwner()))
+                .map(up -> up.getPet().getId())
+                .toList();
+        for (Long petId : ownedPetIds) {
+            petService.deletePetCascade(petId);
+        }
+
         user.withdraw();
+        userRepository.save(user);
     }
 
     private User findActiveUser(Long userId) {

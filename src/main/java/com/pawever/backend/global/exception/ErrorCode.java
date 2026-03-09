@@ -27,6 +27,8 @@ public enum ErrorCode {
 
     // Pet
     PET_NOT_FOUND(HttpStatus.NOT_FOUND, "반려동물을 찾을 수 없습니다."),
+    /** 선택된 반려동물이 이미 삭제된 경우 (owner 탈퇴 등) — 홈 접근 시 "이용 중이던 반려동물 프로필이 삭제되었습니다" 안내용 */
+    SELECTED_PET_DELETED(HttpStatus.GONE, "이용 중이던 반려동물 프로필이 삭제되었습니다."),
     PET_NOT_OWNED(HttpStatus.FORBIDDEN, "해당 반려동물에 대한 권한이 없습니다."),
     BREED_NOT_FOUND(HttpStatus.NOT_FOUND, "품종을 찾을 수 없습니다."),
     ANIMAL_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "동물 종류를 찾을 수 없습니다."),
