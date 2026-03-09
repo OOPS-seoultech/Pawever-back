@@ -6,6 +6,7 @@ import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.pet.service.PetService;
+import com.pawever.backend.user.dto.NicknameCheckResponse;
 import com.pawever.backend.user.dto.UserProfileResponse;
 import com.pawever.backend.user.dto.UserUpdateRequest;
 import com.pawever.backend.user.entity.User;
@@ -29,6 +30,19 @@ public class UserService {
     public UserProfileResponse getProfile(Long userId) {
         User user = findActiveUser(userId);
         return UserProfileResponse.from(user);
+    }
+
+    /**
+     * 닉네임 중복 여부 확인. 본인 닉네임은 제외(프로필 수정 시 기존 닉네임 유지 가능).
+     * @param nickname null/blank면 사용 불가로 간주하여 available = false
+     */
+    public NicknameCheckResponse checkNicknameAvailable(Long userId, String nickname) {
+        if (nickname == null || nickname.isBlank()) {
+            return NicknameCheckResponse.builder().available(false).build();
+        }
+        boolean taken = userRepository.existsByNicknameAndDeletedAtIsNullAndIdNot(
+                nickname.trim(), userId);
+        return NicknameCheckResponse.builder().available(!taken).build();
     }
 
     @Transactional
