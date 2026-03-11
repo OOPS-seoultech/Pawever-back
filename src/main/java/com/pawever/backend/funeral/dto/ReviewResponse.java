@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -17,10 +18,11 @@ public class ReviewResponse {
     private String petName;
     private Integer rating;
     private String content;
+    private List<String> imageUrls;
     private LocalDateTime createdAt;
     private boolean canDelete;
 
-    public static ReviewResponse of(Review review, boolean canDelete) {
+    public static ReviewResponse of(Review review, List<String> imageUrls, boolean canDelete) {
         return ReviewResponse.builder()
                 .reviewId(review.getId())
                 .userId(review.getUser().getId())
@@ -28,6 +30,7 @@ public class ReviewResponse {
                 .petName(review.getPet().getName())
                 .rating(review.getRating())
                 .content(review.getContent())
+                .imageUrls(imageUrls)
                 .createdAt(review.getCreatedAt())
                 .canDelete(canDelete)
                 .build();

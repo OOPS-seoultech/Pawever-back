@@ -3,6 +3,7 @@ package com.pawever.backend.funeral.service;
 import com.pawever.backend.funeral.dto.*;
 import com.pawever.backend.funeral.entity.*;
 import com.pawever.backend.funeral.repository.*;
+import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.pet.entity.Pet;
@@ -13,7 +14,9 @@ import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,9 +30,11 @@ public class FuneralService {
     private final FuneralCompanyRepository funeralCompanyRepository;
     private final PetFuneralCompanyRepository petFuneralCompanyRepository;
     private final ReviewRepository reviewRepository;
+    private final ReviewImageRepository reviewImageRepository;
     private final UserRepository userRepository;
     private final PetRepository petRepository;
     private final UserPetRepository userPetRepository;
+    private final StorageService storageService;
 
     private static final double DEFAULT_LATITUDE = 37.5559;   // 서울역
     private static final double DEFAULT_LONGITUDE = 126.9723;
@@ -120,7 +125,7 @@ public class FuneralService {
      * 리뷰 작성
      */
     @Transactional
-    public ReviewResponse createReview(Long userId, Long companyId, ReviewCreateRequest request) {
+    public ReviewResponse createReview(Long userId, Long companyId, ReviewCreateRequest request, List<MultipartFile> images) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
@@ -142,7 +147,23 @@ public class FuneralService {
                 .build();
         review = reviewRepository.save(review);
 
-        return ReviewResponse.of(review, true);
+        List<String> imageUrls = Collections.emptyList();
+        if (images != null && !images.isEmpty()) {
+            final Review savedReview = review;
+            imageUrls = images.stream()
+                    .filter(file -> file != null && !file.isEmpty())
+                    .map(file -> {
+                        String url = storageService.upload(file, "reviews/" + savedReview.getId());
+                        reviewImageRepository.save(ReviewImage.builder()
+                                .review(savedReview)
+                                .imageUrl(url)
+                                .build());
+                        return url;
+                    })
+                    .toList();
+        }
+
+        return ReviewResponse.of(review, imageUrls, true);
     }
 
     /**
@@ -150,7 +171,12 @@ public class FuneralService {
      */
     public List<ReviewResponse> getReviews(Long userId, Long companyId) {
         return reviewRepository.findByFuneralCompanyIdOrderByCreatedAtDesc(companyId).stream()
-                .map(review -> ReviewResponse.of(review, review.getUser().getId().equals(userId)))
+                .map(review -> {
+                    List<String> imageUrls = reviewImageRepository.findByReviewId(review.getId()).stream()
+                            .map(ReviewImage::getImageUrl)
+                            .toList();
+                    return ReviewResponse.of(review, imageUrls, review.getUser().getId().equals(userId));
+                })
                 .toList();
     }
 
@@ -166,6 +192,8 @@ public class FuneralService {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
+        reviewImageRepository.findByReviewId(reviewId).forEach(img -> storageService.delete(img.getImageUrl()));
+        reviewImageRepository.deleteByReviewId(reviewId);
         reviewRepository.delete(review);
     }
 

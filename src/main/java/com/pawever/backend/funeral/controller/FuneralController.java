@@ -8,8 +8,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -60,13 +62,14 @@ public class FuneralController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
-    @Operation(summary = "리뷰 작성", description = "장례업체에 리뷰를 작성합니다.")
-    @PostMapping("/{companyId}/reviews")
+    @Operation(summary = "리뷰 작성", description = "장례업체에 리뷰를 작성합니다. 이미지는 multipart/form-data로 N장 첨부 가능합니다.")
+    @PostMapping(value = "/{companyId}/reviews", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<ReviewResponse>> createReview(
             @PathVariable Long companyId,
-            @Valid @RequestBody ReviewCreateRequest request) {
+            @RequestPart("request") @Valid ReviewCreateRequest request,
+            @RequestPart(value = "images", required = false) List<MultipartFile> images) {
         Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(funeralService.createReview(userId, companyId, request)));
+        return ResponseEntity.ok(ApiResponse.ok(funeralService.createReview(userId, companyId, request, images)));
     }
 
     @Operation(summary = "리뷰 목록 조회", description = "특정 장례업체의 리뷰 목록을 조회합니다.")
