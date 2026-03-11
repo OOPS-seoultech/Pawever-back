@@ -50,6 +50,7 @@ public enum ErrorCode {
 
     // Sharing
     INVALID_INVITE_CODE(HttpStatus.BAD_REQUEST, "유효하지 않은 초대코드입니다."),
+    EXPIRED_INVITE_CODE(HttpStatus.GONE, "만료된 초대코드입니다."),
     ALREADY_SHARED(HttpStatus.BAD_REQUEST, "이미 공유된 반려동물입니다."),
     NOT_OWNER(HttpStatus.FORBIDDEN, "소유자만 수행할 수 있습니다."),
     CANNOT_REMOVE_OWNER(HttpStatus.BAD_REQUEST, "소유자는 공유 해제할 수 없습니다."),

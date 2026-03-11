@@ -3,7 +3,9 @@ package com.pawever.backend.sharing.service;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.pet.entity.Pet;
+import com.pawever.backend.pet.entity.PetExpiredInviteCode;
 import com.pawever.backend.pet.entity.UserPet;
+import com.pawever.backend.pet.repository.PetExpiredInviteCodeRepository;
 import com.pawever.backend.pet.repository.PetRepository;
 import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.sharing.dto.InviteCodeResponse;
@@ -24,6 +26,7 @@ public class SharingService {
     private final PetRepository petRepository;
     private final UserPetRepository userPetRepository;
     private final UserRepository userRepository;
+    private final PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
 
     /**
      * 같이 기록하기 멤버 목록 조회
@@ -66,6 +69,14 @@ public class SharingService {
         }
 
         Pet pet = userPet.getPet();
+
+        petExpiredInviteCodeRepository.save(
+                PetExpiredInviteCode.builder()
+                        .pet(pet)
+                        .inviteCode(pet.getInviteCode())
+                        .build()
+        );
+
         pet.regenerateInviteCode();
 
         return InviteCodeResponse.builder()
@@ -81,7 +92,12 @@ public class SharingService {
     @Transactional
     public void joinByInviteCode(Long userId, String inviteCode) {
         Pet pet = petRepository.findByInviteCode(inviteCode)
-                .orElseThrow(() -> new CustomException(ErrorCode.INVALID_INVITE_CODE));
+                .orElseThrow(() -> {
+                    if (petExpiredInviteCodeRepository.existsByInviteCode(inviteCode)) {
+                        return new CustomException(ErrorCode.EXPIRED_INVITE_CODE);
+                    }
+                    return new CustomException(ErrorCode.INVALID_INVITE_CODE);
+                });
 
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
