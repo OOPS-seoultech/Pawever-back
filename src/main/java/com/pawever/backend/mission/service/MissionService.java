@@ -150,6 +150,26 @@ public class MissionService {
         return ChecklistResponse.of(item, petChecklist);
     }
 
+    /**
+     * 홈화면 진행률 요약 조회 (체크리스트 %, 미션 완료/전체)
+     */
+    public HomeProgressResponse getHomeProgress(Long userId, Long petId) {
+        validatePetAccess(userId, petId);
+
+        long checklistTotal = checklistItemRepository.count();
+        long checklistCompleted = petChecklistRepository.countByPetIdAndCompletedTrue(petId);
+        double progressPercent = checklistTotal > 0 ? (double) checklistCompleted / checklistTotal * 100.0 : 0.0;
+
+        long missionTotal = missionRepository.count();
+        long missionCompleted = petMissionRepository.countByPetIdAndCompletedTrue(petId);
+
+        return HomeProgressResponse.builder()
+                .checklistProgressPercent(Math.round(progressPercent * 10.0) / 10.0)
+                .missionCompleted(missionCompleted)
+                .missionTotal(missionTotal)
+                .build();
+    }
+
     private void validatePetAccess(Long userId, Long petId) {
         if (!userPetRepository.existsByUserIdAndPetId(userId, petId)) {
             throw new CustomException(ErrorCode.PET_NOT_OWNED);

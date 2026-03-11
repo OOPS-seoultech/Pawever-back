@@ -44,6 +44,13 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(missionService.getChecklistProgress(userId, petId)));
     }
 
+    @Operation(summary = "홈화면 진행률 요약 조회", description = "체크리스트 진행률(%)과 미션 완료/전체 수를 조회합니다.")
+    @GetMapping("/home-progress")
+    public ResponseEntity<ApiResponse<HomeProgressResponse>> getHomeProgress(@PathVariable Long petId) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(missionService.getHomeProgress(userId, petId)));
+    }
+
     @Operation(summary = "체크리스트 항목 토글", description = "체크리스트 항목의 완료/미완료 상태를 토글합니다.")
     @PostMapping("/checklist/{checklistItemId}/toggle")
     public ResponseEntity<ApiResponse<ChecklistResponse>> toggleChecklistItem(
