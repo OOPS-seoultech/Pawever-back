@@ -3,6 +3,9 @@ package com.pawever.backend.funeral.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "funeral_companies")
 @Getter
@@ -18,6 +21,18 @@ public class FuneralCompany {
     @Column(nullable = false)
     private String name;
 
+    /** 영어명 */
+    private String englishName;
+
+    /** 썸네일 URL */
+    private String thumbnailUrl;
+
+    /** 네이버 지도 URL */
+    private String naverMapUrl;
+
+    /** 카카오맵 URL */
+    private String kakaoMapUrl;
+
     private String location; // 주소 텍스트
 
     private Double latitude;
@@ -28,6 +43,18 @@ public class FuneralCompany {
 
     private String email;
 
+    /** 기본 상품명 */
+    private String basicProductName;
+
+    /** 기본 상품 가격 */
+    private Integer basicProductPrice;
+
+    /** 운영 시간 */
+    private String operatingHours;
+
+    /** 홈페이지 주소 */
+    private String websiteUrl;
+
     @Column(columnDefinition = "TEXT")
     private String introduction; // 소개
 
@@ -36,6 +63,16 @@ public class FuneralCompany {
 
     @Column(columnDefinition = "TEXT")
     private String serviceDescription; // 제공 서비스
+
+    /** 이미지 URL 목록 (별도 테이블) */
+    @ElementCollection
+    @CollectionTable(
+            name = "funeral_company_images",
+            joinColumns = @JoinColumn(name = "funeral_company_id")
+    )
+    @Column(name = "image_url")
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
 
     @Builder.Default
     private Boolean fullObservation = false; // 전 과정 참관 가능
