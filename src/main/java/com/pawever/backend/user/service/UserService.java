@@ -62,6 +62,8 @@ public class UserService {
         }
 
         user.updateProfile(request.getName(), request.getNickname(), newPhone, newPhoneHash);
+        // 프로필 정보를 최초/재저장하면 온보딩 완료로 간주
+        user.completeOnboarding();
         if (request.getReferralType() != null) {
             user.updateReferral(request.getReferralType(), request.getReferralMemo());
         }

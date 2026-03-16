@@ -25,6 +25,9 @@ public class UserProfileResponse {
     /** 마케팅 수신 동의 여부 */
     private Boolean marketingEnabled;
 
+    /** 온보딩(서비스 상 회원가입) 완료 여부 */
+    private Boolean onboardingComplete;
+
     public static UserProfileResponse from(User user) {
         return UserProfileResponse.builder()
                 .id(user.getId())
@@ -39,6 +42,7 @@ public class UserProfileResponse {
                 .profileImageUrl(user.getProfileImageUrl())
                 .notificationEnabled(user.isNotificationEnabled())
                 .marketingEnabled(user.isMarketingEnabled())
+                .onboardingComplete(user.isOnboardingComplete())
                 .build();
     }
 }

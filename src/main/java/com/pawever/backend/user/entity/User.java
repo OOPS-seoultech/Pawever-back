@@ -53,6 +53,14 @@ public class User extends BaseTimeEntity {
 
     private Long selectedPetId;
 
+    /**
+     * 온보딩(서비스 상 회원가입) 완료 여부.
+     * 소셜 로그인으로 User 레코드가 생성된 직후에는 false이며,
+     * 사용자가 최초로 프로필 정보를 저장(닉네임 등록 등)하면 true로 변경된다.
+     */
+    @Column(nullable = false)
+    private boolean onboardingComplete;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private ReferralType referralType;
@@ -110,5 +118,9 @@ public class User extends BaseTimeEntity {
 
     public boolean isMarketingEnabled() {
         return this.marketingAgreedAt != null;
+    }
+
+    public void completeOnboarding() {
+        this.onboardingComplete = true;
     }
 }
