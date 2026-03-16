@@ -8,7 +8,7 @@ INSERT IGNORE INTO animal_types (id, name) VALUES (6, '파충류');
 INSERT IGNORE INTO animal_types (id, name) VALUES (7, '거북이');
 INSERT IGNORE INTO animal_types (id, name) VALUES (8, '새');
 
--- 품종: 정식 명칭(통용 명칭)만 사용. 기존 1~26번은 덮어쓰고 나머지는 INSERT
+-- 품종: 정식 명칭(통용 명칭)만 사용
 INSERT INTO breeds (id, animal_type_id, name) VALUES
 (1, 1, '하나뿐인 믹스'),
 (2, 1, '고든 세터'),

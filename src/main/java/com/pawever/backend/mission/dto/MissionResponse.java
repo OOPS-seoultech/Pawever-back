@@ -14,9 +14,12 @@ import java.time.LocalDateTime;
 public class MissionResponse {
     private Long missionId;
     private String category;
-    private String name;
+    /** 미션 제목 (JSON: title) */
+    private String title;
+    /** 미션 부제/한줄 설명 (JSON: subtitle) */
+    private String subtitle;
+    /** 행동 가이드/상세 설명 (JSON: description 또는 guide) */
     private String description;
-    private String actionGuide;
     private String illustrationPrompt;
     private Integer orderIndex;
     private Boolean completed;
@@ -27,9 +30,9 @@ public class MissionResponse {
         return MissionResponse.builder()
                 .missionId(mission.getId())
                 .category(mission.getCategory())
-                .name(mission.getName())
-                .description(mission.getDescription())
-                .actionGuide(mission.getActionGuide())
+                .title(mission.getName())
+                .subtitle(mission.getDescription())
+                .description(mission.getActionGuide())
                 .illustrationPrompt(mission.getIllustrationPrompt())
                 .orderIndex(mission.getOrderIndex())
                 .completed(petMission != null && petMission.getCompleted())

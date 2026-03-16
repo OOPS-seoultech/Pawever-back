@@ -1,5 +1,4 @@
 -- 발자국 남기기 미션 54개 (추억 남기기 18 + 음성 녹음 18 + 마음 전하기 18)
--- 이미 같은 id가 있으면 새 내용으로 덮어써서, 항상 보낸 54개 데이터만 남김
 
 INSERT INTO missions (id, category, name, description, action_guide, illustration_prompt, order_index) VALUES
 (1, '추억 남기기', '홈파티 벌여주기', '맛있는 선물로 채우는 최고급 만찬', '아이가 평소 정말 먹고 싶어 했던 고기나 간식을 듬뿍 준비해 보세요. 맛있게 먹는 행복한 표정을 사진으로 꼭 기록해 주세요!', 'A happy dog/cat enthusiastically eating a large, delicious steak/fish meal, with its owner lovingly watching. The scene is warm and cozy, with soft lighting. Digital art, emotional, heartwarming.', 1),
