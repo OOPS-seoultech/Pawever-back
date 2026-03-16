@@ -144,6 +144,10 @@ public class PetService {
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
+        if (!userPet.getIsOwner()) {
+            throw new CustomException(ErrorCode.NOT_OWNER);
+        }
+
         Breed breed = request.getBreedId() != null
                 ? breedRepository.findById(request.getBreedId())
                         .orElseThrow(() -> new CustomException(ErrorCode.BREED_NOT_FOUND))
