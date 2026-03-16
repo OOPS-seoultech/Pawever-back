@@ -21,5 +21,9 @@ public class Faq {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String answer;
 
+    /** 상세 답변 (JSON: detail_answer) */
+    @Column(name = "detail_answer", columnDefinition = "TEXT")
+    private String detailAnswer;
+
     private Integer orderIndex;
 }
