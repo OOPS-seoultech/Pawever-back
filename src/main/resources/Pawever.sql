@@ -312,14 +312,11 @@ INSERT INTO `breeds` (`animal_type_id`, `name`) VALUES (3, '기타');
 -- 초기 데이터 (체크리스트 - 이별준비)
 -- ============================================================
 
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('장례업체 알아보기', '주변 반려동물 장례업체를 미리 알아두세요.', 1);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('장례 방식 결정하기', '화장, 수목장, 납골 등 장례 방식을 미리 결정해두세요.', 2);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('추모 용품 준비하기', '메모리얼 스톤, 추모 액자 등을 준비해두세요.', 3);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('마지막 사진 정리하기', '반려동물과의 소중한 사진을 정리해두세요.', 4);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('가족과 이야기 나누기', '가족들과 반려동물의 이별에 대해 함께 이야기해보세요.', 5);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('수의사 상담하기', '반려동물의 상태에 대해 수의사와 상담해보세요.', 6);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('좋아하는 것 목록 만들기', '반려동물이 좋아했던 것들의 목록을 만들어보세요.', 7);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('편안한 환경 만들기', '반려동물이 편안하게 지낼 수 있는 환경을 만들어주세요.', 8);
+INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('이별방법', NULL, 1);
+INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('안치준비', NULL, 2);
+INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('행정처리', NULL, 3);
+INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('물건정리', NULL, 4);
+INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('지원사업', NULL, 5);
 
 -- ============================================================
 -- 초기 데이터 (이별 가이드)
