@@ -12,4 +12,6 @@ public class TokenResponse {
     private Long userId;
     private boolean isNewUser;
     private Long selectedPetId;
+    /** 온보딩(서비스 상 회원가입) 완료 여부 */
+    private boolean onboardingComplete;
 }

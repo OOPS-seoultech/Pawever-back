@@ -41,6 +41,7 @@ public class AuthService {
                         .userId(user.getId())
                         .isNewUser(false)
                         .selectedPetId(user.getSelectedPetId())
+                        .onboardingComplete(user.isOnboardingComplete())
                         .build())
                 .orElseGet(() -> {
                     String phoneHash = hashPhone(userInfo.getMobile());
@@ -65,6 +66,7 @@ public class AuthService {
                             .userId(saved.getId())
                             .isNewUser(true)
                             .selectedPetId(null)
+                            .onboardingComplete(saved.isOnboardingComplete())
                             .build();
                 });
     }
@@ -79,6 +81,7 @@ public class AuthService {
                         .userId(user.getId())
                         .isNewUser(false)
                         .selectedPetId(user.getSelectedPetId())
+                        .onboardingComplete(user.isOnboardingComplete())
                         .build())
                 .orElseGet(() -> {
                     String phoneHash = hashPhone(userInfo.getPhone());
@@ -103,6 +106,7 @@ public class AuthService {
                             .userId(saved.getId())
                             .isNewUser(true)
                             .selectedPetId(null)
+                            .onboardingComplete(saved.isOnboardingComplete())
                             .build();
                 });
     }
@@ -122,6 +126,7 @@ public class AuthService {
                 .accessToken(jwtTokenProvider.createToken(user.getId()))
                 .userId(user.getId())
                 .isNewUser(true)
+                .onboardingComplete(user.isOnboardingComplete())
                 .build();
     }
 
