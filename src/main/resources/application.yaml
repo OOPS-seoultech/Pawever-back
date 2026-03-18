@@ -21,7 +21,7 @@ spring:
   sql:
     init:
       mode: always
-      data-locations: classpath:data.sql,classpath:missions_data.sql,classpath:breeds_data.sql
+      data-locations: "${SQL_INIT_DATA_LOCATIONS:classpath:data.sql,classpath:missions_data.sql,classpath:breeds_data.sql}"
 
   servlet:
     multipart:
