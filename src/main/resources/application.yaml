@@ -21,7 +21,9 @@ spring:
   sql:
     init:
       mode: always
-      data-locations: classpath:data.sql,classpath:missions_data.sql,classpath:breeds_data.sql
+      # Local run (non-docker): seed data only.
+      # Schema is managed by Hibernate (ddl-auto).
+      data-locations: classpath:breeds_data.sql,classpath:missions_data.sql,classpath:funeral_companies_data.sql,classpath:data.sql,classpath:faq_data.sql
 
   servlet:
     multipart:
