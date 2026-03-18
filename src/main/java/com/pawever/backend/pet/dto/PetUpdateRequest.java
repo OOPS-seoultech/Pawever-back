@@ -21,4 +21,6 @@ public class PetUpdateRequest {
     private Gender gender;
 
     private Float weight;
+
+    private LocalDate deathDate;
 }

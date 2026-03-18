@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -38,6 +40,38 @@ public class PetService {
     private final PetChecklistRepository petChecklistRepository;
     private final StorageService storageService;
 
+    private LocalDateTime toDeathDateTime(LocalDate deathDate) {
+        return deathDate == null ? null : deathDate.atStartOfDay();
+    }
+
+    private LocalDateTime resolveCreateDeathDate(PetCreateRequest request) {
+        if (request.getLifecycleStatus() == LifecycleStatus.BEFORE_FAREWELL) {
+            if (request.getDeathDate() != null) {
+                throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+            }
+
+            return null;
+        }
+
+        if (request.getDeathDate() == null) {
+            throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+        }
+
+        return toDeathDateTime(request.getDeathDate());
+    }
+
+    private LocalDateTime resolveUpdatedDeathDate(Pet pet, PetUpdateRequest request) {
+        if (request.getDeathDate() == null) {
+            return pet.getDeathDate();
+        }
+
+        if (pet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+        }
+
+        return toDeathDateTime(request.getDeathDate());
+    }
+
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
@@ -52,6 +86,7 @@ public class PetService {
                 .birthDate(request.getBirthDate())
                 .gender(request.getGender())
                 .weight(request.getWeight())
+                .deathDate(resolveCreateDeathDate(request))
                 .lifecycleStatus(request.getLifecycleStatus())
                 .build();
         pet = petRepository.save(pet);
@@ -153,7 +188,14 @@ public class PetService {
                         .orElseThrow(() -> new CustomException(ErrorCode.BREED_NOT_FOUND))
                 : pet.getBreed();
 
-        pet.update(request.getName(), request.getBirthDate(), request.getGender(), request.getWeight(), breed);
+        pet.update(
+                request.getName(),
+                request.getBirthDate(),
+                request.getGender(),
+                request.getWeight(),
+                breed,
+                resolveUpdatedDeathDate(pet, request)
+        );
 
         return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }

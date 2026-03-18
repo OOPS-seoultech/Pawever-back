@@ -32,6 +32,7 @@ public enum ErrorCode {
     PET_NOT_OWNED(HttpStatus.FORBIDDEN, "해당 반려동물에 대한 권한이 없습니다."),
     BREED_NOT_FOUND(HttpStatus.NOT_FOUND, "품종을 찾을 수 없습니다."),
     ANIMAL_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "동물 종류를 찾을 수 없습니다."),
+    INVALID_DEATH_DATE(HttpStatus.BAD_REQUEST, "이별 상태에 맞는 이별 일자를 입력해 주세요."),
 
     // Mission
     MISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "미션을 찾을 수 없습니다."),

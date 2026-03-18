@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Builder
@@ -23,6 +24,7 @@ public class PetResponse {
     private String profileImageUrl;
     private LifecycleStatus lifecycleStatus;
     private String inviteCode;
+    private LocalDateTime deathDate;
     private Boolean emergencyMode;
     private Boolean selected;
     private Boolean isOwner;
@@ -39,6 +41,7 @@ public class PetResponse {
                 .profileImageUrl(pet.getProfileImageUrl())
                 .lifecycleStatus(pet.getLifecycleStatus())
                 .inviteCode(pet.getInviteCode())
+                .deathDate(pet.getDeathDate())
                 .emergencyMode(pet.getEmergencyMode())
                 .selected(pet.getId().equals(selectedPetId))
                 .isOwner(isOwner)

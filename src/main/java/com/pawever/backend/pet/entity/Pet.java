@@ -55,12 +55,13 @@ public class Pet extends BaseTimeEntity {
         }
     }
 
-    public void update(String name, LocalDate birthDate, Gender gender, Float weight, Breed breed) {
+    public void update(String name, LocalDate birthDate, Gender gender, Float weight, Breed breed, LocalDateTime deathDate) {
         this.name = name;
         this.birthDate = birthDate;
         this.gender = gender;
         this.weight = weight;
         this.breed = breed;
+        this.deathDate = deathDate;
     }
 
     public void updateProfileImage(String profileImageUrl) {
@@ -70,7 +71,9 @@ public class Pet extends BaseTimeEntity {
     public void activateEmergencyMode() {
         this.emergencyMode = true;
         this.lifecycleStatus = LifecycleStatus.AFTER_FAREWELL;
-        this.deathDate = LocalDateTime.now();
+        if (this.deathDate == null) {
+            this.deathDate = LocalDateTime.now();
+        }
     }
 
     public void regenerateInviteCode() {
