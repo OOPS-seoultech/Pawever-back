@@ -1,4 +1,4 @@
-package com.pawever.backend.mission.entity;
+package com.pawever.backend.checklist.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

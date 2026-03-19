@@ -12,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-@Tag(name = "Mission", description = "미션 및 체크리스트 관련 API")
+@Tag(name = "Mission", description = "발자국 남기기 미션 관련 API")
 @RestController
 @RequestMapping("/api/pets/{petId}")
 @RequiredArgsConstructor
@@ -37,26 +37,10 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(missionService.completeMission(userId, petId, missionId, file)));
     }
 
-    @Operation(summary = "체크리스트 진행률 조회", description = "이별준비 체크리스트의 진행률(%)을 조회합니다.")
-    @GetMapping("/checklist")
-    public ResponseEntity<ApiResponse<ChecklistProgressResponse>> getChecklistProgress(@PathVariable Long petId) {
-        Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(missionService.getChecklistProgress(userId, petId)));
-    }
-
     @Operation(summary = "홈화면 진행률 요약 조회", description = "체크리스트 진행률(%)과 미션 완료/전체 수를 조회합니다.")
     @GetMapping("/home-progress")
     public ResponseEntity<ApiResponse<HomeProgressResponse>> getHomeProgress(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(missionService.getHomeProgress(userId, petId)));
-    }
-
-    @Operation(summary = "체크리스트 항목 토글", description = "체크리스트 항목의 완료/미완료 상태를 토글합니다.")
-    @PostMapping("/checklist/{checklistItemId}/toggle")
-    public ResponseEntity<ApiResponse<ChecklistResponse>> toggleChecklistItem(
-            @PathVariable Long petId,
-            @PathVariable Long checklistItemId) {
-        Long userId = UserPrincipal.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.ok(missionService.toggleChecklistItem(userId, petId, checklistItemId)));
     }
 }
