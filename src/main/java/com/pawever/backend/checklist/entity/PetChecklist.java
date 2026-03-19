@@ -1,4 +1,4 @@
-package com.pawever.backend.mission.entity;
+package com.pawever.backend.checklist.entity;
 
 import com.pawever.backend.pet.entity.Pet;
 import jakarta.persistence.*;

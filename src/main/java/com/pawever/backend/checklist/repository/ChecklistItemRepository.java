@@ -1,6 +1,6 @@
-package com.pawever.backend.mission.repository;
+package com.pawever.backend.checklist.repository;
 
-import com.pawever.backend.mission.entity.ChecklistItem;
+import com.pawever.backend.checklist.entity.ChecklistItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

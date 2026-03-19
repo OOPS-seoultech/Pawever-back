@@ -1,7 +1,7 @@
-package com.pawever.backend.mission.dto;
+package com.pawever.backend.checklist.dto;
 
-import com.pawever.backend.mission.entity.ChecklistItem;
-import com.pawever.backend.mission.entity.PetChecklist;
+import com.pawever.backend.checklist.entity.ChecklistItem;
+import com.pawever.backend.checklist.entity.PetChecklist;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;

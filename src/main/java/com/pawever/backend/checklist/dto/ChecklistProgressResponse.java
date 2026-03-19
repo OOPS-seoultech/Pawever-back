@@ -1,4 +1,4 @@
-package com.pawever.backend.mission.dto;
+package com.pawever.backend.checklist.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
