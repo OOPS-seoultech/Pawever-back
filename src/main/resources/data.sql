@@ -19,29 +19,6 @@ ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), or
 INSERT INTO checklist_items (id, title, description, order_index) VALUES (5, '지원사업', NULL, 5)
 ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
 
--- 이별 가이드 (guides)
-INSERT IGNORE INTO guides (id, name) VALUES (1, '반려동물 사망 직후 대처 가이드');
-INSERT IGNORE INTO guides (id, name) VALUES (2, '장례 절차 안내');
-INSERT IGNORE INTO guides (id, name) VALUES (3, '펫로스 증후군 극복 가이드');
-
--- 사망 직후 대처 가이드 단계 (guide_steps)
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (1, 1, '침착하게 상태 확인', '반려동물의 호흡과 심장박동을 확인하세요. 완전히 멈추었는지 확인합니다.', 1);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (2, 1, '시신 안치', '깨끗한 담요나 수건으로 감싸주세요. 서늘한 곳에 안치합니다.', 2);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (3, 1, '장례업체 연락', '미리 알아둔 장례업체에 연락하세요. 24시간 운영 업체가 많습니다.', 3);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (4, 1, '가족에게 알리기', '함께 반려동물을 돌봤던 가족들에게 알려주세요.', 4);
-
--- 장례 절차 안내 단계
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (5, 2, '장례업체 방문', '예약한 장례업체를 방문합니다.', 1);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (6, 2, '추모 시간', '마지막으로 반려동물과 함께하는 시간을 가집니다.', 2);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (7, 2, '화장 또는 장례 진행', '선택한 방식으로 장례를 진행합니다.', 3);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (8, 2, '유골 수습', '화장 후 유골을 수습하고 보관 방법을 결정합니다.', 4);
-
--- 펫로스 증후군 극복 가이드 단계
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (9, 3, '슬픔을 인정하기', '반려동물을 잃은 슬픔은 자연스러운 감정입니다. 울어도 괜찮습니다.', 1);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (10, 3, '추억 정리하기', '함께했던 소중한 추억들을 사진이나 글로 정리해보세요.', 2);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (11, 3, '주변에 도움 구하기', '같은 경험을 한 사람들과 이야기를 나눠보세요.', 3);
-INSERT IGNORE INTO guide_steps (id, guide_id, title, description, order_index) VALUES (12, 3, '일상 회복하기', '천천히 일상으로 돌아가세요. 시간이 필요합니다.', 4);
-
 -- 댓글 신고 사유 (report_reasons) - 추모관 댓글 신고용
 INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (1, '비하 및 모욕', 1);
 INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (2, '부적절한 홍보', 2);
