@@ -1,8 +1,8 @@
 # Pawever Backend
 
-반려동물과의 이별을 준비하고, 추억을 남기고 기록하는 서비스 **Pawever**의 백엔드 API 서버입니다.
+펫로스 통합 지원 서비스 **Pawever**의 백엔드 API 서버입니다.
 
-## 기술 스택
+## ⚒️ 기술 스택
 
 - **Java 17** · **Spring Boot 4.0**
 - **Spring Data JPA** · **MariaDB**
@@ -10,8 +10,13 @@
 - **SpringDoc OpenAPI** (Swagger UI)
 - **NCP Object Storage** (S3 호환) · CDN
 - **Gradle** · **Docker / Docker Compose**
+<br><br>
 
-## 주요 기능
+## 🧬 ERD
+<img width="1920" height="1147" alt="Pawever-ERD" src="https://github.com/user-attachments/assets/b3db9096-5f95-42ed-b945-312bdf1a7c21" />
+<br><br>
+
+## 💎 주요 기능
 
 | 도메인 | 설명 |
 |--------|------|
@@ -25,13 +30,16 @@
 | **Funeral** | 장례 업체 목록/상세, 리뷰 및 이미지 |
 | **Review** | 서비스 리뷰(ServiceReview) |
 
-## 사전 요구 사항
+<br>
+
+## 📝 사전 요구 사항
 
 - **JDK 17**
 - **Docker & Docker Compose** (로컬 DB 또는 전체 앱 실행 시)
 - (선택) **MariaDB** 10.x+ (Docker 없이 로컬 DB 사용 시)
+<br><br>
 
-## 프로젝트 구조
+## 🏛️ 프로젝트 구조
 
 ```
 src/main/java/com/pawever/backend/
@@ -51,14 +59,15 @@ src/main/java/com/pawever/backend/
 - **DB 스키마**: `src/main/resources/Pawever.sql`
 - **시드 데이터**: `breeds_data.sql`, `missions_data.sql`, `funeral_companies_data.sql`, `data.sql`, `faq_data.sql`
 - **설정**: `application.yaml`, `application-prod.yaml` (Docker/Prod용)
+<br><br>
 
-## API 문서
+## 📖 API 문서
 
 실행 후 다음 주소에서 확인할 수 있습니다.
-
 - **Swagger UI**: `/swagger-ui.html`
+<br><br>
 
-## 배포
+## 🚀 배포
 
 - **main** 브랜치 push 시 GitHub Actions로 NCP 서버에 SSH 배포됩니다.
 - 워크플로: `.github/workflows/deploy.yml`
