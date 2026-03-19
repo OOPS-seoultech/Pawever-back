@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Memorial", description = "추모관 및 이별 가이드 관련 API")
+@Tag(name = "Memorial", description = "추모관 관련 API")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -21,7 +21,7 @@ public class MemorialController {
 
     private final MemorialService memorialService;
 
-    @Operation(summary = "긴급 대처 모드 활성화", description = "반려동물의 긴급 이별 상황에 대한 가이드를 반환하고 추모관을 생성합니다.")
+    @Operation(summary = "긴급 대처 모드 활성화", description = "반려동물을 이별 후 상태로 전환하고 추모관(메모리얼) 정보를 반환합니다.")
     @PostMapping("/pets/{petId}/emergency")
     public ResponseEntity<ApiResponse<EmergencyResponse>> activateEmergencyMode(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();
@@ -83,9 +83,4 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok());
     }
 
-    @Operation(summary = "이별 가이드 조회", description = "이별 가이드 데이터 목록을 조회합니다.")
-    @GetMapping("/guides")
-    public ResponseEntity<ApiResponse<List<GuideResponse>>> getGuides() {
-        return ResponseEntity.ok(ApiResponse.ok(memorialService.getGuides()));
-    }
 }

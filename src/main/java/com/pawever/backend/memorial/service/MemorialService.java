@@ -5,11 +5,9 @@ import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.dto.*;
 import com.pawever.backend.memorial.entity.Comment;
 import com.pawever.backend.memorial.entity.CommentReport;
-import com.pawever.backend.memorial.entity.Guide;
 import com.pawever.backend.memorial.entity.ReportReason;
 import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
-import com.pawever.backend.memorial.repository.GuideRepository;
 import com.pawever.backend.memorial.repository.ReportReasonRepository;
 import com.pawever.backend.pet.entity.LifecycleStatus;
 import com.pawever.backend.pet.entity.Pet;
@@ -33,14 +31,13 @@ public class MemorialService {
 
     private final CommentRepository commentRepository;
     private final CommentReportRepository commentReportRepository;
-    private final GuideRepository guideRepository;
     private final PetRepository petRepository;
     private final ReportReasonRepository reportReasonRepository;
     private final UserPetRepository userPetRepository;
     private final UserRepository userRepository;
 
     /**
-     * 긴급 대처 모드 - 이별 가이드 반환
+     * 긴급 대처 모드 - 추모관 생성 및 반려동물 상태 전환
      */
     @Transactional
     public EmergencyResponse activateEmergencyMode(Long userId, Long petId) {
@@ -57,15 +54,8 @@ public class MemorialService {
         // 반려동물 긴급 모드 활성화 (lifecycleStatus -> AFTER_FAREWELL, deathDate 설정)
         pet.activateEmergencyMode();
 
-        // 이별 가이드 데이터 반환
-        List<Guide> guides = guideRepository.findAll();
-        List<GuideResponse> guideResponses = guides.stream()
-                .map(GuideResponse::from)
-                .toList();
-
         return EmergencyResponse.builder()
                 .memorial(MemorialResponse.from(pet))
-                .guides(guideResponses)
                 .build();
     }
 
@@ -178,15 +168,6 @@ public class MemorialService {
         }
 
         commentRepository.delete(comment);
-    }
-
-    /**
-     * 이별 가이드 데이터 조회
-     */
-    public List<GuideResponse> getGuides() {
-        return guideRepository.findAll().stream()
-                .map(GuideResponse::from)
-                .toList();
     }
 
     /**
