@@ -21,6 +21,7 @@ CREATE TABLE `users` (
     `naver_id`          VARCHAR(255)    NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `selected_pet_id`   BIGINT          NULL,
+    `onboarding_complete` BOOLEAN       NOT NULL DEFAULT FALSE COMMENT '소셜 로그인 후 서비스 회원가입 완료 여부',
     `referral_type`     VARCHAR(20)     NULL     COMMENT 'FRIEND / THREADS / INSTAGRAM / OFFLINE / OTHER',
     `referral_memo`     VARCHAR(255)    NULL,
     `deleted_at`        DATETIME(6)     NULL,
@@ -82,7 +83,17 @@ CREATE TABLE `user_pets` (
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 6. 추억남기기 미션 (missions) - 발자국 남기기
+-- 6. 만료된 초대코드 (pet_expired_invite_codes)
+CREATE TABLE `pet_expired_invite_codes` (
+    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
+    `pet_id`        BIGINT          NOT NULL,
+    `invite_code`   VARCHAR(255)    NOT NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_pets_TO_pet_expired_invite_codes`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 7. 추억남기기 미션 (missions) - 발자국 남기기
 CREATE TABLE `missions` (
     `id`                    BIGINT          NOT NULL AUTO_INCREMENT,
     `category`              VARCHAR(50)     NULL     COMMENT '추억 남기기 / 음성 녹음 / 마음 전하기',
@@ -94,7 +105,7 @@ CREATE TABLE `missions` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 7. 반려동물_미션 (pet_missions)
+-- 8. 반려동물_미션 (pet_missions)
 CREATE TABLE `pet_missions` (
     `id`            BIGINT      NOT NULL AUTO_INCREMENT,
     `pet_id`        BIGINT      NOT NULL,
@@ -109,7 +120,7 @@ CREATE TABLE `pet_missions` (
         FOREIGN KEY (`mission_id`) REFERENCES `missions` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 8. 체크리스트 항목 (checklist_items)
+-- 9. 체크리스트 항목 (checklist_items)
 CREATE TABLE `checklist_items` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
     `title`         VARCHAR(255)    NOT NULL,
@@ -118,7 +129,7 @@ CREATE TABLE `checklist_items` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 9. 반려동물_체크리스트 (pet_checklists)
+-- 10. 반려동물_체크리스트 (pet_checklists)
 CREATE TABLE `pet_checklists` (
     `id`                BIGINT      NOT NULL AUTO_INCREMENT,
     `pet_id`            BIGINT      NOT NULL,
@@ -132,7 +143,7 @@ CREATE TABLE `pet_checklists` (
         FOREIGN KEY (`checklist_item_id`) REFERENCES `checklist_items` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 10. 댓글 (comments)
+-- 11. 댓글 (comments)
 CREATE TABLE `comments` (
     `id`            BIGINT      NOT NULL AUTO_INCREMENT,
     `user_id`       BIGINT      NOT NULL,
@@ -204,11 +215,19 @@ CREATE TABLE `guide_steps` (
 CREATE TABLE `funeral_companies` (
     `id`                      BIGINT          NOT NULL AUTO_INCREMENT,
     `name`                    VARCHAR(255)    NOT NULL,
+    `english_name`            VARCHAR(255)    NULL,
+    `thumbnail_url`           VARCHAR(255)    NULL,
+    `naver_map_url`           VARCHAR(255)    NULL,
+    `kakao_map_url`           VARCHAR(255)    NULL,
     `location`                VARCHAR(255)    NULL,
     `latitude`                DOUBLE          NULL,
     `longitude`               DOUBLE          NULL,
     `phone`                   VARCHAR(20)     NULL,
     `email`                   VARCHAR(255)    NULL,
+    `basic_product_name`      VARCHAR(255)    NULL,
+    `basic_product_price`     INT             NULL,
+    `operating_hours`         VARCHAR(255)    NULL,
+    `website_url`             VARCHAR(255)    NULL,
     `introduction`            TEXT            NULL,
     `guide_text`              TEXT            NULL,
     `service_description`     TEXT            NULL,
@@ -222,7 +241,15 @@ CREATE TABLE `funeral_companies` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 14. 반려동물_장례업체 (pet_funeral_companies)
+-- 14. 장례업체 이미지 (funeral_company_images)
+CREATE TABLE `funeral_company_images` (
+    `funeral_company_id`  BIGINT          NOT NULL,
+    `image_url`           VARCHAR(255)    NULL,
+    CONSTRAINT `FK_funeral_companies_TO_funeral_company_images`
+        FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 15. 반려동물_장례업체 (pet_funeral_companies)
 CREATE TABLE `pet_funeral_companies` (
     `id`                  BIGINT          NOT NULL AUTO_INCREMENT,
     `pet_id`              BIGINT          NOT NULL,
@@ -235,7 +262,7 @@ CREATE TABLE `pet_funeral_companies` (
         FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 15. 후기 (reviews)
+-- 16. 후기 (reviews)
 CREATE TABLE `reviews` (
     `id`                  BIGINT      NOT NULL AUTO_INCREMENT,
     `user_id`             BIGINT      NOT NULL,
@@ -254,11 +281,12 @@ CREATE TABLE `reviews` (
         FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 16. 자주 묻는 질문 (faqs)
+-- 17. 자주 묻는 질문 (faqs)
 CREATE TABLE `faqs` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
     `question`      TEXT            NOT NULL,
     `answer`        TEXT            NOT NULL,
+    `detail_answer` TEXT            NULL,
     `order_index`   INT             NULL,
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
