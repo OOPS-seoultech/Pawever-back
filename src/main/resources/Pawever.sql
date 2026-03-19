@@ -21,6 +21,7 @@ CREATE TABLE `users` (
     `naver_id`          VARCHAR(255)    NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `selected_pet_id`   BIGINT          NULL,
+    `onboarding_complete` BOOLEAN       NOT NULL DEFAULT FALSE COMMENT '온보딩(서비스 상 회원가입) 완료 여부',
     `referral_type`     VARCHAR(20)     NULL     COMMENT 'FRIEND / THREADS / INSTAGRAM / OFFLINE / OTHER',
     `referral_memo`     VARCHAR(255)    NULL,
     `deleted_at`        DATETIME(6)     NULL,
@@ -79,6 +80,16 @@ CREATE TABLE `user_pets` (
     CONSTRAINT `FK_users_TO_user_pets`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
     CONSTRAINT `FK_pets_TO_user_pets`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 5-1. 만료된 초대코드 (pet_expired_invite_codes)
+CREATE TABLE `pet_expired_invite_codes` (
+    `id`            BIGINT      NOT NULL AUTO_INCREMENT,
+    `pet_id`        BIGINT      NOT NULL,
+    `invite_code`   VARCHAR(255) NOT NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_pets_TO_pet_expired_invite_codes`
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -204,11 +215,19 @@ CREATE TABLE `guide_steps` (
 CREATE TABLE `funeral_companies` (
     `id`                      BIGINT          NOT NULL AUTO_INCREMENT,
     `name`                    VARCHAR(255)    NOT NULL,
+    `english_name`            VARCHAR(255)    NULL,
+    `thumbnail_url`           VARCHAR(255)    NULL,
+    `naver_map_url`           VARCHAR(255)    NULL,
+    `kakao_map_url`           VARCHAR(255)    NULL,
     `location`                VARCHAR(255)    NULL,
     `latitude`                DOUBLE          NULL,
     `longitude`               DOUBLE          NULL,
     `phone`                   VARCHAR(20)     NULL,
     `email`                   VARCHAR(255)    NULL,
+    `basic_product_name`      VARCHAR(255)    NULL,
+    `basic_product_price`     INT             NULL,
+    `operating_hours`         VARCHAR(255)    NULL,
+    `website_url`             VARCHAR(255)    NULL,
     `introduction`            TEXT            NULL,
     `guide_text`              TEXT            NULL,
     `service_description`     TEXT            NULL,
@@ -220,6 +239,15 @@ CREATE TABLE `funeral_companies` (
     `ossuary`                 BOOLEAN         DEFAULT FALSE,
     `free_basic_urn`          BOOLEAN         DEFAULT FALSE,
     PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 13-1. 장례업체 이미지 (funeral_company_images) - @ElementCollection
+CREATE TABLE `funeral_company_images` (
+    `funeral_company_id`  BIGINT          NOT NULL,
+    `image_url`           VARCHAR(255)    NOT NULL,
+    PRIMARY KEY (`funeral_company_id`, `image_url`),
+    CONSTRAINT `FK_funeral_companies_TO_funeral_company_images`
+        FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 14. 반려동물_장례업체 (pet_funeral_companies)
@@ -254,13 +282,46 @@ CREATE TABLE `reviews` (
         FOREIGN KEY (`funeral_company_id`) REFERENCES `funeral_companies` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 15-1. 장례업체 후기 이미지 (review_images)
+CREATE TABLE `review_images` (
+    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
+    `review_id`     BIGINT          NOT NULL,
+    `image_url`     VARCHAR(255)    NOT NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_reviews_TO_review_images`
+        FOREIGN KEY (`review_id`) REFERENCES `reviews` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 16. 자주 묻는 질문 (faqs)
 CREATE TABLE `faqs` (
     `id`            BIGINT          NOT NULL AUTO_INCREMENT,
     `question`      TEXT            NOT NULL,
     `answer`        TEXT            NOT NULL,
+    `detail_answer` TEXT            NULL,
     `order_index`   INT             NULL,
     PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 17. 서비스 후기 (service_reviews) - BaseTimeEntity
+CREATE TABLE `service_reviews` (
+    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
+    `user_id`       BIGINT          NOT NULL,
+    `content`       TEXT            NULL,
+    `created_at`    DATETIME(6)     NULL,
+    `updated_at`    DATETIME(6)     NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_users_TO_service_reviews`
+        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 18. 서비스 후기 이미지 (service_review_images)
+CREATE TABLE `service_review_images` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT,
+    `service_review_id` BIGINT          NOT NULL,
+    `image_url`         VARCHAR(255)    NOT NULL,
+    PRIMARY KEY (`id`),
+    CONSTRAINT `FK_service_reviews_TO_service_review_images`
+        FOREIGN KEY (`service_review_id`) REFERENCES `service_reviews` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
