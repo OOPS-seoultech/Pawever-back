@@ -124,7 +124,7 @@ public class MissionService {
      */
     @Transactional
     public ChecklistResponse toggleChecklistItem(Long userId, Long petId, Long checklistItemId) {
-        validatePetAccess(userId, petId);
+        validatePetOwnerAccess(userId, petId);
 
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
@@ -173,6 +173,14 @@ public class MissionService {
     private void validatePetAccess(Long userId, Long petId) {
         if (!userPetRepository.existsByUserIdAndPetId(userId, petId)) {
             throw new CustomException(ErrorCode.PET_NOT_OWNED);
+        }
+    }
+
+    private void validatePetOwnerAccess(Long userId, Long petId) {
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
+        if (!Boolean.TRUE.equals(userPet.getIsOwner())) {
+            throw new CustomException(ErrorCode.NOT_OWNER);
         }
     }
 }
