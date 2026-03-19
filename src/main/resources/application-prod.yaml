@@ -8,10 +8,18 @@ spring:
     url: jdbc:mariadb://mariadb:3306/${DB_NAME:pawever}
 
   jpa:
+    hibernate:
+      ddl-auto: none
     show-sql: false
     properties:
       hibernate:
         format_sql: false
+
+  # In docker-compose dev flow, MariaDB runs init scripts from /docker-entrypoint-initdb.d.
+  # Disable Spring SQL init to avoid double-seeding.
+  sql:
+    init:
+      mode: never
 
   docker:
     compose:
