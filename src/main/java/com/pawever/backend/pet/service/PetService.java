@@ -102,6 +102,11 @@ public class PetService {
                 .deathDate(resolveCreateDeathDate(request))
                 .lifecycleStatus(request.getLifecycleStatus())
                 .build();
+
+        if (request.getLifecycleStatus() == LifecycleStatus.AFTER_FAREWELL) {
+            pet.activateEmergencyMode();
+        }
+
         pet = petRepository.save(pet);
 
         UserPet userPet = UserPet.builder()
