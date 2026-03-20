@@ -34,6 +34,9 @@ public class Pet extends BaseTimeEntity {
 
     private Float weight;
 
+    @Builder.Default
+    private Boolean isNeutered = false;
+
     @Column(unique = true)
     private String inviteCode;
 
@@ -55,11 +58,20 @@ public class Pet extends BaseTimeEntity {
         }
     }
 
-    public void update(String name, LocalDate birthDate, Gender gender, Float weight, Breed breed, LocalDateTime deathDate) {
+    public void update(
+            String name,
+            LocalDate birthDate,
+            Gender gender,
+            Float weight,
+            Boolean isNeutered,
+            Breed breed,
+            LocalDateTime deathDate
+    ) {
         this.name = name;
         this.birthDate = birthDate;
         this.gender = gender;
         this.weight = weight;
+        this.isNeutered = isNeutered;
         this.breed = breed;
         this.deathDate = deathDate;
     }

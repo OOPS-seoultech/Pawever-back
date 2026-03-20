@@ -22,5 +22,7 @@ public class PetUpdateRequest {
 
     private Float weight;
 
+    private Boolean isNeutered;
+
     private LocalDate deathDate;
 }

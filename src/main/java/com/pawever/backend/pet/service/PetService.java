@@ -72,6 +72,18 @@ public class PetService {
         return toDeathDateTime(request.getDeathDate());
     }
 
+    private Boolean resolveCreateNeutered(PetCreateRequest request) {
+        return Boolean.TRUE.equals(request.getIsNeutered());
+    }
+
+    private Boolean resolveUpdatedNeutered(Pet pet, PetUpdateRequest request) {
+        if (request.getIsNeutered() == null) {
+            return pet.getIsNeutered();
+        }
+
+        return request.getIsNeutered();
+    }
+
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
@@ -86,6 +98,7 @@ public class PetService {
                 .birthDate(request.getBirthDate())
                 .gender(request.getGender())
                 .weight(request.getWeight())
+                .isNeutered(resolveCreateNeutered(request))
                 .deathDate(resolveCreateDeathDate(request))
                 .lifecycleStatus(request.getLifecycleStatus())
                 .build();
@@ -193,6 +206,7 @@ public class PetService {
                 request.getBirthDate(),
                 request.getGender(),
                 request.getWeight(),
+                resolveUpdatedNeutered(pet, request),
                 breed,
                 resolveUpdatedDeathDate(pet, request)
         );

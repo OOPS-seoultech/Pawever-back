@@ -21,6 +21,7 @@ public class PetResponse {
     private LocalDate birthDate;
     private Gender gender;
     private Float weight;
+    private Boolean isNeutered;
     private String profileImageUrl;
     private LifecycleStatus lifecycleStatus;
     private String inviteCode;
@@ -38,6 +39,7 @@ public class PetResponse {
                 .birthDate(pet.getBirthDate())
                 .gender(pet.getGender())
                 .weight(pet.getWeight())
+                .isNeutered(pet.getIsNeutered())
                 .profileImageUrl(pet.getProfileImageUrl())
                 .lifecycleStatus(pet.getLifecycleStatus())
                 .inviteCode(pet.getInviteCode())

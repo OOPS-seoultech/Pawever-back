@@ -57,6 +57,7 @@ CREATE TABLE `pets` (
     `birth_date`        DATE            NULL,
     `gender`            VARCHAR(10)     NULL        COMMENT 'MALE / FEMALE',
     `weight`            FLOAT           NULL,
+    `is_neutered`       BOOLEAN         DEFAULT FALSE,
     `invite_code`       VARCHAR(255)    NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `emergency_mode`    BOOLEAN         DEFAULT FALSE,
