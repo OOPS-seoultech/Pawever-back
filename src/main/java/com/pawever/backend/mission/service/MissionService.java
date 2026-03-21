@@ -1,6 +1,6 @@
 package com.pawever.backend.mission.service;
 
-import com.pawever.backend.checklist.service.ChecklistService;
+import com.pawever.backend.farewellpreview.service.FarewellPreviewProgressService;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
@@ -30,7 +30,7 @@ public class MissionService {
     private final PetRepository petRepository;
     private final UserPetRepository userPetRepository;
     private final StorageService storageService;
-    private final ChecklistService checklistService;
+    private final FarewellPreviewProgressService farewellPreviewProgressService;
 
     /**
      * 발자국 남기기 미션 목록 + 달성 현황 조회
@@ -92,17 +92,17 @@ public class MissionService {
     }
 
     /**
-     * 홈화면 진행률 요약 조회 (체크리스트 %, 미션 완료/전체)
+     * 홈화면 진행률 요약 조회 (미리 살펴보기 %, 미션 완료/전체)
      */
     public HomeProgressResponse getHomeProgress(Long userId, Long petId) {
         validatePetAccess(userId, petId);
 
-        double checklistProgressPercent = checklistService.getChecklistProgressPercent(userId, petId);
+        int farewellPreviewProgressPercent = farewellPreviewProgressService.getProgressPercent(userId, petId);
         long missionTotal = missionRepository.count();
         long missionCompleted = petMissionRepository.countByPetIdAndCompletedTrue(petId);
 
         return HomeProgressResponse.builder()
-                .checklistProgressPercent(checklistProgressPercent)
+                .farewellPreviewProgressPercent(farewellPreviewProgressPercent)
                 .missionCompleted(missionCompleted)
                 .missionTotal(missionTotal)
                 .build();

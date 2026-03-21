@@ -3,10 +3,6 @@ package com.pawever.backend.pet.service;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
-import com.pawever.backend.checklist.entity.ChecklistItem;
-import com.pawever.backend.checklist.entity.PetChecklist;
-import com.pawever.backend.checklist.repository.ChecklistItemRepository;
-import com.pawever.backend.checklist.repository.PetChecklistRepository;
 import com.pawever.backend.mission.entity.Mission;
 import com.pawever.backend.mission.entity.PetMission;
 import com.pawever.backend.mission.repository.MissionRepository;
@@ -36,8 +32,6 @@ public class PetService {
     private final UserRepository userRepository;
     private final MissionRepository missionRepository;
     private final PetMissionRepository petMissionRepository;
-    private final ChecklistItemRepository checklistItemRepository;
-    private final PetChecklistRepository petChecklistRepository;
     private final StorageService storageService;
 
     private LocalDateTime toDeathDateTime(LocalDate deathDate) {
@@ -122,7 +116,6 @@ public class PetService {
         // 미션 초기화 (이별 전인 경우)
         if (request.getLifecycleStatus() == LifecycleStatus.BEFORE_FAREWELL) {
             initializeMissions(pet);
-            initializeChecklist(pet);
         }
 
         return PetResponse.of(pet, user.getSelectedPetId(), true);
@@ -301,18 +294,6 @@ public class PetService {
                     .completed(false)
                     .build();
             petMissionRepository.save(petMission);
-        }
-    }
-
-    private void initializeChecklist(Pet pet) {
-        List<ChecklistItem> items = checklistItemRepository.findAll();
-        for (ChecklistItem item : items) {
-            PetChecklist petChecklist = PetChecklist.builder()
-                    .pet(pet)
-                    .checklistItem(item)
-                    .completed(false)
-                    .build();
-            petChecklistRepository.save(petChecklist);
         }
     }
 }

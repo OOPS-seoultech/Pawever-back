@@ -56,9 +56,6 @@ public enum ErrorCode {
     NOT_OWNER(HttpStatus.FORBIDDEN, "소유자만 수행할 수 있습니다."),
     CANNOT_REMOVE_OWNER(HttpStatus.BAD_REQUEST, "소유자는 공유 해제할 수 없습니다."),
 
-    // Checklist
-    CHECKLIST_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "체크리스트 항목을 찾을 수 없습니다."),
-
     // File
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다.");
 

@@ -37,7 +37,7 @@ public class MissionController {
         return ResponseEntity.ok(ApiResponse.ok(missionService.completeMission(userId, petId, missionId, file)));
     }
 
-    @Operation(summary = "홈화면 진행률 요약 조회", description = "체크리스트 진행률(%)과 미션 완료/전체 수를 조회합니다.")
+    @Operation(summary = "홈화면 진행률 요약 조회", description = "미리 살펴보기 진행률(%)과 미션 완료/전체 수를 조회합니다.")
     @GetMapping("/home-progress")
     public ResponseEntity<ApiResponse<HomeProgressResponse>> getHomeProgress(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();
