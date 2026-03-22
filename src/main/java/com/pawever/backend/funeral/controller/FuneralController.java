@@ -1,6 +1,7 @@
 package com.pawever.backend.funeral.controller;
 
 import com.pawever.backend.funeral.dto.*;
+import com.pawever.backend.funeral.entity.RegistrationType;
 import com.pawever.backend.funeral.service.FuneralService;
 import com.pawever.backend.global.common.ApiResponse;
 import com.pawever.backend.global.security.UserPrincipal;
@@ -31,6 +32,30 @@ public class FuneralController {
             @RequestParam(required = false) Double longitude) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(funeralService.getFuneralCompanyList(userId, petId, latitude, longitude)));
+    }
+
+    @Operation(summary = "저장한 장례업체 조회", description = "반려동물 기준으로 저장한 장례업체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @GetMapping("/saved")
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getSavedFuneralCompanies(
+            @RequestParam Long petId,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(
+                funeralService.getRegisteredFuneralCompanyList(userId, petId, RegistrationType.SAVED, latitude, longitude)
+        ));
+    }
+
+    @Operation(summary = "피하는 장례업체 조회", description = "반려동물 기준으로 피하기 등록한 장례업체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @GetMapping("/blocked")
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getBlockedFuneralCompanies(
+            @RequestParam Long petId,
+            @RequestParam(required = false) Double latitude,
+            @RequestParam(required = false) Double longitude) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(
+                funeralService.getRegisteredFuneralCompanyList(userId, petId, RegistrationType.BLOCKED, latitude, longitude)
+        ));
     }
 
     @Operation(summary = "장례업체 상세 조회", description = "반려동물 기준으로 특정 장례업체의 상세 정보를 조회합니다.")
