@@ -15,6 +15,8 @@ public class UserUpdateRequest {
 
     private String phone;
 
+    private String ageRange;
+
     private ReferralType referralType;
 
     private String referralMemo;

@@ -61,7 +61,13 @@ public class UserService {
             throw new CustomException(ErrorCode.DUPLICATE_PHONE);
         }
 
-        user.updateProfile(request.getName(), request.getNickname(), newPhone, newPhoneHash);
+        user.updateProfile(
+                request.getName(),
+                request.getNickname(),
+                newPhone,
+                newPhoneHash,
+                request.getAgeRange()
+        );
         // 프로필 정보를 최초/재저장하면 온보딩 완료로 간주
         user.completeOnboarding();
         if (request.getReferralType() != null) {
