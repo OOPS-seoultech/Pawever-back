@@ -34,7 +34,7 @@ public class SharingController {
         return ResponseEntity.ok(ApiResponse.ok(sharingService.getInviteCode(userId, petId)));
     }
 
-    @Operation(summary = "초대코드 재발급", description = "기존 초대코드를 무효화하고 새로운 초대코드를 발급합니다.")
+    @Operation(summary = "초대코드 재발급", description = "기존 초대코드를 무효화하고 새로운 초대코드를 발급합니다. 기존 guest 공유 연결은 모두 해제됩니다.")
     @PostMapping("/api/pets/{petId}/sharing/invite-code/regenerate")
     public ResponseEntity<ApiResponse<InviteCodeResponse>> regenerateInviteCode(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();
