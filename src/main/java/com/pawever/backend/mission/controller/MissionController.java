@@ -32,9 +32,25 @@ public class MissionController {
     public ResponseEntity<ApiResponse<MissionResponse>> completeMission(
             @PathVariable Long petId,
             @PathVariable Long missionId,
-            @RequestPart(required = false) MultipartFile file) {
+            @RequestPart(value = "file", required = false) MultipartFile file) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(missionService.completeMission(userId, petId, missionId, file)));
+    }
+
+    @Operation(summary = "미션 녹음 저장", description = "발자국 남기기 녹음/마음전하기 미션의 오디오 파일과 메타데이터를 저장합니다.")
+    @PostMapping(value = "/missions/{missionId}/recording", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<MissionResponse>> saveMissionRecording(
+            @PathVariable Long petId,
+            @PathVariable Long missionId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(value = "durationSec", required = false) Integer durationSec,
+            @RequestParam(value = "format", required = false) String format,
+            @RequestParam(value = "sizeBytes", required = false) Long sizeBytes,
+            @RequestParam(value = "waveform", required = false) String waveform) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(
+                missionService.saveMissionRecording(userId, petId, missionId, file, durationSec, format, sizeBytes, waveform)
+        ));
     }
 
     @Operation(summary = "홈화면 진행률 요약 조회", description = "미리 살펴보기 진행률(%)과 미션 완료/전체 수를 조회합니다.")

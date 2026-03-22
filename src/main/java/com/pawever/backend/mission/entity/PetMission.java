@@ -33,6 +33,20 @@ public class PetMission {
 
     private String imageUrl;
 
+    private String mediaUrl;
+
+    private String mediaType;
+
+    private String mediaFormat;
+
+    private Long mediaSizeBytes;
+
+    private Integer mediaDurationSec;
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String mediaWaveform;
+
     public void complete() {
         this.completed = true;
         this.completedAt = LocalDateTime.now();
@@ -42,5 +56,21 @@ public class PetMission {
         this.completed = true;
         this.completedAt = LocalDateTime.now();
         this.imageUrl = imageUrl;
+    }
+
+    public void saveMedia(
+            String mediaUrl,
+            String mediaType,
+            String mediaFormat,
+            Long mediaSizeBytes,
+            Integer mediaDurationSec,
+            String mediaWaveform
+    ) {
+        this.mediaUrl = mediaUrl;
+        this.mediaType = mediaType;
+        this.mediaFormat = mediaFormat;
+        this.mediaSizeBytes = mediaSizeBytes;
+        this.mediaDurationSec = mediaDurationSec;
+        this.mediaWaveform = mediaWaveform;
     }
 }

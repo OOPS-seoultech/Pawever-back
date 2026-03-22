@@ -37,7 +37,26 @@ public class StorageService {
 
             s3Client.putObject(request, RequestBody.fromBytes(file.getBytes()));
         } catch (IOException e) {
-            log.error("파일 업로드 실패: {}", originalFilename, e);
+            log.error(
+                    "파일 바이트 읽기 실패. bucket={}, key={}, originalFilename={}, contentType={}, size={}",
+                    ncpStorageConfig.getS3().getBucket(),
+                    key,
+                    originalFilename,
+                    file.getContentType(),
+                    file.getSize(),
+                    e
+            );
+            throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
+        } catch (Exception e) {
+            log.error(
+                    "오브젝트 스토리지 업로드 실패. bucket={}, key={}, originalFilename={}, contentType={}, size={}",
+                    ncpStorageConfig.getS3().getBucket(),
+                    key,
+                    originalFilename,
+                    file.getContentType(),
+                    file.getSize(),
+                    e
+            );
             throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
         }
 

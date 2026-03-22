@@ -114,6 +114,12 @@ CREATE TABLE `pet_missions` (
     `completed`     BOOLEAN     DEFAULT FALSE,
     `completed_at`  DATETIME(6) NULL,
     `image_url`     VARCHAR(255) NULL,
+    `media_url`     VARCHAR(255) NULL,
+    `media_type`    VARCHAR(20) NULL,
+    `media_format`  VARCHAR(20) NULL,
+    `media_size_bytes` BIGINT NULL,
+    `media_duration_sec` INT NULL,
+    `media_waveform` TEXT NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_pets_TO_pet_missions`
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
