@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:mariadb://localhost:23306/oops-pawever
+    username: oops-pawever
+    password: pawever2026
+
+cloud:
+  ncp:
+    credentials:
+      access-key: dummy
+      secret-key: dummy
