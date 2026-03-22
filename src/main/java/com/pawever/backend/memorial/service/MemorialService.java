@@ -88,7 +88,7 @@ public class MemorialService {
         validateEmergencyModeActive(pet);
 
         pet.completeEmergencyMode();
-        resetEmergencyModeData(petId);
+        resetEmergencyAndPreviewData(petId);
 
         return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
@@ -107,7 +107,26 @@ public class MemorialService {
         validateEmergencyModeActive(pet);
 
         pet.deactivateEmergencyMode();
-        resetEmergencyModeData(petId);
+        resetFuneralCompanyRegistrations(petId);
+
+        return PetResponse.of(pet, user.getSelectedPetId(), true);
+    }
+
+    /**
+     * 이별 후 -> 이별 전 복귀
+     */
+    @Transactional
+    public PetResponse revertFarewell(Long userId, Long petId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        UserPet userPet = getOwnerUserPet(userId, petId);
+        Pet pet = userPet.getPet();
+
+        validateAfterFarewellInactiveEmergency(pet);
+
+        pet.deactivateEmergencyMode();
+        resetEmergencyAndPreviewData(petId);
 
         return PetResponse.of(pet, user.getSelectedPetId(), true);
     }
@@ -298,8 +317,18 @@ public class MemorialService {
         }
     }
 
-    private void resetEmergencyModeData(Long petId) {
+    private void validateAfterFarewellInactiveEmergency(Pet pet) {
+        if (pet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL || Boolean.TRUE.equals(pet.getEmergencyMode())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    private void resetEmergencyAndPreviewData(Long petId) {
         farewellPreviewProgressRepository.deleteByPetId(petId);
+        resetFuneralCompanyRegistrations(petId);
+    }
+
+    private void resetFuneralCompanyRegistrations(Long petId) {
         petFuneralCompanyRepository.deleteByPetId(petId);
     }
 
