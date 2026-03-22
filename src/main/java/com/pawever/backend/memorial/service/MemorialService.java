@@ -28,6 +28,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -173,16 +175,28 @@ public class MemorialService {
         }
 
         // 해당 펫과 연결된 유저인지 확인하여 댓글 삭제 권한 판단
-        Set<Long> connectedUserIds = userPetRepository.findByPetId(petId).stream()
+        List<UserPet> userPets = userPetRepository.findByPetId(petId);
+        Set<Long> connectedUserIds = userPets.stream()
                 .map(up -> up.getUser().getId())
                 .collect(Collectors.toSet());
+        Long ownerUserId = userPets.stream()
+                .filter(up -> Boolean.TRUE.equals(up.getIsOwner()))
+                .map(up -> up.getUser().getId())
+                .findFirst()
+                .orElse(null);
+        List<Comment> commentEntities = commentRepository.findByPetIdOrderByCreatedAtDesc(petId);
+        Map<Long, Pet> selectedPetMap = buildSelectedPetMap(commentEntities);
 
-        List<CommentResponse> comments = commentRepository.findByPetIdOrderByCreatedAtDesc(petId)
+        List<CommentResponse> comments = commentEntities
                 .stream()
                 .map(comment -> {
-                    boolean canDelete = comment.getUser().getId().equals(userId)
-                            || connectedUserIds.contains(userId);
-                    return CommentResponse.of(comment, canDelete);
+                    boolean canDelete = comment.getUser().getId().equals(userId);
+                    return CommentResponse.of(
+                            comment,
+                            canDelete,
+                            resolveAuthorRoleByOwnerId(ownerUserId, comment.getUser().getId()),
+                            CommentAuthorPetResponse.from(selectedPetMap.get(comment.getUser().getSelectedPetId()))
+                    );
                 })
                 .toList();
 
@@ -210,7 +224,12 @@ public class MemorialService {
                 .build();
         comment = commentRepository.save(comment);
 
-        return CommentResponse.of(comment, true);
+        return CommentResponse.of(
+                comment,
+                true,
+                resolveAuthorRole(petId, userId),
+                buildAuthorPetResponse(user.getSelectedPetId())
+        );
     }
 
     /**
@@ -227,7 +246,45 @@ public class MemorialService {
 
         comment.updateContent(request.getContent());
 
-        return CommentResponse.of(comment, true);
+        return CommentResponse.of(
+                comment,
+                true,
+                resolveAuthorRole(comment.getPet().getId(), userId),
+                buildAuthorPetResponse(comment.getUser().getSelectedPetId())
+        );
+    }
+
+    private CommentAuthorRole resolveAuthorRole(Long petId, Long commentUserId) {
+        return userPetRepository.findByPetIdAndIsOwnerTrue(petId)
+                .filter(userPet -> userPet.getUser().getId().equals(commentUserId))
+                .map(userPet -> CommentAuthorRole.OWNER)
+                .orElse(CommentAuthorRole.GUEST);
+    }
+
+    private CommentAuthorRole resolveAuthorRoleByOwnerId(Long ownerUserId, Long commentUserId) {
+        if (ownerUserId != null && ownerUserId.equals(commentUserId)) {
+            return CommentAuthorRole.OWNER;
+        }
+        return CommentAuthorRole.GUEST;
+    }
+
+    private Map<Long, Pet> buildSelectedPetMap(List<Comment> comments) {
+        Set<Long> selectedPetIds = comments.stream()
+                .map(comment -> comment.getUser().getSelectedPetId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        return petRepository.findAllById(selectedPetIds).stream()
+                .collect(Collectors.toMap(Pet::getId, pet -> pet));
+    }
+
+    private CommentAuthorPetResponse buildAuthorPetResponse(Long selectedPetId) {
+        if (selectedPetId == null) {
+            return null;
+        }
+        return petRepository.findById(selectedPetId)
+                .map(CommentAuthorPetResponse::from)
+                .orElse(null);
     }
 
     /**
@@ -238,11 +295,9 @@ public class MemorialService {
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new CustomException(ErrorCode.COMMENT_NOT_FOUND));
 
-        Long petId = comment.getPet().getId();
-        boolean isConnectedUser = userPetRepository.existsByUserIdAndPetId(userId, petId);
         boolean isCommentOwner = comment.getUser().getId().equals(userId);
 
-        if (!isCommentOwner && !isConnectedUser) {
+        if (!isCommentOwner) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
