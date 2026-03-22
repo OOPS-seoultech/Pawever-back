@@ -88,6 +88,20 @@ public class Pet extends BaseTimeEntity {
         }
     }
 
+    public void completeEmergencyMode() {
+        this.emergencyMode = false;
+        this.lifecycleStatus = LifecycleStatus.AFTER_FAREWELL;
+        if (this.deathDate == null) {
+            this.deathDate = LocalDateTime.now();
+        }
+    }
+
+    public void deactivateEmergencyMode() {
+        this.emergencyMode = false;
+        this.lifecycleStatus = LifecycleStatus.BEFORE_FAREWELL;
+        this.deathDate = null;
+    }
+
     public void regenerateInviteCode() {
         this.inviteCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }

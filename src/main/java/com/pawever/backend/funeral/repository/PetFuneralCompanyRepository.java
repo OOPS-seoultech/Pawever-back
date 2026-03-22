@@ -15,5 +15,7 @@ public interface PetFuneralCompanyRepository extends JpaRepository<PetFuneralCom
 
     int countByPetIdAndType(Long petId, RegistrationType type);
 
-    void deleteByPetIdAndFuneralCompanyId(Long petId, Long funeralCompanyId);
+    void deleteByPetId(Long petId);
+
+    void deleteByPetIdAndFuneralCompanyId(Long petId, Long companyId);
 }

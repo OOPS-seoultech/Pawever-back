@@ -3,6 +3,7 @@ package com.pawever.backend.memorial.controller;
 import com.pawever.backend.global.common.ApiResponse;
 import com.pawever.backend.global.security.UserPrincipal;
 import com.pawever.backend.memorial.dto.*;
+import com.pawever.backend.pet.dto.PetResponse;
 import com.pawever.backend.memorial.service.MemorialService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,6 +29,20 @@ public class MemorialController {
     public ResponseEntity<ApiResponse<EmergencyResponse>> activateEmergencyMode(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(memorialService.activateEmergencyMode(userId, petId)));
+    }
+
+    @Operation(summary = "긴급 대처 모드 완료", description = "반려동물을 이별 후 상태로 확정하고 긴급 대처 모드를 종료합니다. 장례업체 저장/피하기와 미리 살펴보기 진행 상태는 초기화됩니다.")
+    @PostMapping("/pets/{petId}/emergency/complete")
+    public ResponseEntity<ApiResponse<PetResponse>> completeEmergencyMode(@PathVariable Long petId) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.completeEmergencyMode(userId, petId)));
+    }
+
+    @Operation(summary = "긴급 대처 모드 해제", description = "반려동물을 이별 전 상태로 되돌리고 긴급 대처 모드를 해제합니다. 추모 댓글은 유지되며 장례업체 저장/피하기와 미리 살펴보기 진행 상태는 초기화됩니다.")
+    @PostMapping("/pets/{petId}/emergency/deactivate")
+    public ResponseEntity<ApiResponse<PetResponse>> deactivateEmergencyMode(@PathVariable Long petId) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.deactivateEmergencyMode(userId, petId)));
     }
 
     @Operation(summary = "추모관 목록 조회", description = "별자리 추모관 feed를 recent/past 버퍼 단위 cursor pagination으로 조회합니다.")

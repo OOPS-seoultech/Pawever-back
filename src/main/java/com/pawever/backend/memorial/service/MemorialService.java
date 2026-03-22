@@ -1,5 +1,7 @@
 package com.pawever.backend.memorial.service;
 
+import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRepository;
+import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.dto.*;
@@ -9,8 +11,10 @@ import com.pawever.backend.memorial.entity.ReportReason;
 import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
 import com.pawever.backend.memorial.repository.ReportReasonRepository;
+import com.pawever.backend.pet.dto.PetResponse;
 import com.pawever.backend.pet.entity.LifecycleStatus;
 import com.pawever.backend.pet.entity.Pet;
+import com.pawever.backend.pet.entity.UserPet;
 import com.pawever.backend.pet.repository.PetRepository;
 import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.user.entity.User;
@@ -41,6 +45,8 @@ public class MemorialService {
 
     private final CommentRepository commentRepository;
     private final CommentReportRepository commentReportRepository;
+    private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
+    private final PetFuneralCompanyRepository petFuneralCompanyRepository;
     private final PetRepository petRepository;
     private final ReportReasonRepository reportReasonRepository;
     private final UserPetRepository userPetRepository;
@@ -54,8 +60,7 @@ public class MemorialService {
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
-        userPetRepository.findByUserIdAndPetId(userId, petId)
-                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
+        getAccessibleUserPet(userId, petId);
 
         if (pet.getLifecycleStatus() == LifecycleStatus.AFTER_FAREWELL) {
             throw new CustomException(ErrorCode.MEMORIAL_ALREADY_EXISTS);
@@ -67,6 +72,44 @@ public class MemorialService {
         return EmergencyResponse.builder()
                 .memorial(MemorialResponse.from(pet))
                 .build();
+    }
+
+    /**
+     * 긴급 대처 모드 완료 - 이별 후 상태 유지, 긴급 모드 종료
+     */
+    @Transactional
+    public PetResponse completeEmergencyMode(Long userId, Long petId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        UserPet userPet = getAccessibleUserPet(userId, petId);
+        Pet pet = userPet.getPet();
+
+        validateEmergencyModeActive(pet);
+
+        pet.completeEmergencyMode();
+        resetEmergencyModeData(petId);
+
+        return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
+    }
+
+    /**
+     * 긴급 대처 모드 해제 - 이별 전 상태로 되돌리고 긴급 모드 종료
+     */
+    @Transactional
+    public PetResponse deactivateEmergencyMode(Long userId, Long petId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        UserPet userPet = getOwnerUserPet(userId, petId);
+        Pet pet = userPet.getPet();
+
+        validateEmergencyModeActive(pet);
+
+        pet.deactivateEmergencyMode();
+        resetEmergencyModeData(petId);
+
+        return PetResponse.of(pet, user.getSelectedPetId(), true);
     }
 
     /**
@@ -231,6 +274,33 @@ public class MemorialService {
                 .reasons(reasons)
                 .build();
         commentReportRepository.save(report);
+    }
+
+    private UserPet getOwnerUserPet(Long userId, Long petId) {
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
+
+        if (!Boolean.TRUE.equals(userPet.getIsOwner())) {
+            throw new CustomException(ErrorCode.NOT_OWNER);
+        }
+
+        return userPet;
+    }
+
+    private UserPet getAccessibleUserPet(Long userId, Long petId) {
+        return userPetRepository.findByUserIdAndPetId(userId, petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
+    }
+
+    private void validateEmergencyModeActive(Pet pet) {
+        if (!Boolean.TRUE.equals(pet.getEmergencyMode())) {
+            throw new CustomException(ErrorCode.EMERGENCY_MODE_NOT_ACTIVE);
+        }
+    }
+
+    private void resetEmergencyModeData(Long petId) {
+        farewellPreviewProgressRepository.deleteByPetId(petId);
+        petFuneralCompanyRepository.deleteByPetId(petId);
     }
 
     private CursorSlice fetchRecentMemorials(LocalDateTime sevenDaysAgo, MemorialCursor cursor, int size) {

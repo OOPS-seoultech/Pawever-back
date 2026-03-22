@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface FarewellPreviewProgressRepository extends JpaRepository<FarewellPreviewProgress, Long> {
 
     Optional<FarewellPreviewProgress> findByPetId(Long petId);
+
+    void deleteByPetId(Long petId);
 }
