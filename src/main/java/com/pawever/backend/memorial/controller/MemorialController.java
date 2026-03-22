@@ -9,8 +9,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Tag(name = "Memorial", description = "추모관 관련 API")
@@ -28,10 +30,18 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok(memorialService.activateEmergencyMode(userId, petId)));
     }
 
-    @Operation(summary = "추모관 목록 조회", description = "별자리 추모관 목록을 7일 이내와 이전으로 분리하여 조회합니다.")
+    @Operation(summary = "추모관 목록 조회", description = "별자리 추모관 feed를 recent/past 버퍼 단위 cursor pagination으로 조회합니다.")
     @GetMapping("/memorials")
-    public ResponseEntity<ApiResponse<MemorialListResponse>> getMemorialList() {
-        return ResponseEntity.ok(ApiResponse.ok(memorialService.getMemorialList()));
+    public ResponseEntity<ApiResponse<MemorialFeedResponse>> getMemorialList(
+            @RequestParam(required = false) Integer recentSize,
+            @RequestParam(required = false) Integer pastSize,
+            @RequestParam(required = false) String recentCursor,
+            @RequestParam(required = false) String pastCursor,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime referenceTime
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                memorialService.getMemorialFeed(recentSize, pastSize, recentCursor, pastCursor, referenceTime)
+        ));
     }
 
     @Operation(summary = "추모관 상세 조회", description = "특정 반려동물의 추모관 상세 정보(펫 정보 + 댓글 목록)를 조회합니다.")

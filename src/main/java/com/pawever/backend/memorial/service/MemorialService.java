@@ -16,10 +16,13 @@ import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -28,6 +31,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MemorialService {
+
+    private static final int DEFAULT_RECENT_SIZE = 6;
+    private static final int DEFAULT_PAST_SIZE = 24;
+    private static final int MAX_RECENT_SIZE = 10;
+    private static final int MAX_PAST_SIZE = 30;
+    private static final LocalDateTime NULL_CURSOR_DEATH_DATE = LocalDateTime.of(1900, 1, 1, 0, 0);
+    private static final DateTimeFormatter CURSOR_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
     private final CommentRepository commentRepository;
     private final CommentReportRepository commentReportRepository;
@@ -60,25 +70,32 @@ public class MemorialService {
     }
 
     /**
-     * 별자리 추모관 목록 조회 (7일 이내 / 이전 분리)
+     * 별자리 추모관 feed 조회 (recent/past 버퍼 단위 cursor pagination)
      */
-    public MemorialListResponse getMemorialList() {
-        List<Pet> deceasedPets = petRepository.findByLifecycleStatus(LifecycleStatus.AFTER_FAREWELL);
-        LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+    public MemorialFeedResponse getMemorialFeed(
+            Integer recentSize,
+            Integer pastSize,
+            String recentCursor,
+            String pastCursor,
+            LocalDateTime referenceTime
+    ) {
+        int normalizedRecentSize = normalizeSize(recentSize, DEFAULT_RECENT_SIZE, 1, MAX_RECENT_SIZE);
+        int normalizedPastSize = normalizeSize(pastSize, DEFAULT_PAST_SIZE, 1, MAX_PAST_SIZE);
+        LocalDateTime effectiveReferenceTime = referenceTime != null ? referenceTime : LocalDateTime.now();
+        LocalDateTime sevenDaysAgo = effectiveReferenceTime.minusDays(7);
 
-        List<MemorialResponse> recentMemorials = deceasedPets.stream()
-                .filter(p -> p.getDeathDate() != null && p.getDeathDate().isAfter(sevenDaysAgo))
-                .map(MemorialResponse::from)
-                .toList();
+        MemorialCursor recentCursorInfo = parseCursor(recentCursor);
+        MemorialCursor pastCursorInfo = parseCursor(pastCursor);
 
-        List<MemorialResponse> pastMemorials = deceasedPets.stream()
-                .filter(p -> p.getDeathDate() == null || !p.getDeathDate().isAfter(sevenDaysAgo))
-                .map(MemorialResponse::from)
-                .toList();
+        CursorSlice recentSlice = fetchRecentMemorials(sevenDaysAgo, recentCursorInfo, normalizedRecentSize);
+        CursorSlice pastSlice = fetchPastMemorials(sevenDaysAgo, pastCursorInfo, normalizedPastSize);
 
-        return MemorialListResponse.builder()
-                .recentMemorials(recentMemorials)
-                .pastMemorials(pastMemorials)
+        return MemorialFeedResponse.builder()
+                .referenceTime(effectiveReferenceTime)
+                .recentMemorials(recentSlice.memorials())
+                .pastMemorials(pastSlice.memorials())
+                .recentPageInfo(recentSlice.pageInfo())
+                .pastPageInfo(pastSlice.pageInfo())
                 .build();
     }
 
@@ -214,5 +231,108 @@ public class MemorialService {
                 .reasons(reasons)
                 .build();
         commentReportRepository.save(report);
+    }
+
+    private CursorSlice fetchRecentMemorials(LocalDateTime sevenDaysAgo, MemorialCursor cursor, int size) {
+        List<Pet> pets = petRepository.findRecentMemorialFeed(
+                LifecycleStatus.AFTER_FAREWELL,
+                sevenDaysAgo,
+                cursor.deathDate(),
+                cursor.id(),
+                PageRequest.of(0, size + 1)
+        );
+        return toCursorSlice(pets, size);
+    }
+
+    private CursorSlice fetchPastMemorials(LocalDateTime sevenDaysAgo, MemorialCursor cursor, int size) {
+        LocalDateTime cursorSortDeathDate = null;
+        Long cursorId = null;
+        if (!cursor.isEmpty()) {
+            cursorSortDeathDate = cursor.hasNullDeathDate() ? NULL_CURSOR_DEATH_DATE : cursor.deathDate();
+            cursorId = cursor.id();
+        }
+
+        List<Pet> pets = petRepository.findPastMemorialFeed(
+                LifecycleStatus.AFTER_FAREWELL,
+                sevenDaysAgo,
+                cursorSortDeathDate,
+                cursorId,
+                NULL_CURSOR_DEATH_DATE,
+                PageRequest.of(0, size + 1)
+        );
+        return toCursorSlice(pets, size);
+    }
+
+    private CursorSlice toCursorSlice(List<Pet> pets, int size) {
+        boolean hasNext = pets.size() > size;
+        List<Pet> pagePets = hasNext ? pets.subList(0, size) : pets;
+        String nextCursor = null;
+
+        if (hasNext && !pagePets.isEmpty()) {
+            Pet lastPet = pagePets.get(pagePets.size() - 1);
+            nextCursor = encodeCursor(lastPet.getDeathDate(), lastPet.getId());
+        }
+
+        return new CursorSlice(
+                pagePets.stream().map(MemorialResponse::from).toList(),
+                MemorialCursorPageInfo.builder()
+                        .hasNext(hasNext)
+                        .nextCursor(nextCursor)
+                        .build()
+        );
+    }
+
+    private int normalizeSize(Integer requestedSize, int defaultSize, int min, int max) {
+        if (requestedSize == null) {
+            return defaultSize;
+        }
+        if (requestedSize < min || requestedSize > max) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        return requestedSize;
+    }
+
+    private MemorialCursor parseCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return MemorialCursor.empty();
+        }
+
+        int separatorIndex = cursor.lastIndexOf('_');
+        if (separatorIndex <= 0 || separatorIndex == cursor.length() - 1) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+
+        String deathDateToken = cursor.substring(0, separatorIndex);
+        String idToken = cursor.substring(separatorIndex + 1);
+
+        try {
+            Long id = Long.parseLong(idToken);
+            if ("null".equalsIgnoreCase(deathDateToken)) {
+                return new MemorialCursor(null, id, true);
+            }
+
+            return new MemorialCursor(LocalDateTime.parse(deathDateToken, CURSOR_FORMATTER), id, false);
+        } catch (NumberFormatException | DateTimeParseException ex) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+    }
+
+    private String encodeCursor(LocalDateTime deathDate, Long petId) {
+        if (deathDate == null) {
+            return "null_" + petId;
+        }
+        return deathDate.format(CURSOR_FORMATTER) + "_" + petId;
+    }
+
+    private record CursorSlice(List<MemorialResponse> memorials, MemorialCursorPageInfo pageInfo) {}
+
+    private record MemorialCursor(LocalDateTime deathDate, Long id, boolean hasNullDeathDate) {
+        private static MemorialCursor empty() {
+            return new MemorialCursor(null, null, false);
+        }
+
+        private boolean isEmpty() {
+            return id == null;
+        }
     }
 }
