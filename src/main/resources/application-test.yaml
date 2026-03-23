@@ -1,8 +1,8 @@
 spring:
   datasource:
     url: jdbc:mariadb://localhost:23306/oops-pawever
-    username: oops-pawever
-    password: pawever2026
+    username: ${DB_USER:oops-pawever}
+    password: ${DB_PASSWORD}
 
 cloud:
   ncp:
