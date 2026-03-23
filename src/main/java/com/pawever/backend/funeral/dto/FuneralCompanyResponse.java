@@ -6,6 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @Builder
 @AllArgsConstructor
@@ -15,11 +17,14 @@ public class FuneralCompanyResponse {
     private String location;
     private Double latitude;
     private Double longitude;
+    private String naverMapUrl;
+    private String kakaoMapUrl;
     private String phone;
     private String email;
     private String introduction;
     private String guideText;
     private String serviceDescription;
+    private List<String> imageUrls;
     private Boolean fullObservation;
     private Boolean open24Hours;
     private Boolean pickupService;
@@ -36,11 +41,14 @@ public class FuneralCompanyResponse {
                 .location(company.getLocation())
                 .latitude(company.getLatitude())
                 .longitude(company.getLongitude())
+                .naverMapUrl(company.getNaverMapUrl())
+                .kakaoMapUrl(company.getKakaoMapUrl())
                 .phone(company.getPhone())
                 .email(company.getEmail())
                 .introduction(company.getIntroduction())
                 .guideText(company.getGuideText())
                 .serviceDescription(company.getServiceDescription())
+                .imageUrls(company.getImageUrls())
                 .fullObservation(company.getFullObservation())
                 .open24Hours(company.getOpen24Hours())
                 .pickupService(company.getPickupService())

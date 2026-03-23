@@ -15,6 +15,13 @@ public class FuneralCompanyListResponse {
     private String location;
     private Double distanceKm;
     private RegistrationType userRegistrationType;
+    private Double latitude;
+    private Double longitude;
+    private String introduction;
+    private String thumbnailUrl;
+    private String basicProductName;
+    private Integer basicProductPrice;
+    private FuneralCompanyOptionsResponse options;
 
     public static FuneralCompanyListResponse of(FuneralCompany company, RegistrationType userType, Double distanceKm) {
         return FuneralCompanyListResponse.builder()
@@ -23,6 +30,13 @@ public class FuneralCompanyListResponse {
                 .location(company.getLocation())
                 .distanceKm(distanceKm)
                 .userRegistrationType(userType)
+                .latitude(company.getLatitude())
+                .longitude(company.getLongitude())
+                .introduction(company.getIntroduction())
+                .thumbnailUrl(company.getThumbnailUrl())
+                .basicProductName(company.getBasicProductName())
+                .basicProductPrice(company.getBasicProductPrice())
+                .options(FuneralCompanyOptionsResponse.from(company))
                 .build();
     }
 }
