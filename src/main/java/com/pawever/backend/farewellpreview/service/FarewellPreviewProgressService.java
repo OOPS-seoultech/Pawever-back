@@ -52,6 +52,11 @@ public class FarewellPreviewProgressService {
             "nationalMind",
             "seoulMentalCenter"
     );
+    private static final int[] AFTER_FAREWELL_ADMINISTRATION_PROGRESS = {10, 20, 30, 40, 50};
+    private static final int[] AFTER_FAREWELL_SUPPORT_PROGRESS = {74, 81, 88, 95};
+    private static final int[] BEFORE_FAREWELL_SUPPORT_PROGRESS = {80, 85, 90, 95};
+    private static final int[] BEFORE_FAREWELL_ADMINISTRATION_PROGRESS = {45, 52, 58, 65, 70};
+    private static final int[] BEFORE_FAREWELL_RESTING_PROGRESS = {26, 29, 32, 35, 38, 40};
 
     private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
     private final UserPetRepository userPetRepository;
@@ -300,55 +305,84 @@ public class FarewellPreviewProgressService {
 
     private int computeProgressPercent(NormalizedState normalizedState) {
         if (normalizedState.lifecycleStatus() == LifecycleStatus.AFTER_FAREWELL) {
-            if (normalizedState.supportConfirmed()) {
-                return 100;
-            }
-            if (!normalizedState.supportCompletedItemIds().isEmpty()) {
-                return 74;
-            }
-            if (normalizedState.belongingsConfirmed()) {
-                return 67;
-            }
-
-            int[] administrationProgress = {10, 20, 30, 40, 50};
-            int administrationIndex = normalizedState.administrationCompletedItemIds().size() - 1;
-            return administrationIndex >= 0 && administrationIndex < administrationProgress.length
-                    ? administrationProgress[administrationIndex]
-                    : 0;
+            return computeAfterFarewellProgress(
+                    normalizedState.administrationCompletedItemIds().size(),
+                    normalizedState.belongingsConfirmed(),
+                    normalizedState.supportCompletedItemIds().size(),
+                    normalizedState.supportConfirmed()
+            );
         }
 
         if (normalizedState.supportConfirmed()) {
             return 100;
         }
-        if (!normalizedState.supportCompletedItemIds().isEmpty()) {
-            int[] supportProgress = {80, 85, 90, 95};
-            int supportIndex = normalizedState.supportCompletedItemIds().size() - 1;
-            return supportIndex >= 0 && supportIndex < supportProgress.length
-                    ? supportProgress[supportIndex]
-                    : 80;
+
+        int beforeFarewellSupportProgress = resolveProgressByCount(
+                normalizedState.supportCompletedItemIds().size(),
+                BEFORE_FAREWELL_SUPPORT_PROGRESS
+        );
+        if (beforeFarewellSupportProgress > 0) {
+            return beforeFarewellSupportProgress;
         }
         if (normalizedState.belongingsConfirmed()) {
             return 80;
         }
-        if (!normalizedState.administrationCompletedItemIds().isEmpty()) {
-            int[] administrationProgress = {45, 52, 58, 65, 70};
-            int administrationIndex = normalizedState.administrationCompletedItemIds().size() - 1;
-            return administrationIndex >= 0 && administrationIndex < administrationProgress.length
-                    ? administrationProgress[administrationIndex]
-                    : 40;
+
+        int beforeFarewellAdministrationProgress = resolveProgressByCount(
+                normalizedState.administrationCompletedItemIds().size(),
+                BEFORE_FAREWELL_ADMINISTRATION_PROGRESS
+        );
+        if (beforeFarewellAdministrationProgress > 0) {
+            return beforeFarewellAdministrationProgress;
         }
-        if (normalizedState.restingCompletedStepCount() > 0) {
-            int[] restingProgress = {26, 29, 32, 35, 38, 40};
-            int restingIndex = normalizedState.restingCompletedStepCount() - 1;
-            return restingIndex >= 0 && restingIndex < restingProgress.length
-                    ? restingProgress[restingIndex]
-                    : 20;
+
+        int beforeFarewellRestingProgress = resolveProgressByCount(
+                normalizedState.restingCompletedStepCount(),
+                BEFORE_FAREWELL_RESTING_PROGRESS
+        );
+        if (beforeFarewellRestingProgress > 0) {
+            return beforeFarewellRestingProgress;
         }
         if (normalizedState.farewellMethodConfirmed()) {
             return 20;
         }
 
         return 0;
+    }
+
+    static int computeAfterFarewellProgress(
+            int administrationCompletedCount,
+            boolean belongingsConfirmed,
+            int supportCompletedCount,
+            boolean supportConfirmed
+    ) {
+        if (supportConfirmed) {
+            return 100;
+        }
+
+        int afterFarewellSupportProgress = resolveProgressByCount(
+                supportCompletedCount,
+                AFTER_FAREWELL_SUPPORT_PROGRESS
+        );
+        if (afterFarewellSupportProgress > 0) {
+            return afterFarewellSupportProgress;
+        }
+        if (belongingsConfirmed) {
+            return 67;
+        }
+
+        return resolveProgressByCount(
+                administrationCompletedCount,
+                AFTER_FAREWELL_ADMINISTRATION_PROGRESS
+        );
+    }
+
+    static int resolveProgressByCount(int completedCount, int[] progressByCount) {
+        if (completedCount <= 0) {
+            return 0;
+        }
+
+        return progressByCount[Math.min(progressByCount.length, completedCount) - 1];
     }
 
     private String normalizeStepId(String value) {
