@@ -150,6 +150,21 @@ CREATE TABLE `farewell_preview_progresses` (
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 8-1. 긴급 대처 모드 진행 상태 (emergency_progresses)
+CREATE TABLE `emergency_progresses` (
+    `id`                           BIGINT      NOT NULL AUTO_INCREMENT,
+    `pet_id`                       BIGINT      NOT NULL,
+    `resting_active_step_number`   INT         NOT NULL DEFAULT 1,
+    `resting_completed_step_count` INT         NOT NULL DEFAULT 0,
+    `funeral_company_completed`    BOOLEAN     NOT NULL DEFAULT FALSE,
+    `created_at`                   DATETIME(6) NULL,
+    `updated_at`                   DATETIME(6) NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `UK_emergency_progresses_pet_id` (`pet_id`),
+    CONSTRAINT `FK_pets_TO_emergency_progresses`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 10. 댓글 (comments)
 CREATE TABLE `comments` (
     `id`            BIGINT      NOT NULL AUTO_INCREMENT,

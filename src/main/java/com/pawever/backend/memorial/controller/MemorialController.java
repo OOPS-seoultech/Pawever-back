@@ -31,6 +31,23 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok(memorialService.activateEmergencyMode(userId, petId)));
     }
 
+    @Operation(summary = "긴급 대처 모드 진행 상태 조회", description = "긴급 대처 모드의 안치 준비 7단계와 장례업체 완료 여부를 조회합니다.")
+    @GetMapping("/pets/{petId}/emergency-progress")
+    public ResponseEntity<ApiResponse<EmergencyProgressResponse>> getEmergencyProgress(@PathVariable Long petId) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.getEmergencyProgress(userId, petId)));
+    }
+
+    @Operation(summary = "긴급 대처 모드 진행 상태 저장", description = "긴급 대처 모드의 안치 준비 진행도와 장례업체 완료 여부를 저장합니다.")
+    @PutMapping("/pets/{petId}/emergency-progress")
+    public ResponseEntity<ApiResponse<EmergencyProgressResponse>> updateEmergencyProgress(
+            @PathVariable Long petId,
+            @RequestBody EmergencyProgressUpdateRequest request
+    ) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.updateEmergencyProgress(userId, petId, request)));
+    }
+
     @Operation(summary = "긴급 대처 모드 완료", description = "반려동물을 이별 후 상태로 확정하고 긴급 대처 모드를 종료합니다. 장례업체 저장/피하기와 미리 살펴보기 진행 상태는 초기화됩니다.")
     @PostMapping("/pets/{petId}/emergency/complete")
     public ResponseEntity<ApiResponse<PetResponse>> completeEmergencyMode(@PathVariable Long petId) {
@@ -38,7 +55,7 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok(memorialService.completeEmergencyMode(userId, petId)));
     }
 
-    @Operation(summary = "긴급 대처 모드 해제", description = "반려동물을 이별 전 상태로 되돌리고 긴급 대처 모드를 해제합니다. 장례업체 저장/피하기는 초기화되지만 미리 살펴보기 진행 상태는 유지합니다.")
+    @Operation(summary = "긴급 대처 모드 해제", description = "반려동물을 이별 전 상태로 되돌리고 긴급 대처 모드를 해제합니다. 장례업체 저장/피하기와 미리 살펴보기, 긴급 대처 진행 상태는 초기화됩니다.")
     @PostMapping("/pets/{petId}/emergency/deactivate")
     public ResponseEntity<ApiResponse<PetResponse>> deactivateEmergencyMode(@PathVariable Long petId) {
         Long userId = UserPrincipal.getCurrentUserId();

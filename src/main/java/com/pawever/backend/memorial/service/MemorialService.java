@@ -7,9 +7,11 @@ import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.dto.*;
 import com.pawever.backend.memorial.entity.Comment;
 import com.pawever.backend.memorial.entity.CommentReport;
+import com.pawever.backend.memorial.entity.EmergencyProgress;
 import com.pawever.backend.memorial.entity.ReportReason;
 import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
+import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.memorial.repository.ReportReasonRepository;
 import com.pawever.backend.pet.dto.PetResponse;
 import com.pawever.backend.pet.entity.LifecycleStatus;
@@ -38,6 +40,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class MemorialService {
 
+    private static final int EMERGENCY_RESTING_TOTAL_STEP_COUNT = 7;
     private static final int DEFAULT_RECENT_SIZE = 6;
     private static final int DEFAULT_PAST_SIZE = 24;
     private static final int MAX_RECENT_SIZE = 10;
@@ -47,6 +50,7 @@ public class MemorialService {
 
     private final CommentRepository commentRepository;
     private final CommentReportRepository commentReportRepository;
+    private final EmergencyProgressRepository emergencyProgressRepository;
     private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
     private final PetFuneralCompanyRepository petFuneralCompanyRepository;
     private final PetRepository petRepository;
@@ -76,6 +80,45 @@ public class MemorialService {
                 .build();
     }
 
+    public EmergencyProgressResponse getEmergencyProgress(Long userId, Long petId) {
+        UserPet userPet = getAccessibleUserPet(userId, petId);
+        Pet pet = userPet.getPet();
+
+        validateEmergencyModeActive(pet);
+
+        EmergencyProgress progress = emergencyProgressRepository.findByPetId(petId).orElse(null);
+        EmergencyProgressState state = resolveEmergencyProgressState(progress);
+
+        return toEmergencyProgressResponse(pet, state, progress != null ? progress.getUpdatedAt() : null);
+    }
+
+    @Transactional
+    public EmergencyProgressResponse updateEmergencyProgress(Long userId, Long petId, EmergencyProgressUpdateRequest request) {
+        UserPet userPet = getAccessibleUserPet(userId, petId);
+        Pet pet = userPet.getPet();
+
+        validateEmergencyModeActive(pet);
+
+        EmergencyProgress existingProgress = emergencyProgressRepository.findByPetId(petId).orElse(null);
+        EmergencyProgressState state = mergeEmergencyProgressState(existingProgress, request);
+
+        EmergencyProgress progress = existingProgress != null ? existingProgress : EmergencyProgress.builder()
+                .pet(pet)
+                .restingActiveStepNumber(state.restingActiveStepNumber())
+                .restingCompletedStepCount(state.restingCompletedStepCount())
+                .funeralCompanyCompleted(state.funeralCompanyCompleted())
+                .build();
+
+        progress.update(
+                state.restingActiveStepNumber(),
+                state.restingCompletedStepCount(),
+                state.funeralCompanyCompleted()
+        );
+
+        EmergencyProgress savedProgress = emergencyProgressRepository.saveAndFlush(progress);
+        return toEmergencyProgressResponse(pet, state, savedProgress.getUpdatedAt());
+    }
+
     /**
      * 긴급 대처 모드 완료 - 이별 후 상태 유지, 긴급 모드 종료
      */
@@ -103,15 +146,15 @@ public class MemorialService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        UserPet userPet = getOwnerUserPet(userId, petId);
+        UserPet userPet = getAccessibleUserPet(userId, petId);
         Pet pet = userPet.getPet();
 
         validateEmergencyModeActive(pet);
 
         pet.deactivateEmergencyMode();
-        resetFuneralCompanyRegistrations(petId);
+        resetEmergencyAndPreviewData(petId);
 
-        return PetResponse.of(pet, user.getSelectedPetId(), true);
+        return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     /**
@@ -379,12 +422,83 @@ public class MemorialService {
     }
 
     private void resetEmergencyAndPreviewData(Long petId) {
+        emergencyProgressRepository.deleteByPetId(petId);
         farewellPreviewProgressRepository.deleteByPetId(petId);
         resetFuneralCompanyRegistrations(petId);
     }
 
     private void resetFuneralCompanyRegistrations(Long petId) {
         petFuneralCompanyRepository.deleteByPetId(petId);
+    }
+
+    private EmergencyProgressResponse toEmergencyProgressResponse(
+            Pet pet,
+            EmergencyProgressState state,
+            LocalDateTime updatedAt
+    ) {
+        return EmergencyProgressResponse.builder()
+                .lifecycleStatus(pet.getLifecycleStatus())
+                .emergencyMode(pet.getEmergencyMode())
+                .restingActiveStepNumber(state.restingActiveStepNumber())
+                .restingCompletedStepCount(state.restingCompletedStepCount())
+                .restingTotalStepCount(EMERGENCY_RESTING_TOTAL_STEP_COUNT)
+                .funeralCompanyCompleted(state.funeralCompanyCompleted())
+                .updatedAt(updatedAt)
+                .build();
+    }
+
+    private EmergencyProgressState resolveEmergencyProgressState(EmergencyProgress progress) {
+        if (progress == null) {
+            return new EmergencyProgressState(1, 0, false);
+        }
+
+        int restingCompletedStepCount = normalizeEmergencyRestingCompletedStepCount(progress.getRestingCompletedStepCount());
+        return new EmergencyProgressState(
+                normalizeEmergencyRestingActiveStepNumber(progress.getRestingActiveStepNumber(), restingCompletedStepCount),
+                restingCompletedStepCount,
+                Boolean.TRUE.equals(progress.getFuneralCompanyCompleted())
+        );
+    }
+
+    private EmergencyProgressState mergeEmergencyProgressState(
+            EmergencyProgress existingProgress,
+            EmergencyProgressUpdateRequest request
+    ) {
+        EmergencyProgressState base = resolveEmergencyProgressState(existingProgress);
+        int restingCompletedStepCount = normalizeEmergencyRestingCompletedStepCount(
+                request.getRestingCompletedStepCount() != null
+                        ? request.getRestingCompletedStepCount()
+                        : base.restingCompletedStepCount()
+        );
+        int restingActiveStepNumber = normalizeEmergencyRestingActiveStepNumber(
+                request.getRestingActiveStepNumber() != null
+                        ? request.getRestingActiveStepNumber()
+                        : base.restingActiveStepNumber(),
+                restingCompletedStepCount
+        );
+        boolean funeralCompanyCompleted = request.getFuneralCompanyCompleted() != null
+                ? request.getFuneralCompanyCompleted()
+                : base.funeralCompanyCompleted();
+
+        return new EmergencyProgressState(restingActiveStepNumber, restingCompletedStepCount, funeralCompanyCompleted);
+    }
+
+    private int normalizeEmergencyRestingCompletedStepCount(Integer value) {
+        if (value == null) {
+            return 0;
+        }
+        return Math.max(0, Math.min(EMERGENCY_RESTING_TOTAL_STEP_COUNT, value));
+    }
+
+    private int normalizeEmergencyRestingActiveStepNumber(Integer value, Integer completedStepCount) {
+        int normalizedCompletedStepCount = normalizeEmergencyRestingCompletedStepCount(completedStepCount);
+        if (value == null) {
+            if (normalizedCompletedStepCount >= EMERGENCY_RESTING_TOTAL_STEP_COUNT) {
+                return EMERGENCY_RESTING_TOTAL_STEP_COUNT;
+            }
+            return Math.min(EMERGENCY_RESTING_TOTAL_STEP_COUNT, normalizedCompletedStepCount + 1);
+        }
+        return Math.max(1, Math.min(EMERGENCY_RESTING_TOTAL_STEP_COUNT, value));
     }
 
     private CursorSlice fetchRecentMemorials(LocalDateTime sevenDaysAgo, MemorialCursor cursor, int size) {
@@ -488,5 +602,12 @@ public class MemorialService {
         private boolean isEmpty() {
             return id == null;
         }
+    }
+
+    private record EmergencyProgressState(
+            int restingActiveStepNumber,
+            int restingCompletedStepCount,
+            boolean funeralCompanyCompleted
+    ) {
     }
 }
