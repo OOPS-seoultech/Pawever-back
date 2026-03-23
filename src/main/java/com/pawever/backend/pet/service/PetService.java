@@ -3,10 +3,13 @@ package com.pawever.backend.pet.service;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.mission.entity.Mission;
 import com.pawever.backend.mission.entity.PetMission;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
+import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRepository;
+import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 import com.pawever.backend.pet.dto.*;
 import com.pawever.backend.pet.entity.*;
 import com.pawever.backend.pet.repository.*;
@@ -32,6 +35,10 @@ public class PetService {
     private final UserRepository userRepository;
     private final MissionRepository missionRepository;
     private final PetMissionRepository petMissionRepository;
+    private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
+    private final EmergencyProgressRepository emergencyProgressRepository;
+    private final PetFuneralCompanyRepository petFuneralCompanyRepository;
+    private final PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
     private final StorageService storageService;
 
     private LocalDateTime toDeathDateTime(LocalDate deathDate) {
@@ -214,7 +221,7 @@ public class PetService {
 
     @Transactional
     public void deletePet(Long userId, Long petId) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+        userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
@@ -224,27 +231,19 @@ public class PetService {
             throw new CustomException(ErrorCode.NOT_OWNER);
         }
 
-        // 삭제하는 펫이 현재 선택된 펫이면 선택 해제
-        if (petId.equals(user.getSelectedPetId())) {
-            user.selectPet(null);
-        }
-
-        // 모든 연결된 UserPet 삭제
-        List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
-        userPetRepository.deleteAll(allUserPets);
-
-        petRepository.deleteById(petId);
+        detachPetProfile(userPet.getPet(), userPetRepository.findByPetId(petId));
     }
 
     /**
-     * Pet과 연결된 모든 UserPet 삭제 후 Pet 삭제.
-     * 유저 탈퇴 시 owner인 펫 정리용으로 사용 (권한/selectedPet 갱신 없음).
+     * Pet row는 유지하고, 연결/진행상태만 정리한다.
+     * 유저 탈퇴 시 owner인 펫 정리용으로 사용한다.
      */
     @Transactional
     public void deletePetCascade(Long petId) {
-        List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
-        userPetRepository.deleteAll(allUserPets);
-        petRepository.deleteById(petId);
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
+
+        detachPetProfile(pet, userPetRepository.findByPetId(petId));
     }
 
     @Transactional
@@ -295,5 +294,44 @@ public class PetService {
                     .build();
             petMissionRepository.save(petMission);
         }
+    }
+
+    private void detachPetProfile(Pet pet, List<UserPet> allUserPets) {
+        clearSelectedPetForLinkedUsers(allUserPets, pet.getId());
+        clearPetScopedState(pet.getId());
+        archiveInviteCode(pet);
+        pet.deactivateEmergencyMode();
+        userPetRepository.deleteAll(allUserPets);
+    }
+
+    private void clearSelectedPetForLinkedUsers(List<UserPet> userPets, Long petId) {
+        for (UserPet linkedUserPet : userPets) {
+            User linkedUser = linkedUserPet.getUser();
+            if (petId.equals(linkedUser.getSelectedPetId())) {
+                linkedUser.selectPet(null);
+            }
+        }
+    }
+
+    private void clearPetScopedState(Long petId) {
+        petMissionRepository.deleteByPetId(petId);
+        farewellPreviewProgressRepository.deleteByPetId(petId);
+        emergencyProgressRepository.deleteByPetId(petId);
+        petFuneralCompanyRepository.deleteByPetId(petId);
+    }
+
+    private void archiveInviteCode(Pet pet) {
+        String inviteCode = pet.getInviteCode();
+        if (inviteCode == null || inviteCode.isBlank()) {
+            return;
+        }
+
+        petExpiredInviteCodeRepository.save(
+                PetExpiredInviteCode.builder()
+                        .pet(pet)
+                        .inviteCode(inviteCode)
+                        .build()
+        );
+        pet.regenerateInviteCode();
     }
 }

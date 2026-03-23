@@ -102,8 +102,8 @@ public class UserService {
             throw new CustomException(ErrorCode.USER_ALREADY_DELETED);
         }
 
-        // 해당 유저가 owner인 반려동물 모두 삭제 (Pet + UserPet).
-        // 공유하던 다른 유저의 selectedPetId는 갱신하지 않음 → 홈 접근 시 410 SELECTED_PET_DELETED로 안내 후 반려동물 전환 페이지 유도.
+        // 해당 유저가 owner인 반려동물 프로필을 모두 정리한다.
+        // Pet/User row는 남겨 댓글/리뷰 FK를 보존하고, 연결/진행상태만 제거한다.
         var ownedPetIds = userPetRepository.findByUserId(userId).stream()
                 .filter(up -> Boolean.TRUE.equals(up.getIsOwner()))
                 .map(up -> up.getPet().getId())

@@ -15,4 +15,6 @@ public interface PetMissionRepository extends JpaRepository<PetMission, Long> {
     long countByPetId(Long petId);
 
     long countByPetIdAndCompletedTrue(Long petId);
+
+    void deleteByPetId(Long petId);
 }
