@@ -172,6 +172,23 @@ public class FarewellPreviewProgressService {
     }
 
     private NormalizedState normalize(Snapshot snapshot, LifecycleStatus lifecycleStatus) {
+        if (snapshot == null && lifecycleStatus == LifecycleStatus.AFTER_FAREWELL) {
+            return new NormalizedState(
+                    lifecycleStatus,
+                    false,
+                    null,
+                    new ArrayList<>(),
+                    false,
+                    0,
+                    0,
+                    new ArrayList<>(),
+                    new ArrayList<>(),
+                    false,
+                    new ArrayList<>(),
+                    false
+            );
+        }
+
         String defaultCurrentStepId = getDefaultCurrentStepId(lifecycleStatus);
         boolean isAfterFarewell = lifecycleStatus == LifecycleStatus.AFTER_FAREWELL;
         Supplier<List<String>> defaultEnteredStepIds = () -> new ArrayList<>(List.of(defaultCurrentStepId));

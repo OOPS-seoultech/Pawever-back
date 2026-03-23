@@ -152,7 +152,7 @@ public class MemorialService {
         validateEmergencyModeActive(pet);
 
         pet.deactivateEmergencyMode();
-        resetEmergencyAndPreviewData(petId);
+        resetEmergencyData(petId);
 
         return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
@@ -425,6 +425,10 @@ public class MemorialService {
         emergencyProgressRepository.deleteByPetId(petId);
         farewellPreviewProgressRepository.deleteByPetId(petId);
         resetFuneralCompanyRegistrations(petId);
+    }
+
+    private void resetEmergencyData(Long petId) {
+        emergencyProgressRepository.deleteByPetId(petId);
     }
 
     private void resetFuneralCompanyRegistrations(Long petId) {
