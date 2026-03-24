@@ -2,11 +2,15 @@ package com.pawever.backend.funeral.dto;
 
 import com.pawever.backend.funeral.entity.RegistrationType;
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class RegisterFuneralCompanyRequest {
 
     @NotNull(message = "반려동물 ID는 필수입니다.")
