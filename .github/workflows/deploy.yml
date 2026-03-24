@@ -15,11 +15,14 @@ jobs:
           host: 211.188.62.74
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD
+          envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD,FIREBASE_SERVICE_ACCOUNT_JSON
           script: |
             cd /root/Pawever-back
 
             git pull origin main
+
+            # Firebase 서비스 계정 키 파일 생성
+            echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > /root/Pawever-back/firebase-service-account.json
 
             cat > .env << EOF
             DB_NAME=$DB_NAME
@@ -38,6 +41,7 @@ jobs:
             NCP_BUCKET=$NCP_BUCKET
             NCP_CDN_DOMAIN=$NCP_CDN_DOMAIN
             DEV_LOGIN_PASSWORD=$DEV_LOGIN_PASSWORD
+            FIREBASE_CREDENTIALS_PATH=/root/Pawever-back/firebase-service-account.json
             EOF
 
             docker compose down
@@ -68,3 +72,4 @@ jobs:
           NCP_BUCKET: ${{ secrets.NCP_BUCKET }}
           NCP_CDN_DOMAIN: ${{ secrets.NCP_CDN_DOMAIN }}
           DEV_LOGIN_PASSWORD: ${{ secrets.DEV_LOGIN_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}

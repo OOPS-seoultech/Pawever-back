@@ -76,6 +76,10 @@ public class User extends BaseTimeEntity {
     /** 마케팅 수신 동의 시각. null이면 미동의 */
     private LocalDateTime marketingAgreedAt;
 
+    /** FCM 디바이스 토큰 (푸시 알림 전송용) */
+    @Column(length = 255)
+    private String fcmToken;
+
     public void selectPet(Long petId) {
         this.selectedPetId = petId;
     }
@@ -122,5 +126,9 @@ public class User extends BaseTimeEntity {
 
     public void completeOnboarding() {
         this.onboardingComplete = true;
+    }
+
+    public void updateFcmToken(String fcmToken) {
+        this.fcmToken = fcmToken;
     }
 }
