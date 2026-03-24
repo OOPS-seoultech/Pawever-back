@@ -50,6 +50,9 @@ naver:
   client-secret: ${NAVER_CLIENT_SECRET:}
   redirect-uri: ${NAVER_REDIRECT_URI:http://localhost:28080/oauth/naver/callback}
 
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:classpath:firebase-service-account.json}
+
 cloud:
   ncp:
     credentials:

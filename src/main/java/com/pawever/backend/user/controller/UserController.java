@@ -2,6 +2,8 @@ package com.pawever.backend.user.controller;
 
 import com.pawever.backend.global.common.ApiResponse;
 import com.pawever.backend.global.security.UserPrincipal;
+import com.pawever.backend.notification.dto.FcmTokenRequest;
+import com.pawever.backend.notification.dto.FcmTokenResponse;
 import com.pawever.backend.user.dto.NicknameCheckResponse;
 import com.pawever.backend.user.dto.UserProfileResponse;
 import com.pawever.backend.user.dto.UserUpdateRequest;
@@ -52,6 +54,22 @@ public class UserController {
             @RequestParam("file") MultipartFile file) {
         Long userId = UserPrincipal.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.ok(userService.updateProfileImage(userId, file)));
+    }
+
+    @Operation(summary = "FCM 토큰 조회", description = "현재 서버에 저장된 FCM 토큰을 반환합니다. 미등록 시 null.")
+    @GetMapping("/me/fcm-token")
+    public ResponseEntity<ApiResponse<FcmTokenResponse>> getFcmToken() {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(new FcmTokenResponse(userService.getFcmToken(userId))));
+    }
+
+    @Operation(summary = "FCM 토큰 등록", description = "푸시 알림 수신을 위한 FCM 디바이스 토큰을 등록합니다.")
+    @PutMapping("/me/fcm-token")
+    public ResponseEntity<ApiResponse<Void>> updateFcmToken(
+            @Valid @RequestBody FcmTokenRequest request) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        userService.updateFcmToken(userId, request.getFcmToken());
+        return ResponseEntity.ok(ApiResponse.ok());
     }
 
     @Operation(summary = "회원 탈퇴", description = "현재 로그인한 사용자의 계정을 삭제합니다.")

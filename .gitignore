@@ -41,3 +41,6 @@ out/
 
 ### Logs ###
 logs/
+
+### Firebase ###
+/src/main/resources/firebase-service-account.json
