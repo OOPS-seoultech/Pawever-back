@@ -27,6 +27,7 @@ CREATE TABLE `users` (
     `deleted_at`        DATETIME(6)     NULL,
     `notification_agreed_at` DATETIME(6) NULL COMMENT '알림(푸시) 수신 동의 시각, null=미동의',
     `marketing_agreed_at`    DATETIME(6) NULL COMMENT '마케팅 수신 동의 시각, null=미동의',
+    `fcm_token`         VARCHAR(255)    NULL COMMENT 'FCM 디바이스 토큰',
     `created_at`        DATETIME(6)     NULL,
     `updated_at`        DATETIME(6)     NULL,
     PRIMARY KEY (`id`)
