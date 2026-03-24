@@ -33,6 +33,8 @@ public enum ErrorCode {
     BREED_NOT_FOUND(HttpStatus.NOT_FOUND, "품종을 찾을 수 없습니다."),
     ANIMAL_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "동물 종류를 찾을 수 없습니다."),
     INVALID_DEATH_DATE(HttpStatus.BAD_REQUEST, "이별 상태에 맞는 이별 일자를 입력해 주세요."),
+    OWNER_PET_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "소유자로 등록할 수 있는 반려동물은 최대 1마리입니다."),
+    GUEST_PET_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "게스트로 참여할 수 있는 반려동물은 최대 10마리입니다."),
 
     // Mission
     MISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "미션을 찾을 수 없습니다."),

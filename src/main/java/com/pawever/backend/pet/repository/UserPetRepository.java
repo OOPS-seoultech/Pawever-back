@@ -17,4 +17,8 @@ public interface UserPetRepository extends JpaRepository<UserPet, Long> {
     Optional<UserPet> findByPetIdAndIsOwnerTrue(Long petId);
 
     boolean existsByUserIdAndPetId(Long userId, Long petId);
+
+    boolean existsByUserIdAndIsOwnerTrue(Long userId);
+
+    long countByUserIdAndIsOwnerFalse(Long userId);
 }

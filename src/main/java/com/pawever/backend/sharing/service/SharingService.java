@@ -107,6 +107,10 @@ public class SharingService {
             throw new CustomException(ErrorCode.ALREADY_SHARED);
         }
 
+        if (userPetRepository.countByUserIdAndIsOwnerFalse(userId) >= 10) {
+            throw new CustomException(ErrorCode.GUEST_PET_LIMIT_EXCEEDED);
+        }
+
         UserPet userPet = UserPet.builder()
                 .user(user)
                 .pet(pet)

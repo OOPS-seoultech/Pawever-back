@@ -19,7 +19,7 @@ public class GlobalExceptionHandler {
         log.warn("커스텀 예외 처리: status={}, message={}", e.getErrorCode().getHttpStatus(), e.getMessage(), e);
         return ResponseEntity
                 .status(e.getErrorCode().getHttpStatus())
-                .body(ApiResponse.error(e.getMessage()));
+                .body(ApiResponse.error(e.getErrorCode().name(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -29,7 +29,7 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity
                 .badRequest()
-                .body(ApiResponse.error(message));
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
     }
 
     @ExceptionHandler(Exception.class)
@@ -37,6 +37,6 @@ public class GlobalExceptionHandler {
         log.error("처리되지 않은 서버 예외", e);
         return ResponseEntity
                 .internalServerError()
-                .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR.getMessage()));
+                .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR.name(), ErrorCode.INTERNAL_ERROR.getMessage()));
     }
 }

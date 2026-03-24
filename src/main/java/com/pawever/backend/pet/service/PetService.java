@@ -90,6 +90,10 @@ public class PetService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
+        if (userPetRepository.existsByUserIdAndIsOwnerTrue(userId)) {
+            throw new CustomException(ErrorCode.OWNER_PET_LIMIT_EXCEEDED);
+        }
+
         Breed breed = breedRepository.findById(request.getBreedId())
                 .orElseThrow(() -> new CustomException(ErrorCode.BREED_NOT_FOUND));
 
