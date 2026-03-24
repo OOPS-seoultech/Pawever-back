@@ -38,3 +38,9 @@ out/
 
 ### Environment ###
 .env
+
+### Logs ###
+logs/
+
+### Firebase ###
+/src/main/resources/firebase-service-account.json

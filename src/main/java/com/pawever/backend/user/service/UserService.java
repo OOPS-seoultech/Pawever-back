@@ -116,6 +116,16 @@ public class UserService {
         userRepository.save(user);
     }
 
+    @Transactional
+    public void updateFcmToken(Long userId, String fcmToken) {
+        User user = findActiveUser(userId);
+        user.updateFcmToken(fcmToken);
+    }
+
+    public String getFcmToken(Long userId) {
+        return findActiveUser(userId).getFcmToken();
+    }
+
     private User findActiveUser(Long userId) {
         return userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));

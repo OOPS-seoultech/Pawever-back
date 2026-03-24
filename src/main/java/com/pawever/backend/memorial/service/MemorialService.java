@@ -13,6 +13,7 @@ import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.memorial.repository.ReportReasonRepository;
+import com.pawever.backend.notification.service.FcmService;
 import com.pawever.backend.pet.dto.PetResponse;
 import com.pawever.backend.pet.entity.LifecycleStatus;
 import com.pawever.backend.pet.entity.Pet;
@@ -57,6 +58,7 @@ public class MemorialService {
     private final ReportReasonRepository reportReasonRepository;
     private final UserPetRepository userPetRepository;
     private final UserRepository userRepository;
+    private final FcmService fcmService;
 
     /**
      * 긴급 대처 모드 - 추모관 생성 및 반려동물 상태 전환
@@ -266,6 +268,21 @@ public class MemorialService {
                 .content(request.getContent())
                 .build();
         comment = commentRepository.save(comment);
+
+        // Notify other connected users who opted in. Owners always receive it,
+        // and guests only when the commented pet is their current selected pet.
+        userPetRepository.findByPetId(petId).stream()
+                .filter(up -> !up.getUser().getId().equals(userId))
+                .filter(up -> {
+                    User targetUser = up.getUser();
+                    return targetUser.isNotificationEnabled() && targetUser.getFcmToken() != null;
+                })
+                .filter(up -> Boolean.TRUE.equals(up.getIsOwner()) || petId.equals(up.getUser().getSelectedPetId()))
+                .forEach(up -> fcmService.sendCommentNotification(
+                        up.getUser().getFcmToken(),
+                        user.getNickname(),
+                        request.getContent()
+                ));
 
         return CommentResponse.of(
                 comment,
