@@ -17,14 +17,16 @@ public class FcmService {
      * @param fcmToken       수신자 FCM 토큰
      * @param senderNickname 댓글 작성자 닉네임 (알림 제목)
      * @param content        댓글 내용 (알림 본문)
+     * @param petId          댓글 대상 추모관 반려동물 ID
      */
-    public void sendCommentNotification(String fcmToken, String senderNickname, String content) {
+    public void sendCommentNotification(String fcmToken, String senderNickname, String content, Long petId) {
         Message message = Message.builder()
                 .setToken(fcmToken)
                 .setNotification(Notification.builder()
                         .setTitle(senderNickname)
                         .setBody(content)
                         .build())
+                .putData("petId", String.valueOf(petId))
                 .build();
         try {
             FirebaseMessaging.getInstance().send(message);

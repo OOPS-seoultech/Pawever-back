@@ -23,6 +23,7 @@ import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -263,12 +264,25 @@ public class MemorialService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        UserPet selectedUserPet = resolveSelectedMemorialUserPet(userId, user);
-        if (selectedUserPet == null) {
+        Long selectedPetId = user.getSelectedPetId();
+        if (selectedPetId == null) {
             return MemorialUnreadCountResponse.of(0L);
         }
 
-        selectedUserPet.markMemorialAsRead(LocalDateTime.now());
+        Pet selectedPet = petRepository.findById(selectedPetId).orElse(null);
+        if (selectedPet == null || selectedPet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            return MemorialUnreadCountResponse.of(0L);
+        }
+
+        try {
+            int updatedRows = userPetRepository.updateMemorialLastReadAt(userId, selectedPetId, LocalDateTime.now());
+            if (updatedRows == 0) {
+                return MemorialUnreadCountResponse.of(0L);
+            }
+        } catch (DataAccessException exception) {
+            // Concurrent read-ack requests are idempotent for unread state, so treat write conflicts as success.
+            return MemorialUnreadCountResponse.of(0L);
+        }
 
         return MemorialUnreadCountResponse.of(0L);
     }
@@ -303,7 +317,8 @@ public class MemorialService {
                 .forEach(up -> fcmService.sendCommentNotification(
                         up.getUser().getFcmToken(),
                         user.getNickname(),
-                        request.getContent()
+                        request.getContent(),
+                        petId
                 ));
 
         return CommentResponse.of(
