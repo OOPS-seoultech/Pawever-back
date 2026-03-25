@@ -251,6 +251,28 @@ public class MemorialService {
                 .build();
     }
 
+    public MemorialUnreadCountResponse getMemorialUnreadCount(Long userId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        return MemorialUnreadCountResponse.of(resolveSelectedPetUnreadCount(userId, user));
+    }
+
+    @Transactional
+    public MemorialUnreadCountResponse markMemorialNotificationsAsRead(Long userId) {
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        UserPet selectedUserPet = resolveSelectedMemorialUserPet(userId, user);
+        if (selectedUserPet == null) {
+            return MemorialUnreadCountResponse.of(0L);
+        }
+
+        selectedUserPet.markMemorialAsRead(LocalDateTime.now());
+
+        return MemorialUnreadCountResponse.of(0L);
+    }
+
     /**
      * 댓글 작성
      */
@@ -336,6 +358,46 @@ public class MemorialService {
 
         return petRepository.findAllById(selectedPetIds).stream()
                 .collect(Collectors.toMap(Pet::getId, pet -> pet));
+    }
+
+    private long resolveSelectedPetUnreadCount(Long userId, User user) {
+        UserPet selectedUserPet = resolveSelectedMemorialUserPet(userId, user);
+        if (selectedUserPet == null) {
+            return 0L;
+        }
+
+        return countUnreadComments(userId, selectedUserPet);
+    }
+
+    private long countUnreadComments(Long userId, UserPet userPet) {
+        if (userPet.getMemorialLastReadAt() == null) {
+            return 0L;
+        }
+
+        return commentRepository.countByPetIdAndCreatedAtAfterAndUserIdNot(
+                userPet.getPet().getId(),
+                userPet.getMemorialLastReadAt(),
+                userId
+        );
+    }
+
+    private UserPet resolveSelectedMemorialUserPet(Long userId, User user) {
+        Long selectedPetId = user.getSelectedPetId();
+        if (selectedPetId == null) {
+            return null;
+        }
+
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, selectedPetId)
+                .orElse(null);
+        if (userPet == null) {
+            return null;
+        }
+
+        if (userPet.getPet().getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            return null;
+        }
+
+        return userPet;
     }
 
     private CommentAuthorPetResponse buildAuthorPetResponse(Long selectedPetId) {

@@ -90,6 +90,20 @@ public class MemorialController {
         return ResponseEntity.ok(ApiResponse.ok(memorialService.getMemorialDetail(userId, petId)));
     }
 
+    @Operation(summary = "추모관 unread 개수 조회", description = "현재 사용자가 읽지 않은 추모관 댓글 총 개수를 조회합니다.")
+    @GetMapping("/memorials/unread-count")
+    public ResponseEntity<ApiResponse<MemorialUnreadCountResponse>> getMemorialUnreadCount() {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.getMemorialUnreadCount(userId)));
+    }
+
+    @Operation(summary = "추모관 댓글 읽음 처리", description = "현재 사용자의 추모관 댓글 unread 개수를 초기화합니다.")
+    @PostMapping("/memorials/read")
+    public ResponseEntity<ApiResponse<MemorialUnreadCountResponse>> markMemorialNotificationsAsRead() {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(memorialService.markMemorialNotificationsAsRead(userId)));
+    }
+
     @Operation(summary = "추모 댓글 작성", description = "추모관에 댓글을 작성합니다.")
     @PostMapping("/memorials/pet/{petId}/comments")
     public ResponseEntity<ApiResponse<CommentResponse>> createComment(

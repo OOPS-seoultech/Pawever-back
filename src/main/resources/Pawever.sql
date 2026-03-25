@@ -74,10 +74,11 @@ CREATE TABLE `pets` (
 
 -- 5. 회원_반려동물 (user_pets)
 CREATE TABLE `user_pets` (
-    `id`        BIGINT      NOT NULL AUTO_INCREMENT,
-    `user_id`   BIGINT      NOT NULL,
-    `pet_id`    BIGINT      NOT NULL,
-    `is_owner`  BOOLEAN     DEFAULT FALSE,
+    `id`                    BIGINT      NOT NULL AUTO_INCREMENT,
+    `user_id`               BIGINT      NOT NULL,
+    `pet_id`                BIGINT      NOT NULL,
+    `is_owner`              BOOLEAN     DEFAULT FALSE,
+    `memorial_last_read_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '추모관 마지막 읽음 시각',
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_users_TO_user_pets`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
