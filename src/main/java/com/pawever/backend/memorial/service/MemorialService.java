@@ -297,6 +297,7 @@ public class MemorialService {
 
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
+        Pet authorPet = resolveAuthorPet(user);
 
         Comment comment = Comment.builder()
                 .user(user)
@@ -318,7 +319,9 @@ public class MemorialService {
                         up.getUser().getFcmToken(),
                         user.getNickname(),
                         request.getContent(),
-                        petId
+                        petId,
+                        authorPet != null ? authorPet.getProfileImageUrl() : null,
+                        authorPet != null ? resolvePetAnimalTypeKey(authorPet) : null
                 ));
 
         return CommentResponse.of(
@@ -415,6 +418,42 @@ public class MemorialService {
         return userPet;
     }
 
+    private String resolvePetAnimalTypeKey(Pet pet) {
+        String animalTypeName = pet.getBreed() != null && pet.getBreed().getAnimalType() != null
+                ? pet.getBreed().getAnimalType().getName()
+                : null;
+
+        if (animalTypeName == null || animalTypeName.isBlank()) {
+            return "dog";
+        }
+
+        if (animalTypeName.contains("고양이")) {
+            return "cat";
+        }
+
+        if (animalTypeName.contains("물고기")) {
+            return "fish";
+        }
+
+        if (animalTypeName.contains("햄스터")) {
+            return "hamster";
+        }
+
+        if (animalTypeName.contains("거북이")) {
+            return "turtle";
+        }
+
+        if (animalTypeName.contains("새")) {
+            return "bird";
+        }
+
+        if (animalTypeName.contains("파충류")) {
+            return "reptile";
+        }
+
+        return "dog";
+    }
+
     private CommentAuthorPetResponse buildAuthorPetResponse(Long selectedPetId) {
         if (selectedPetId == null) {
             return null;
@@ -422,6 +461,15 @@ public class MemorialService {
         return petRepository.findById(selectedPetId)
                 .map(CommentAuthorPetResponse::from)
                 .orElse(null);
+    }
+
+    private Pet resolveAuthorPet(User user) {
+        Long selectedPetId = user.getSelectedPetId();
+        if (selectedPetId == null) {
+            return null;
+        }
+
+        return petRepository.findById(selectedPetId).orElse(null);
     }
 
     /**
