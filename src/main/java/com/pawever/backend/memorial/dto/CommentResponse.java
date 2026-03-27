@@ -27,13 +27,15 @@ public class CommentResponse {
             CommentAuthorRole authorRole,
             CommentAuthorPetResponse authorPet
     ) {
+        boolean isDeletedUser = comment.getUser() == null || comment.getUser().isDeleted();
+
         return CommentResponse.builder()
                 .commentId(comment.getId())
-                .userId(comment.getUser().getId())
-                .userNickname(comment.getUser().getNickname())
-                .userProfileImageUrl(comment.getUser().getProfileImageUrl())
+                .userId(isDeletedUser ? null : comment.getUser().getId())
+                .userNickname(isDeletedUser ? "탈퇴한 유저" : comment.getUser().getNickname())
+                .userProfileImageUrl(isDeletedUser ? null : comment.getUser().getProfileImageUrl())
                 .authorRole(authorRole)
-                .authorPet(authorPet)
+                .authorPet(isDeletedUser ? null : authorPet)
                 .content(comment.getContent())
                 .createdAt(comment.getCreatedAt())
                 .canDelete(canDelete)

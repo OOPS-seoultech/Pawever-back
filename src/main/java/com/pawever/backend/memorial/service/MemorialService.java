@@ -236,12 +236,15 @@ public class MemorialService {
         List<CommentResponse> comments = commentEntities
                 .stream()
                 .map(comment -> {
-                    boolean canDelete = comment.getUser().getId().equals(userId);
+                    User commentUser = comment.getUser();
+                    Long commentUserId = commentUser == null ? null : commentUser.getId();
+                    Long selectedPetId = commentUser == null ? null : commentUser.getSelectedPetId();
+                    boolean canDelete = commentUserId != null && commentUserId.equals(userId);
                     return CommentResponse.of(
                             comment,
                             canDelete,
-                            resolveAuthorRoleByOwnerId(ownerUserId, comment.getUser().getId()),
-                            CommentAuthorPetResponse.from(selectedPetMap.get(comment.getUser().getSelectedPetId()))
+                            resolveAuthorRoleByOwnerId(ownerUserId, commentUserId),
+                            selectedPetId == null ? null : CommentAuthorPetResponse.from(selectedPetMap.get(selectedPetId))
                     );
                 })
                 .toList();
@@ -362,7 +365,7 @@ public class MemorialService {
     }
 
     private CommentAuthorRole resolveAuthorRoleByOwnerId(Long ownerUserId, Long commentUserId) {
-        if (ownerUserId != null && ownerUserId.equals(commentUserId)) {
+        if (commentUserId != null && ownerUserId != null && ownerUserId.equals(commentUserId)) {
             return CommentAuthorRole.OWNER;
         }
         return CommentAuthorRole.GUEST;
@@ -370,7 +373,9 @@ public class MemorialService {
 
     private Map<Long, Pet> buildSelectedPetMap(List<Comment> comments) {
         Set<Long> selectedPetIds = comments.stream()
-                .map(comment -> comment.getUser().getSelectedPetId())
+                .map(Comment::getUser)
+                .filter(Objects::nonNull)
+                .map(User::getSelectedPetId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
