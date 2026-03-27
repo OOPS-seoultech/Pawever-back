@@ -170,14 +170,14 @@ CREATE TABLE `emergency_progresses` (
 -- 10. 댓글 (comments)
 CREATE TABLE `comments` (
     `id`            BIGINT      NOT NULL AUTO_INCREMENT,
-    `user_id`       BIGINT      NOT NULL,
+    `user_id`       BIGINT      NULL,
     `pet_id`        BIGINT      NOT NULL,
     `content`       TEXT        NOT NULL,
     `created_at`    DATETIME(6) NULL,
     `updated_at`    DATETIME(6) NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_users_TO_comments`
-        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
+        FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     CONSTRAINT `FK_pets_TO_comments`
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
