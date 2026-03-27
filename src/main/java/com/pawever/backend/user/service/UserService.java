@@ -4,6 +4,7 @@ import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
+import com.pawever.backend.memorial.repository.CommentRepository;
 import com.pawever.backend.pet.repository.UserPetRepository;
 import com.pawever.backend.pet.service.PetService;
 import com.pawever.backend.user.dto.NicknameCheckResponse;
@@ -23,6 +24,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserPetRepository userPetRepository;
+    private final CommentRepository commentRepository;
     private final PetService petService;
     private final StorageService storageService;
     private final HmacHasher hmacHasher;
@@ -111,6 +113,9 @@ public class UserService {
         for (Long petId : ownedPetIds) {
             petService.deletePetCascade(petId);
         }
+
+        // 탈퇴 유저가 남긴 댓글은 보존하되 작성자 FK만 제거한다.
+        commentRepository.detachUserFromComments(userId);
 
         user.withdraw();
         userRepository.save(user);

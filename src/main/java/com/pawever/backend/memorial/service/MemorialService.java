@@ -343,7 +343,7 @@ public class MemorialService {
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new CustomException(ErrorCode.COMMENT_NOT_FOUND));
 
-        if (!comment.getUser().getId().equals(userId)) {
+        if (comment.getUser() == null || !comment.getUser().getId().equals(userId)) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
 
@@ -397,7 +397,7 @@ public class MemorialService {
             return 0L;
         }
 
-        return commentRepository.countByPetIdAndCreatedAtAfterAndUserIdNot(
+        return commentRepository.countUnreadForPet(
                 userPet.getPet().getId(),
                 userPet.getMemorialLastReadAt(),
                 userId
@@ -485,7 +485,7 @@ public class MemorialService {
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new CustomException(ErrorCode.COMMENT_NOT_FOUND));
 
-        boolean isCommentOwner = comment.getUser().getId().equals(userId);
+        boolean isCommentOwner = comment.getUser() != null && comment.getUser().getId().equals(userId);
 
         if (!isCommentOwner) {
             throw new CustomException(ErrorCode.FORBIDDEN);
