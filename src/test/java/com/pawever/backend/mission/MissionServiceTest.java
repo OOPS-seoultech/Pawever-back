@@ -1,6 +1,6 @@
 package com.pawever.backend.mission;
 
-import com.pawever.backend.checklist.service.ChecklistService;
+import com.pawever.backend.farewellpreview.service.FarewellPreviewProgressService;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.mission.dto.HomeProgressResponse;
@@ -37,7 +37,7 @@ class MissionServiceTest {
     @Mock private PetRepository petRepository;
     @Mock private UserPetRepository userPetRepository;
     @Mock private StorageService storageService;
-    @Mock private ChecklistService checklistService;
+    @Mock private FarewellPreviewProgressService farewellPreviewProgressService;
 
     // =========================
     // 미션 진행률 조회
@@ -154,8 +154,8 @@ class MissionServiceTest {
 
         when(userPetRepository.existsByUserIdAndPetId(userId, petId)).thenReturn(true);
 
-        when(checklistService.getChecklistProgressPercent(userId, petId))
-                .thenReturn(50.0);
+        when(farewellPreviewProgressService.getProgressPercent(userId, petId))
+                .thenReturn(50);
 
         when(missionRepository.count()).thenReturn(10L);
         when(petMissionRepository.countByPetIdAndCompletedTrue(petId))
@@ -163,7 +163,7 @@ class MissionServiceTest {
 
         HomeProgressResponse response = missionService.getHomeProgress(userId, petId);
 
-        assertEquals(50.0, response.getChecklistProgressPercent());
+        assertEquals(50, response.getFarewellPreviewProgressPercent());
         assertEquals(5, response.getMissionCompleted());
         assertEquals(10, response.getMissionTotal());
     }

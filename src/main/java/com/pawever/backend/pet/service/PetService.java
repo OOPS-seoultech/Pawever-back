@@ -3,14 +3,13 @@ package com.pawever.backend.pet.service;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
-import com.pawever.backend.checklist.entity.ChecklistItem;
-import com.pawever.backend.checklist.entity.PetChecklist;
-import com.pawever.backend.checklist.repository.ChecklistItemRepository;
-import com.pawever.backend.checklist.repository.PetChecklistRepository;
+import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.mission.entity.Mission;
 import com.pawever.backend.mission.entity.PetMission;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
+import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRepository;
+import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 import com.pawever.backend.pet.dto.*;
 import com.pawever.backend.pet.entity.*;
 import com.pawever.backend.pet.repository.*;
@@ -21,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -34,14 +35,64 @@ public class PetService {
     private final UserRepository userRepository;
     private final MissionRepository missionRepository;
     private final PetMissionRepository petMissionRepository;
-    private final ChecklistItemRepository checklistItemRepository;
-    private final PetChecklistRepository petChecklistRepository;
+    private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
+    private final EmergencyProgressRepository emergencyProgressRepository;
+    private final PetFuneralCompanyRepository petFuneralCompanyRepository;
+    private final PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
     private final StorageService storageService;
+
+    private LocalDateTime toDeathDateTime(LocalDate deathDate) {
+        return deathDate == null ? null : deathDate.atStartOfDay();
+    }
+
+    private LocalDateTime resolveCreateDeathDate(PetCreateRequest request) {
+        if (request.getLifecycleStatus() == LifecycleStatus.BEFORE_FAREWELL) {
+            if (request.getDeathDate() != null) {
+                throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+            }
+
+            return null;
+        }
+
+        if (request.getDeathDate() == null) {
+            throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+        }
+
+        return toDeathDateTime(request.getDeathDate());
+    }
+
+    private LocalDateTime resolveUpdatedDeathDate(Pet pet, PetUpdateRequest request) {
+        if (request.getDeathDate() == null) {
+            return pet.getDeathDate();
+        }
+
+        if (pet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            throw new CustomException(ErrorCode.INVALID_DEATH_DATE);
+        }
+
+        return toDeathDateTime(request.getDeathDate());
+    }
+
+    private Boolean resolveCreateNeutered(PetCreateRequest request) {
+        return Boolean.TRUE.equals(request.getIsNeutered());
+    }
+
+    private Boolean resolveUpdatedNeutered(Pet pet, PetUpdateRequest request) {
+        if (request.getIsNeutered() == null) {
+            return pet.getIsNeutered();
+        }
+
+        return request.getIsNeutered();
+    }
 
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
+
+        if (userPetRepository.existsByUserIdAndIsOwnerTrue(userId)) {
+            throw new CustomException(ErrorCode.OWNER_PET_LIMIT_EXCEEDED);
+        }
 
         Breed breed = breedRepository.findById(request.getBreedId())
                 .orElseThrow(() -> new CustomException(ErrorCode.BREED_NOT_FOUND));
@@ -52,8 +103,15 @@ public class PetService {
                 .birthDate(request.getBirthDate())
                 .gender(request.getGender())
                 .weight(request.getWeight())
+                .isNeutered(resolveCreateNeutered(request))
+                .deathDate(resolveCreateDeathDate(request))
                 .lifecycleStatus(request.getLifecycleStatus())
                 .build();
+
+        if (request.getLifecycleStatus() == LifecycleStatus.AFTER_FAREWELL) {
+            pet.activateEmergencyMode();
+        }
+
         pet = petRepository.save(pet);
 
         UserPet userPet = UserPet.builder()
@@ -69,7 +127,6 @@ public class PetService {
         // 미션 초기화 (이별 전인 경우)
         if (request.getLifecycleStatus() == LifecycleStatus.BEFORE_FAREWELL) {
             initializeMissions(pet);
-            initializeChecklist(pet);
         }
 
         return PetResponse.of(pet, user.getSelectedPetId(), true);
@@ -153,14 +210,22 @@ public class PetService {
                         .orElseThrow(() -> new CustomException(ErrorCode.BREED_NOT_FOUND))
                 : pet.getBreed();
 
-        pet.update(request.getName(), request.getBirthDate(), request.getGender(), request.getWeight(), breed);
+        pet.update(
+                request.getName(),
+                request.getBirthDate(),
+                request.getGender(),
+                request.getWeight(),
+                resolveUpdatedNeutered(pet, request),
+                breed,
+                resolveUpdatedDeathDate(pet, request)
+        );
 
         return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
 
     @Transactional
     public void deletePet(Long userId, Long petId) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+        userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
@@ -170,27 +235,19 @@ public class PetService {
             throw new CustomException(ErrorCode.NOT_OWNER);
         }
 
-        // 삭제하는 펫이 현재 선택된 펫이면 선택 해제
-        if (petId.equals(user.getSelectedPetId())) {
-            user.selectPet(null);
-        }
-
-        // 모든 연결된 UserPet 삭제
-        List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
-        userPetRepository.deleteAll(allUserPets);
-
-        petRepository.deleteById(petId);
+        detachPetProfile(userPet.getPet(), userPetRepository.findByPetId(petId));
     }
 
     /**
-     * Pet과 연결된 모든 UserPet 삭제 후 Pet 삭제.
-     * 유저 탈퇴 시 owner인 펫 정리용으로 사용 (권한/selectedPet 갱신 없음).
+     * Pet row는 유지하고, 연결/진행상태만 정리한다.
+     * 유저 탈퇴 시 owner인 펫 정리용으로 사용한다.
      */
     @Transactional
     public void deletePetCascade(Long petId) {
-        List<UserPet> allUserPets = userPetRepository.findByPetId(petId);
-        userPetRepository.deleteAll(allUserPets);
-        petRepository.deleteById(petId);
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
+
+        detachPetProfile(pet, userPetRepository.findByPetId(petId));
     }
 
     @Transactional
@@ -243,15 +300,42 @@ public class PetService {
         }
     }
 
-    private void initializeChecklist(Pet pet) {
-        List<ChecklistItem> items = checklistItemRepository.findAll();
-        for (ChecklistItem item : items) {
-            PetChecklist petChecklist = PetChecklist.builder()
-                    .pet(pet)
-                    .checklistItem(item)
-                    .completed(false)
-                    .build();
-            petChecklistRepository.save(petChecklist);
+    private void detachPetProfile(Pet pet, List<UserPet> allUserPets) {
+        clearSelectedPetForLinkedUsers(allUserPets, pet.getId());
+        clearPetScopedState(pet.getId());
+        archiveInviteCode(pet);
+        pet.deactivateEmergencyMode();
+        userPetRepository.deleteAll(allUserPets);
+    }
+
+    private void clearSelectedPetForLinkedUsers(List<UserPet> userPets, Long petId) {
+        for (UserPet linkedUserPet : userPets) {
+            User linkedUser = linkedUserPet.getUser();
+            if (petId.equals(linkedUser.getSelectedPetId())) {
+                linkedUser.selectPet(null);
+            }
         }
+    }
+
+    private void clearPetScopedState(Long petId) {
+        petMissionRepository.deleteByPetId(petId);
+        farewellPreviewProgressRepository.deleteByPetId(petId);
+        emergencyProgressRepository.deleteByPetId(petId);
+        petFuneralCompanyRepository.deleteByPetId(petId);
+    }
+
+    private void archiveInviteCode(Pet pet) {
+        String inviteCode = pet.getInviteCode();
+        if (inviteCode == null || inviteCode.isBlank()) {
+            return;
+        }
+
+        petExpiredInviteCodeRepository.save(
+                PetExpiredInviteCode.builder()
+                        .pet(pet)
+                        .inviteCode(inviteCode)
+                        .build()
+        );
+        pet.regenerateInviteCode();
     }
 }

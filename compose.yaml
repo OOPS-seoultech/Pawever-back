@@ -20,6 +20,7 @@ services:
       - ./src/main/resources/funeral_companies_data.sql:/docker-entrypoint-initdb.d/30_funeral_companies_data.sql:ro
       - ./src/main/resources/data.sql:/docker-entrypoint-initdb.d/40_data.sql:ro
       - ./src/main/resources/faq_data.sql:/docker-entrypoint-initdb.d/50_faq_data.sql:ro
+      - ./src/main/resources/local_runtime_seed.sql:/docker-entrypoint-initdb.d/60_local_runtime_seed.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s

@@ -25,6 +25,10 @@ public class PetCreateRequest {
 
     private Float weight;
 
+    private Boolean isNeutered;
+
     @NotNull(message = "사용 시기를 선택해주세요.")
     private LifecycleStatus lifecycleStatus;
+
+    private LocalDate deathDate;
 }

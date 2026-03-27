@@ -2,23 +2,6 @@
 
 -- 미션(발자국 남기기) 54개는 missions_data.sql에서 로드 (ON DUPLICATE KEY UPDATE 사용)
 
--- 체크리스트 (이별준비) - checklist_items
--- 기존 임시 항목(6~8) 정리 (FK 때문에 pet_checklists 먼저 삭제)
-DELETE FROM pet_checklists WHERE checklist_item_id IN (6, 7, 8);
-DELETE FROM checklist_items WHERE id IN (6, 7, 8);
-
--- 5단계 스텝퍼(이별방법/안치준비/행정처리/물건정리/지원사업)로 고정
-INSERT INTO checklist_items (id, title, description, order_index) VALUES (1, '이별방법', NULL, 1)
-ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
-INSERT INTO checklist_items (id, title, description, order_index) VALUES (2, '안치준비', NULL, 2)
-ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
-INSERT INTO checklist_items (id, title, description, order_index) VALUES (3, '행정처리', NULL, 3)
-ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
-INSERT INTO checklist_items (id, title, description, order_index) VALUES (4, '물건정리', NULL, 4)
-ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
-INSERT INTO checklist_items (id, title, description, order_index) VALUES (5, '지원사업', NULL, 5)
-ON DUPLICATE KEY UPDATE title=VALUES(title), description=VALUES(description), order_index=VALUES(order_index);
-
 -- 댓글 신고 사유 (report_reasons) - 추모관 댓글 신고용
 INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (1, '비하 및 모욕', 1);
 INSERT IGNORE INTO report_reasons (id, name, order_index) VALUES (2, '부적절한 홍보', 2);

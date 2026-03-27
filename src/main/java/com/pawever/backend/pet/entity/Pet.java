@@ -34,6 +34,9 @@ public class Pet extends BaseTimeEntity {
 
     private Float weight;
 
+    @Builder.Default
+    private Boolean isNeutered = false;
+
     @Column(unique = true)
     private String inviteCode;
 
@@ -55,12 +58,22 @@ public class Pet extends BaseTimeEntity {
         }
     }
 
-    public void update(String name, LocalDate birthDate, Gender gender, Float weight, Breed breed) {
+    public void update(
+            String name,
+            LocalDate birthDate,
+            Gender gender,
+            Float weight,
+            Boolean isNeutered,
+            Breed breed,
+            LocalDateTime deathDate
+    ) {
         this.name = name;
         this.birthDate = birthDate;
         this.gender = gender;
         this.weight = weight;
+        this.isNeutered = isNeutered;
         this.breed = breed;
+        this.deathDate = deathDate;
     }
 
     public void updateProfileImage(String profileImageUrl) {
@@ -70,7 +83,23 @@ public class Pet extends BaseTimeEntity {
     public void activateEmergencyMode() {
         this.emergencyMode = true;
         this.lifecycleStatus = LifecycleStatus.AFTER_FAREWELL;
-        this.deathDate = LocalDateTime.now();
+        if (this.deathDate == null) {
+            this.deathDate = LocalDateTime.now();
+        }
+    }
+
+    public void completeEmergencyMode() {
+        this.emergencyMode = false;
+        this.lifecycleStatus = LifecycleStatus.AFTER_FAREWELL;
+        if (this.deathDate == null) {
+            this.deathDate = LocalDateTime.now();
+        }
+    }
+
+    public void deactivateEmergencyMode() {
+        this.emergencyMode = false;
+        this.lifecycleStatus = LifecycleStatus.BEFORE_FAREWELL;
+        this.deathDate = null;
     }
 
     public void regenerateInviteCode() {

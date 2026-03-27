@@ -59,6 +59,28 @@ public class FuneralService {
                 .toList();
     }
 
+    public List<FuneralCompanyListResponse> getRegisteredFuneralCompanyList(
+            Long userId,
+            Long petId,
+            RegistrationType registrationType,
+            Double latitude,
+            Double longitude
+    ) {
+        validatePetAccess(userId, petId);
+
+        double userLat = latitude != null ? latitude : DEFAULT_LATITUDE;
+        double userLng = longitude != null ? longitude : DEFAULT_LONGITUDE;
+
+        return petFuneralCompanyRepository.findByPetIdAndTypeWithFuneralCompany(petId, registrationType).stream()
+                .map(petFuneralCompany -> {
+                    FuneralCompany company = petFuneralCompany.getFuneralCompany();
+                    Double distance = calculateDistance(userLat, userLng, company.getLatitude(), company.getLongitude());
+                    return FuneralCompanyListResponse.of(company, registrationType, distance);
+                })
+                .sorted(Comparator.comparingDouble(r -> r.getDistanceKm() != null ? r.getDistanceKm() : Double.MAX_VALUE))
+                .toList();
+    }
+
     /**
      * 장례업체 상세 조회
      */

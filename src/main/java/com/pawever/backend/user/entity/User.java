@@ -84,11 +84,12 @@ public class User extends BaseTimeEntity {
         this.selectedPetId = petId;
     }
 
-    public void updateProfile(String name, String nickname, String phone, String phoneHash) {
+    public void updateProfile(String name, String nickname, String phone, String phoneHash, String ageRange) {
         this.name = name;
         this.nickname = nickname;
         this.phone = phone;
         this.phoneHash = phoneHash;
+        this.ageRange = ageRange;
     }
 
     public void updateReferral(ReferralType referralType, String referralMemo) {

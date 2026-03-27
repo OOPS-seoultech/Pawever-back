@@ -10,8 +10,9 @@ import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
-import com.pawever.backend.checklist.repository.ChecklistItemRepository;
-import com.pawever.backend.checklist.repository.PetChecklistRepository;
+import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRepository;
+import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
+import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,8 +40,10 @@ class PetServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private MissionRepository missionRepository;
     @Mock private PetMissionRepository petMissionRepository;
-    @Mock private ChecklistItemRepository checklistItemRepository;
-    @Mock private PetChecklistRepository petChecklistRepository;
+    @Mock private FarewellPreviewProgressRepository farewellPreviewProgressRepository;
+    @Mock private EmergencyProgressRepository emergencyProgressRepository;
+    @Mock private PetFuneralCompanyRepository petFuneralCompanyRepository;
+    @Mock private PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
     @Mock private StorageService storageService;
 
     // =========================
@@ -79,13 +82,13 @@ class PetServiceTest {
         // mocking
         when(userRepository.findByIdAndDeletedAtIsNull(userId))
                 .thenReturn(Optional.of(user));
+        when(userPetRepository.existsByUserIdAndIsOwnerTrue(userId))
+                .thenReturn(false);
         when(breedRepository.findById(1L))
                 .thenReturn(Optional.of(breed));
         when(petRepository.save(any()))
                 .thenReturn(savedPet);
         when(missionRepository.findAllByOrderByOrderIndexAscIdAsc())
-                .thenReturn(List.of());
-        when(checklistItemRepository.findAll())
                 .thenReturn(List.of());
 
         // 실행
@@ -158,8 +161,12 @@ class PetServiceTest {
 
         petService.deletePet(userId, petId);
 
+        verify(petMissionRepository).deleteByPetId(petId);
+        verify(farewellPreviewProgressRepository).deleteByPetId(petId);
+        verify(emergencyProgressRepository).deleteByPetId(petId);
+        verify(petFuneralCompanyRepository).deleteByPetId(petId);
         verify(userPetRepository).deleteAll(any());
-        verify(petRepository).deleteById(petId);
+        verify(petRepository, never()).deleteById(any());
     }
 
     // =========================

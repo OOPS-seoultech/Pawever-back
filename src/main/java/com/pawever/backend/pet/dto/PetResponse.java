@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Builder
@@ -20,9 +21,11 @@ public class PetResponse {
     private LocalDate birthDate;
     private Gender gender;
     private Float weight;
+    private Boolean isNeutered;
     private String profileImageUrl;
     private LifecycleStatus lifecycleStatus;
     private String inviteCode;
+    private LocalDateTime deathDate;
     private Boolean emergencyMode;
     private Boolean selected;
     private Boolean isOwner;
@@ -36,9 +39,11 @@ public class PetResponse {
                 .birthDate(pet.getBirthDate())
                 .gender(pet.getGender())
                 .weight(pet.getWeight())
+                .isNeutered(pet.getIsNeutered())
                 .profileImageUrl(pet.getProfileImageUrl())
                 .lifecycleStatus(pet.getLifecycleStatus())
                 .inviteCode(pet.getInviteCode())
+                .deathDate(pet.getDeathDate())
                 .emergencyMode(pet.getEmergencyMode())
                 .selected(pet.getId().equals(selectedPetId))
                 .isOwner(isOwner)

@@ -9,7 +9,7 @@ import lombok.Getter;
 @AllArgsConstructor
 public class HomeProgressResponse {
 
-    private double checklistProgressPercent;
+    private int farewellPreviewProgressPercent;
     private long missionCompleted;
     private long missionTotal;
 }

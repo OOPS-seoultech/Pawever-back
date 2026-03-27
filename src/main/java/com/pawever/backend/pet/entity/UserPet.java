@@ -4,6 +4,8 @@ import com.pawever.backend.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "user_pets")
 @Getter
@@ -26,5 +28,13 @@ public class UserPet {
 
     @Builder.Default
     private Boolean isOwner = false;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private LocalDateTime memorialLastReadAt = LocalDateTime.now();
+
+    public void markMemorialAsRead(LocalDateTime readAt) {
+        this.memorialLastReadAt = readAt;
+    }
 
 }

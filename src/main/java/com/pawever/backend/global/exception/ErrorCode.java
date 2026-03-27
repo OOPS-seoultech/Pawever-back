@@ -32,6 +32,9 @@ public enum ErrorCode {
     PET_NOT_OWNED(HttpStatus.FORBIDDEN, "해당 반려동물에 대한 권한이 없습니다."),
     BREED_NOT_FOUND(HttpStatus.NOT_FOUND, "품종을 찾을 수 없습니다."),
     ANIMAL_TYPE_NOT_FOUND(HttpStatus.NOT_FOUND, "동물 종류를 찾을 수 없습니다."),
+    INVALID_DEATH_DATE(HttpStatus.BAD_REQUEST, "이별 상태에 맞는 이별 일자를 입력해 주세요."),
+    OWNER_PET_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "소유자로 등록할 수 있는 반려동물은 최대 1마리입니다."),
+    GUEST_PET_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "게스트로 참여할 수 있는 반려동물은 최대 10마리입니다."),
 
     // Mission
     MISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "미션을 찾을 수 없습니다."),
@@ -39,6 +42,7 @@ public enum ErrorCode {
     // Memorial
     MEMORIAL_NOT_FOUND(HttpStatus.NOT_FOUND, "추모 정보를 찾을 수 없습니다."),
     MEMORIAL_ALREADY_EXISTS(HttpStatus.BAD_REQUEST, "이미 추모가 생성되었습니다."),
+    EMERGENCY_MODE_NOT_ACTIVE(HttpStatus.BAD_REQUEST, "긴급 대처 모드가 활성화되어 있지 않습니다."),
     COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "댓글을 찾을 수 없습니다."),
     REPORT_REASON_REQUIRED(HttpStatus.BAD_REQUEST, "신고 사유를 선택하거나 직접 입력해 주세요."),
 
@@ -54,9 +58,6 @@ public enum ErrorCode {
     ALREADY_SHARED(HttpStatus.BAD_REQUEST, "이미 공유된 반려동물입니다."),
     NOT_OWNER(HttpStatus.FORBIDDEN, "소유자만 수행할 수 있습니다."),
     CANNOT_REMOVE_OWNER(HttpStatus.BAD_REQUEST, "소유자는 공유 해제할 수 없습니다."),
-
-    // Checklist
-    CHECKLIST_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "체크리스트 항목을 찾을 수 없습니다."),
 
     // File
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다.");

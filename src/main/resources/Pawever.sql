@@ -27,6 +27,7 @@ CREATE TABLE `users` (
     `deleted_at`        DATETIME(6)     NULL,
     `notification_agreed_at` DATETIME(6) NULL COMMENT '알림(푸시) 수신 동의 시각, null=미동의',
     `marketing_agreed_at`    DATETIME(6) NULL COMMENT '마케팅 수신 동의 시각, null=미동의',
+    `fcm_token`         VARCHAR(255)    NULL COMMENT 'FCM 디바이스 토큰',
     `created_at`        DATETIME(6)     NULL,
     `updated_at`        DATETIME(6)     NULL,
     PRIMARY KEY (`id`)
@@ -57,6 +58,7 @@ CREATE TABLE `pets` (
     `birth_date`        DATE            NULL,
     `gender`            VARCHAR(10)     NULL        COMMENT 'MALE / FEMALE',
     `weight`            FLOAT           NULL,
+    `is_neutered`       BOOLEAN         DEFAULT FALSE,
     `invite_code`       VARCHAR(255)    NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `emergency_mode`    BOOLEAN         DEFAULT FALSE,
@@ -72,10 +74,11 @@ CREATE TABLE `pets` (
 
 -- 5. 회원_반려동물 (user_pets)
 CREATE TABLE `user_pets` (
-    `id`        BIGINT      NOT NULL AUTO_INCREMENT,
-    `user_id`   BIGINT      NOT NULL,
-    `pet_id`    BIGINT      NOT NULL,
-    `is_owner`  BOOLEAN     DEFAULT FALSE,
+    `id`                    BIGINT      NOT NULL AUTO_INCREMENT,
+    `user_id`               BIGINT      NOT NULL,
+    `pet_id`                BIGINT      NOT NULL,
+    `is_owner`              BOOLEAN     DEFAULT FALSE,
+    `memorial_last_read_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '추모관 마지막 읽음 시각',
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_users_TO_user_pets`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
@@ -113,6 +116,12 @@ CREATE TABLE `pet_missions` (
     `completed`     BOOLEAN     DEFAULT FALSE,
     `completed_at`  DATETIME(6) NULL,
     `image_url`     VARCHAR(255) NULL,
+    `media_url`     VARCHAR(255) NULL,
+    `media_type`    VARCHAR(20) NULL,
+    `media_format`  VARCHAR(20) NULL,
+    `media_size_bytes` BIGINT NULL,
+    `media_duration_sec` INT NULL,
+    `media_waveform` TEXT NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_pets_TO_pet_missions`
         FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
@@ -120,27 +129,42 @@ CREATE TABLE `pet_missions` (
         FOREIGN KEY (`mission_id`) REFERENCES `missions` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 8. 체크리스트 항목 (checklist_items)
-CREATE TABLE `checklist_items` (
-    `id`            BIGINT          NOT NULL AUTO_INCREMENT,
-    `title`         VARCHAR(255)    NOT NULL,
-    `description`   TEXT            NULL,
-    `order_index`   INT             NULL,
-    PRIMARY KEY (`id`)
+-- 8. 미리 살펴보기 진행 상태 (farewell_preview_progresses)
+CREATE TABLE `farewell_preview_progresses` (
+    `id`                             BIGINT       NOT NULL AUTO_INCREMENT,
+    `pet_id`                         BIGINT       NOT NULL,
+    `has_completed_guide`            BOOLEAN      NOT NULL DEFAULT FALSE,
+    `current_step_id`                VARCHAR(255) NOT NULL,
+    `entered_step_ids`               TEXT         NOT NULL,
+    `farewell_method_confirmed`      BOOLEAN      NOT NULL DEFAULT FALSE,
+    `resting_active_step_number`     INT          NOT NULL DEFAULT 0,
+    `resting_completed_step_count`   INT          NOT NULL DEFAULT 0,
+    `administration_completed_item_ids` TEXT      NOT NULL,
+    `belongings_selected_option_ids` TEXT         NOT NULL,
+    `belongings_confirmed`           BOOLEAN      NOT NULL DEFAULT FALSE,
+    `support_completed_item_ids`     TEXT         NOT NULL,
+    `support_confirmed`              BOOLEAN      NOT NULL DEFAULT FALSE,
+    `created_at`                     DATETIME(6)  NULL,
+    `updated_at`                     DATETIME(6)  NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `UK_farewell_preview_progresses_pet_id` (`pet_id`),
+    CONSTRAINT `FK_pets_TO_farewell_preview_progresses`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 9. 반려동물_체크리스트 (pet_checklists)
-CREATE TABLE `pet_checklists` (
-    `id`                BIGINT      NOT NULL AUTO_INCREMENT,
-    `pet_id`            BIGINT      NOT NULL,
-    `checklist_item_id` BIGINT      NOT NULL,
-    `completed`         BOOLEAN     DEFAULT FALSE,
-    `completed_at`      DATETIME(6) NULL,
+-- 8-1. 긴급 대처 모드 진행 상태 (emergency_progresses)
+CREATE TABLE `emergency_progresses` (
+    `id`                           BIGINT      NOT NULL AUTO_INCREMENT,
+    `pet_id`                       BIGINT      NOT NULL,
+    `resting_active_step_number`   INT         NOT NULL DEFAULT 1,
+    `resting_completed_step_count` INT         NOT NULL DEFAULT 0,
+    `funeral_company_completed`    BOOLEAN     NOT NULL DEFAULT FALSE,
+    `created_at`                   DATETIME(6) NULL,
+    `updated_at`                   DATETIME(6) NULL,
     PRIMARY KEY (`id`),
-    CONSTRAINT `FK_pets_TO_pet_checklists`
-        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
-    CONSTRAINT `FK_checklist_items_TO_pet_checklists`
-        FOREIGN KEY (`checklist_item_id`) REFERENCES `checklist_items` (`id`)
+    UNIQUE KEY `UK_emergency_progresses_pet_id` (`pet_id`),
+    CONSTRAINT `FK_pets_TO_emergency_progresses`
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 10. 댓글 (comments)
@@ -349,16 +373,6 @@ INSERT INTO `breeds` (`animal_type_id`, `name`) VALUES (3, '기타');
 -- 초기 데이터 (미션 - 발자국 남기기 54개)
 -- → application에서 missions_data.sql 로 로드 (ON DUPLICATE KEY UPDATE)
 -- ============================================================
-
--- ============================================================
--- 초기 데이터 (체크리스트 - 이별준비)
--- ============================================================
-
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('이별방법', NULL, 1);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('안치준비', NULL, 2);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('행정처리', NULL, 3);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('물건정리', NULL, 4);
-INSERT INTO `checklist_items` (`title`, `description`, `order_index`) VALUES ('지원사업', NULL, 5);
 
 -- ============================================================
 -- 초기 데이터 (자주 묻는 질문 - Figma Q&A 화면 기준)

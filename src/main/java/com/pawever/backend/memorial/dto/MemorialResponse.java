@@ -16,6 +16,8 @@ public class MemorialResponse {
     private Long petId;
     private String petName;
     private String petProfileImageUrl;
+    private String breedName;
+    private LocalDate birthDate;
     private String gender;
     private Integer age;
     private LocalDateTime deathDate;
@@ -33,6 +35,8 @@ public class MemorialResponse {
                 .petId(pet.getId())
                 .petName(pet.getName())
                 .petProfileImageUrl(pet.getProfileImageUrl())
+                .breedName(pet.getBreed() != null ? pet.getBreed().getName() : null)
+                .birthDate(pet.getBirthDate())
                 .gender(pet.getGender() != null ? pet.getGender().name() : null)
                 .age(age)
                 .deathDate(pet.getDeathDate())

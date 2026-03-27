@@ -77,6 +77,7 @@ public class SharingService {
                         .build()
         );
 
+        revokeAllGuestMembers(petId);
         pet.regenerateInviteCode();
 
         return InviteCodeResponse.builder()
@@ -104,6 +105,10 @@ public class SharingService {
 
         if (userPetRepository.existsByUserIdAndPetId(userId, pet.getId())) {
             throw new CustomException(ErrorCode.ALREADY_SHARED);
+        }
+
+        if (userPetRepository.countByUserIdAndIsOwnerFalse(userId) >= 10) {
+            throw new CustomException(ErrorCode.GUEST_PET_LIMIT_EXCEEDED);
         }
 
         UserPet userPet = UserPet.builder()
@@ -136,6 +141,25 @@ public class SharingService {
         UserPet targetUserPet = userPetRepository.findByUserIdAndPetId(targetUserId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        userPetRepository.delete(targetUserPet);
+        revokeSharedMember(targetUserPet);
+    }
+
+    private void revokeAllGuestMembers(Long petId) {
+        List<UserPet> guestUserPets = userPetRepository.findByPetId(petId).stream()
+                .filter(userPet -> !Boolean.TRUE.equals(userPet.getIsOwner()))
+                .toList();
+
+        guestUserPets.forEach(this::revokeSharedMember);
+    }
+
+    private void revokeSharedMember(UserPet userPet) {
+        User targetUser = userPet.getUser();
+        Long petId = userPet.getPet().getId();
+
+        if (petId.equals(targetUser.getSelectedPetId())) {
+            targetUser.selectPet(null);
+        }
+
+        userPetRepository.delete(userPet);
     }
 }
