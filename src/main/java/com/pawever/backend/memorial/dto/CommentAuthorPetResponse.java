@@ -14,6 +14,7 @@ import java.time.Period;
 public class CommentAuthorPetResponse {
     private Long petId;
     private String petName;
+    private String profileImageUrl;
     private String animalTypeName;
     private String breedName;
     private String gender;
@@ -35,6 +36,7 @@ public class CommentAuthorPetResponse {
         return CommentAuthorPetResponse.builder()
                 .petId(pet.getId())
                 .petName(pet.getName())
+                .profileImageUrl(pet.getProfileImageUrl())
                 .animalTypeName(pet.getBreed() != null ? pet.getBreed().getAnimalType().getName() : null)
                 .breedName(pet.getBreed() != null ? pet.getBreed().getName() : null)
                 .gender(pet.getGender() != null ? pet.getGender().name() : null)
