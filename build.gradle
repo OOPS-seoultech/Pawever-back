@@ -56,9 +56,33 @@ dependencies {
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.mockito:mockito-junit-jupiter'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
+	useJUnitPlatform()
+}
+
+sourceSets {
+	legacyTest {
+		java.srcDir file('src/legacyTest/java')
+		resources.srcDir file('src/legacyTest/resources')
+
+		compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+		runtimeClasspath += output + compileClasspath
+	}
+}
+
+configurations {
+	legacyTestImplementation.extendsFrom testImplementation
+	legacyTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+tasks.register('legacyTest', Test) {
+	description = 'Runs legacy tests only.'
+	group = 'verification'
+	testClassesDirs = sourceSets.legacyTest.output.classesDirs
+	classpath = sourceSets.legacyTest.runtimeClasspath
 	useJUnitPlatform()
 }

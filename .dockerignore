@@ -7,3 +7,7 @@ build
 *.md
 *.sql
 *.txt
+
+# tests should not be part of deploy image build context
+src/test
+src/legacyTest
