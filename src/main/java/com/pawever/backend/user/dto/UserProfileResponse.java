@@ -1,5 +1,6 @@
 package com.pawever.backend.user.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.user.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,7 +40,7 @@ public class UserProfileResponse {
                 .birthday(user.getBirthday())
                 .birthYear(user.getBirthYear())
                 .ageRange(user.getAgeRange())
-                .profileImageUrl(user.getProfileImageUrl())
+                .profileImageUrl(UrlUtils.toHttpsUrl(user.getProfileImageUrl()))
                 .notificationEnabled(user.isNotificationEnabled())
                 .marketingEnabled(user.isMarketingEnabled())
                 .onboardingComplete(user.isOnboardingComplete())

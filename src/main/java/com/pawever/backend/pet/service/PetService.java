@@ -3,6 +3,7 @@ package com.pawever.backend.pet.service;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.mission.entity.Mission;
 import com.pawever.backend.mission.entity.PetMission;
@@ -155,7 +156,7 @@ public class PetService {
                 .map(userPet -> PetListResponse.builder()
                         .id(userPet.getPet().getId())
                         .name(userPet.getPet().getName())
-                        .profileImageUrl(userPet.getPet().getProfileImageUrl())
+                        .profileImageUrl(UrlUtils.toHttpsUrl(userPet.getPet().getProfileImageUrl()))
                         .selected(userPet.getPet().getId().equals(selectedPetId))
                         .isOwner(userPet.getIsOwner())
                         .build())

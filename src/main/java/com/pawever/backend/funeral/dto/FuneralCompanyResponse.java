@@ -1,5 +1,6 @@
 package com.pawever.backend.funeral.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.funeral.entity.FuneralCompany;
 import com.pawever.backend.funeral.entity.RegistrationType;
 import lombok.AllArgsConstructor;
@@ -48,7 +49,7 @@ public class FuneralCompanyResponse {
                 .introduction(company.getIntroduction())
                 .guideText(company.getGuideText())
                 .serviceDescription(company.getServiceDescription())
-                .imageUrls(company.getImageUrls())
+                .imageUrls(company.getImageUrls() == null ? List.of() : company.getImageUrls().stream().map(UrlUtils::toHttpsUrl).toList())
                 .fullObservation(company.getFullObservation())
                 .open24Hours(company.getOpen24Hours())
                 .pickupService(company.getPickupService())

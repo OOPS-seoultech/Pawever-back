@@ -10,6 +10,7 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.global.security.JwtTokenProvider;
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +59,7 @@ public class AuthService {
                             .birthday(userInfo.getBirthday())
                             .birthYear(userInfo.getBirthyear())
                             .ageRange(userInfo.getAge())
-                            .profileImageUrl(userInfo.getProfileImage())
+                            .profileImageUrl(UrlUtils.toHttpsUrl(userInfo.getProfileImage()))
                             .build();
                     User saved = userRepository.save(newUser);
                     return TokenResponse.builder()
@@ -98,7 +99,7 @@ public class AuthService {
                             .birthday(userInfo.getBirthday())
                             .birthYear(userInfo.getBirthYear())
                             .ageRange(userInfo.getAgeRange())
-                            .profileImageUrl(userInfo.getProfileImageUrl())
+                            .profileImageUrl(UrlUtils.toHttpsUrl(userInfo.getProfileImageUrl()))
                             .build();
                     User saved = userRepository.save(newUser);
                     return TokenResponse.builder()

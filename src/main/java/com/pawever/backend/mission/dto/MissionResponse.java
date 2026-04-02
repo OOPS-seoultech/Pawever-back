@@ -1,5 +1,6 @@
 package com.pawever.backend.mission.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.mission.entity.Mission;
 import com.pawever.backend.mission.entity.PetMission;
 import lombok.AllArgsConstructor;
@@ -45,8 +46,8 @@ public class MissionResponse {
                 .orderIndex(mission.getOrderIndex())
                 .completed(petMission != null && petMission.getCompleted())
                 .completedAt(petMission != null ? petMission.getCompletedAt() : null)
-                .imageUrl(petMission != null ? petMission.getImageUrl() : null)
-                .mediaUrl(petMission != null ? petMission.getMediaUrl() : null)
+                .imageUrl(petMission != null ? UrlUtils.toHttpsUrl(petMission.getImageUrl()) : null)
+                .mediaUrl(petMission != null ? UrlUtils.toHttpsUrl(petMission.getMediaUrl()) : null)
                 .mediaType(petMission != null ? petMission.getMediaType() : null)
                 .mediaFormat(petMission != null ? petMission.getMediaFormat() : null)
                 .mediaSizeBytes(petMission != null ? petMission.getMediaSizeBytes() : null)

@@ -1,5 +1,6 @@
 package com.pawever.backend.sharing.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.user.entity.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,7 +21,7 @@ public class SharedMemberResponse {
                 .userId(user.getId())
                 .name(user.getName())
                 .nickname(user.getNickname())
-                .profileImageUrl(user.getProfileImageUrl())
+                .profileImageUrl(UrlUtils.toHttpsUrl(user.getProfileImageUrl()))
                 .isOwner(isOwner)
                 .build();
     }

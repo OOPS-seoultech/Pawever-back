@@ -1,5 +1,6 @@
 package com.pawever.backend.memorial.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.pet.entity.Pet;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,7 +37,7 @@ public class CommentAuthorPetResponse {
         return CommentAuthorPetResponse.builder()
                 .petId(pet.getId())
                 .petName(pet.getName())
-                .profileImageUrl(pet.getProfileImageUrl())
+                .profileImageUrl(UrlUtils.toHttpsUrl(pet.getProfileImageUrl()))
                 .animalTypeName(pet.getBreed() != null ? pet.getBreed().getAnimalType().getName() : null)
                 .breedName(pet.getBreed() != null ? pet.getBreed().getName() : null)
                 .gender(pet.getGender() != null ? pet.getGender().name() : null)

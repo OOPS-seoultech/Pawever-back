@@ -1,5 +1,6 @@
 package com.pawever.backend.memorial.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.pet.entity.Pet;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,7 +35,7 @@ public class MemorialResponse {
         return MemorialResponse.builder()
                 .petId(pet.getId())
                 .petName(pet.getName())
-                .petProfileImageUrl(pet.getProfileImageUrl())
+                .petProfileImageUrl(UrlUtils.toHttpsUrl(pet.getProfileImageUrl()))
                 .breedName(pet.getBreed() != null ? pet.getBreed().getName() : null)
                 .birthDate(pet.getBirthDate())
                 .gender(pet.getGender() != null ? pet.getGender().name() : null)

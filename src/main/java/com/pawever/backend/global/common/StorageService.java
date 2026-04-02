@@ -3,6 +3,7 @@ package com.pawever.backend.global.common;
 import com.pawever.backend.global.config.NcpStorageConfig;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.global.util.UrlUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -60,16 +61,24 @@ public class StorageService {
             throw new CustomException(ErrorCode.FILE_UPLOAD_FAILED);
         }
 
-        return ncpStorageConfig.getCdn().getDomain() + "/" + key;
+        String cdnDomain = UrlUtils.trimTrailingSlash(ncpStorageConfig.getCdn().getDomain());
+        return UrlUtils.toHttpsUrl(cdnDomain) + "/" + key;
     }
 
     public void delete(String fileUrl) {
-        String cdnDomain = ncpStorageConfig.getCdn().getDomain();
-        if (fileUrl == null || !fileUrl.startsWith(cdnDomain)) {
+        String cdnDomain = UrlUtils.stripScheme(UrlUtils.trimTrailingSlash(ncpStorageConfig.getCdn().getDomain()));
+        String normalizedFileUrl = UrlUtils.stripScheme(fileUrl);
+
+        if (cdnDomain == null || cdnDomain.isBlank() || normalizedFileUrl == null) {
             return;
         }
 
-        String key = fileUrl.substring(cdnDomain.length() + 1);
+        String prefix = cdnDomain + "/";
+        if (!normalizedFileUrl.startsWith(prefix)) {
+            return;
+        }
+
+        String key = normalizedFileUrl.substring(prefix.length());
 
         try {
             DeleteObjectRequest request = DeleteObjectRequest.builder()

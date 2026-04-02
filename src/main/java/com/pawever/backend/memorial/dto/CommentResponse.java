@@ -1,5 +1,6 @@
 package com.pawever.backend.memorial.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.memorial.entity.Comment;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,7 +34,7 @@ public class CommentResponse {
                 .commentId(comment.getId())
                 .userId(isDeletedUser ? null : comment.getUser().getId())
                 .userNickname(isDeletedUser ? "탈퇴한 유저" : comment.getUser().getNickname())
-                .userProfileImageUrl(isDeletedUser ? null : comment.getUser().getProfileImageUrl())
+                .userProfileImageUrl(isDeletedUser ? null : UrlUtils.toHttpsUrl(comment.getUser().getProfileImageUrl()))
                 .authorRole(authorRole)
                 .authorPet(isDeletedUser ? null : authorPet)
                 .content(comment.getContent())

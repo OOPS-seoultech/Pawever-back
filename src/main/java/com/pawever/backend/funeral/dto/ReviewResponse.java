@@ -1,6 +1,7 @@
 package com.pawever.backend.funeral.dto;
 
 import com.pawever.backend.funeral.entity.Review;
+import com.pawever.backend.global.util.UrlUtils;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -30,7 +31,7 @@ public class ReviewResponse {
                 .petName(review.getPet().getName())
                 .rating(review.getRating())
                 .content(review.getContent())
-                .imageUrls(imageUrls)
+                .imageUrls(imageUrls == null ? List.of() : imageUrls.stream().map(UrlUtils::toHttpsUrl).toList())
                 .createdAt(review.getCreatedAt())
                 .canDelete(canDelete)
                 .build();

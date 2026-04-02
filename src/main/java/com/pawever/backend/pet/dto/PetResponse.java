@@ -1,5 +1,6 @@
 package com.pawever.backend.pet.dto;
 
+import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.pet.entity.Gender;
 import com.pawever.backend.pet.entity.LifecycleStatus;
 import com.pawever.backend.pet.entity.Pet;
@@ -40,7 +41,7 @@ public class PetResponse {
                 .gender(pet.getGender())
                 .weight(pet.getWeight())
                 .isNeutered(pet.getIsNeutered())
-                .profileImageUrl(pet.getProfileImageUrl())
+                .profileImageUrl(UrlUtils.toHttpsUrl(pet.getProfileImageUrl()))
                 .lifecycleStatus(pet.getLifecycleStatus())
                 .inviteCode(pet.getInviteCode())
                 .deathDate(pet.getDeathDate())
