@@ -38,9 +38,9 @@
 
 ---
 
-## 백엔드 매핑 위치
+## 코드 위치
 
-- **네이버**: `NaverApiClient.NaverUserInfo` → `AuthService.naverLogin()` 에서 `User` 생성 시 위 필드 매핑.
-- **카카오**: `KakaoApiClient.KakaoUserInfo` / `KakaoAccount` → `AuthService.kakaoLogin()` 에서 `User` 생성 시 위 필드 매핑.
+- **네이버**: `NaverApiClient.NaverUserInfo` → `AuthService.naverLogin()` 에서 `User` 필드 매핑.
+- **카카오**: `KakaoApiClient.KakaoUserInfo` / `KakaoAccount` → `AuthService.kakaoLogin()` 에서 `User` 필드 매핑.
 
-필수 항목이 null인 경우 기존에는 전화번호만 중복 검사 후 저장하므로, 앱/프론트에서 필수 동의 여부 확인 후 로그인 요청하는 흐름을 권장.
+필수 항목이 비어 있으면 가입/연동이 완성되지 않을 수 있으므로, 앱에서 제공처 동의 화면에서 필수 항목 수집 후 로그인 요청하는 흐름을 권장한다.
