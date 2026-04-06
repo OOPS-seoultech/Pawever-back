@@ -2,14 +2,16 @@
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- 로그 디렉토리: 환경변수 LOG_PATH 또는 기본 ./logs -->
     <springProperty name="LOG_PATH" source="logging.file.path" defaultValue="./logs"/>
+    <springProperty name="APP_NAME" source="spring.application.name" defaultValue="pawever-backend"/>
 
-    <!-- 공통 포맷: 날짜 레벨 로거 메시지 -->
-    <property name="CONSOLE_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%logger{36}] %msg%n"/>
-    <property name="FILE_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%logger{36}] %msg%n"/>
+    <!-- 개발용: 사람이 읽기 쉬운 패턴 + MDC requestId -->
+    <property name="CONSOLE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%logger{36}] [%X{requestId:-}] %msg%n"/>
+    <property name="FILE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%logger{36}] [%X{requestId:-}] %msg%n"/>
 
-    <!-- 콘솔: 로컬은 INFO, prod는 WARN 이상 -->
+    <!-- ========== local / default / docker ========== -->
     <springProfile name="default,local,docker">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
@@ -20,25 +22,11 @@
                 <level>INFO</level>
             </filter>
         </appender>
-    </springProfile>
-    <springProfile name="prod">
-        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-                <pattern>${CONSOLE_PATTERN}</pattern>
-                <charset>UTF-8</charset>
-            </encoder>
-            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-                <level>WARN</level>
-            </filter>
-        </appender>
-    </springProfile>
 
-    <!-- 앱 로그: 로컬은 FILE(INFO+), prod는 FILE만 사용하고 WARN 필터 적용 (같은 파일 중복 정의 방지) -->
-    <springProfile name="default,local,docker">
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH}/app.log</file>
             <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-                <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/app.%i.log</fileNamePattern>
                 <maxFileSize>20MB</maxFileSize>
                 <maxHistory>14</maxHistory>
             </rollingPolicy>
@@ -47,95 +35,145 @@
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
-    </springProfile>
-    <springProfile name="prod">
-        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-            <file>${LOG_PATH}/app.log</file>
+
+        <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/error.log</file>
             <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-                <fileNamePattern>${LOG_PATH}/app.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/error.%i.log</fileNamePattern>
                 <maxFileSize>20MB</maxFileSize>
-                <maxHistory>14</maxHistory>
+                <maxHistory>30</maxHistory>
             </rollingPolicy>
             <encoder>
                 <pattern>${FILE_PATTERN}</pattern>
                 <charset>UTF-8</charset>
             </encoder>
             <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-                <level>WARN</level>
+                <level>ERROR</level>
             </filter>
         </appender>
-    </springProfile>
 
-    <!-- 에러 전용 파일 (핵심만 볼 때 사용) -->
-    <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_PATH}/error.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>20MB</maxFileSize>
-            <maxHistory>30</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>${FILE_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>ERROR</level>
-        </filter>
-    </appender>
+        <appender name="REQUEST_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/request.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/request.%i.log</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${FILE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
 
-    <!-- 요청 로그 (에러/느린 요청만) → 별도 로거로 출력 -->
-    <appender name="REQUEST_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_PATH}/request.log</file>
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/request.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
-            <maxFileSize>20MB</maxFileSize>
-            <maxHistory>7</maxHistory>
-        </rollingPolicy>
-        <encoder>
-            <pattern>${FILE_PATTERN}</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-    </appender>
-
-    <!-- 자사 패키지: 로컬 INFO+ → FILE, prod WARN+ → FILE (같은 이름, 프로파일별 정의) -->
-    <springProfile name="default,local,docker">
         <logger name="com.pawever" level="INFO" additivity="false">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
             <appender-ref ref="FILE_ERROR"/>
         </logger>
-    </springProfile>
-    <springProfile name="prod">
-        <logger name="com.pawever" level="WARN" additivity="false">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
-            <appender-ref ref="FILE_ERROR"/>
-        </logger>
-    </springProfile>
-    <!-- 요청 로그(에러/느린 요청)는 request.log에만 -->
-    <logger name="com.pawever.backend.global.logging" level="INFO" additivity="false">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="REQUEST_LOG"/>
-    </logger>
 
-    <!-- 프레임워크/라이브러리: WARN 이상만 (노이즈 감소) -->
-    <logger name="org.springframework" level="WARN"/>
-    <logger name="org.hibernate" level="WARN"/>
-    <logger name="org.apache" level="WARN"/>
-    <logger name="com.zaxxer" level="WARN"/>
-
-    <springProfile name="default,local,docker">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
             <appender-ref ref="FILE_ERROR"/>
         </root>
     </springProfile>
+
+    <!-- ========== prod: JSON 한 줄 + 집계/검색용 필드 ========== -->
     <springProfile name="prod">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeCallerData>false</includeCallerData>
+                <customFields>{"service":"${APP_NAME}"}</customFields>
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>20</maxDepthPerThrowable>
+                    <maxLength>8192</maxLength>
+                    <rootCauseFirst>true</rootCauseFirst>
+                </throwableConverter>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>INFO</level>
+            </filter>
+        </appender>
+
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/app.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/app.%i.log</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>14</maxHistory>
+            </rollingPolicy>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeCallerData>false</includeCallerData>
+                <customFields>{"service":"${APP_NAME}"}</customFields>
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>20</maxDepthPerThrowable>
+                    <maxLength>8192</maxLength>
+                    <rootCauseFirst>true</rootCauseFirst>
+                </throwableConverter>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>INFO</level>
+            </filter>
+        </appender>
+
+        <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/error.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/error.%i.log</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeCallerData>false</includeCallerData>
+                <customFields>{"service":"${APP_NAME}"}</customFields>
+                <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                    <maxDepthPerThrowable>30</maxDepthPerThrowable>
+                    <maxLength>16384</maxLength>
+                    <rootCauseFirst>true</rootCauseFirst>
+                </throwableConverter>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>ERROR</level>
+            </filter>
+        </appender>
+
+        <appender name="REQUEST_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/request.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/archive/%d{yyyy-MM-dd}/request.%i.log</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+            </rollingPolicy>
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeCallerData>false</includeCallerData>
+                <customFields>{"service":"${APP_NAME}"}</customFields>
+            </encoder>
+        </appender>
+
+        <!-- 앱 코드: 운영에서 필요한 INFO(감사·비즈니스)는 남기고, 라이브러리는 root WARN으로 억제 -->
+        <logger name="com.pawever" level="INFO" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="FILE_ERROR"/>
+        </logger>
+
         <root level="WARN">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE"/>
             <appender-ref ref="FILE_ERROR"/>
         </root>
     </springProfile>
+
+    <!-- 요청 이상 징후(4xx/5xx·느림): 전용 로거 — 프로파일 공통 -->
+    <logger name="com.pawever.backend.global.logging" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="REQUEST_LOG"/>
+    </logger>
+
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="WARN"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="WARN"/>
+    <logger name="org.apache" level="WARN"/>
+    <logger name="com.zaxxer" level="WARN"/>
 </configuration>

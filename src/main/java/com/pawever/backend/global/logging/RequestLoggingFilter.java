@@ -13,8 +13,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 /**
- * 4xx/5xx 응답 또는 느린 요청만 로깅 (파일 request.log로 출력).
+ * 4xx/5xx 응답 또는 느린 요청만 로깅 (파일 request.log 및 콘솔).
  */
 public class RequestLoggingFilter extends OncePerRequestFilter {
 
@@ -42,12 +44,22 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
                 String method = request.getMethod();
                 String path = request.getRequestURI();
                 Long userId = resolveUserId();
-                String logMsg = String.format("%s %s %d %dms userId=%s",
-                        method, path, status, durationMs, userId != null ? userId : "-");
                 if (isError) {
-                    requestLog.warn(logMsg);
+                    requestLog.warn("http request failed or rejected",
+                            kv("kind", "error_response"),
+                            kv("method", method),
+                            kv("path", path),
+                            kv("status", status),
+                            kv("duration_ms", durationMs),
+                            kv("user_id", userId));
                 } else {
-                    requestLog.info("SLOW " + logMsg);
+                    requestLog.info("http request exceeded slow threshold",
+                            kv("kind", "slow"),
+                            kv("method", method),
+                            kv("path", path),
+                            kv("status", status),
+                            kv("duration_ms", durationMs),
+                            kv("user_id", userId));
                 }
             }
         }

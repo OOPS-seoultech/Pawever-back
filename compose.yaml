@@ -42,16 +42,14 @@ services:
       NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
       NCP_BUCKET: ${NCP_BUCKET:-}
       NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
+    # 앱 로그는 Docker 볼륨이 아니라 서버의 이 compose 기준 ./logs 폴더에만 저장 (컨테이너 /app/logs 와 동기화).
     volumes:
-      - app-logs:/app/logs
+      - ./logs:/app/logs
     depends_on:
       mariadb:
         condition: service_healthy
     networks:
       - pawever-net
-
-volumes:
-  app-logs:
 
 networks:
   pawever-net:
