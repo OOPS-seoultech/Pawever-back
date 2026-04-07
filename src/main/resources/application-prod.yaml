@@ -24,3 +24,6 @@ spring:
   docker:
     compose:
       enabled: false
+
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:file:/app/firebase-service-account.json}
