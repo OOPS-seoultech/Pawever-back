@@ -41,6 +41,7 @@ services:
       NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
     # 앱 로그는 Docker 볼륨이 아니라 서버의 이 compose 기준 ./logs 폴더에만 저장 (컨테이너 /app/logs 와 동기화).
     volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
       - ./logs:/app/logs
     depends_on:
       mariadb:
