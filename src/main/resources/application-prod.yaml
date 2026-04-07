@@ -4,10 +4,15 @@ logging:
     path: ${LOG_PATH:-./logs}
 
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.autoconfigure.userdetails.UserDetailsServiceAutoConfiguration
+
   datasource:
     url: jdbc:mariadb://mariadb:3306/${DB_NAME:pawever}
 
   jpa:
+    open-in-view: false
     hibernate:
       ddl-auto: none
     show-sql: false
