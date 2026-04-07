@@ -61,7 +61,7 @@ jobs:
             NCP_BUCKET=$NCP_BUCKET
             NCP_CDN_DOMAIN=$NCP_CDN_DOMAIN
             DEV_LOGIN_PASSWORD=$DEV_LOGIN_PASSWORD
-            FIREBASE_CREDENTIALS_PATH=/root/Pawever-back/firebase-service-account.json
+            FIREBASE_CREDENTIALS_PATH=file:/app/firebase-service-account.json
             EOF
 
             docker compose down
