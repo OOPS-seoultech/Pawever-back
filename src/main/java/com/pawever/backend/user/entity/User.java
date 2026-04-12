@@ -103,6 +103,7 @@ public class User extends BaseTimeEntity {
 
     public void withdraw() {
         this.deletedAt = LocalDateTime.now();
+        this.phoneHash = null;
     }
 
     public boolean isDeleted() {

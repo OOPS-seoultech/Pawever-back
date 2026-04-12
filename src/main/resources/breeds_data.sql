@@ -502,5 +502,6 @@ INSERT INTO breeds (id, animal_type_id, name) VALUES
 (492, 3, '소라게 (허밋 크랩)'),
 (493, 3, '장수풍뎅이'),
 (494, 3, '사슴벌레'),
-(496, 5, '기타 (리스트에 없어요)')
+(496, 5, '기타 (리스트에 없어요)'),
+(497, 8, '빗창앵무')
 ON DUPLICATE KEY UPDATE animal_type_id=VALUES(animal_type_id), name=VALUES(name);

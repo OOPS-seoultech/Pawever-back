@@ -36,7 +36,7 @@ public class AuthService {
     public TokenResponse naverLogin(NaverLoginRequest request) {
         NaverApiClient.NaverUserInfo userInfo = naverApiClient.getUserInfo(request.getAccessToken());
 
-        return userRepository.findByNaverId(userInfo.getId())
+        return userRepository.findByNaverIdAndDeletedAtIsNull(userInfo.getId())
                 .map(user -> TokenResponse.builder()
                         .accessToken(jwtTokenProvider.createToken(user.getId()))
                         .userId(user.getId())
@@ -76,7 +76,7 @@ public class AuthService {
     public TokenResponse kakaoLogin(KakaoLoginRequest request) {
         KakaoApiClient.KakaoUserInfo userInfo = kakaoApiClient.getUserInfo(request.getAccessToken());
 
-        return userRepository.findByKakaoId(userInfo.getKakaoId())
+        return userRepository.findByKakaoIdAndDeletedAtIsNull(userInfo.getKakaoId())
                 .map(user -> TokenResponse.builder()
                         .accessToken(jwtTokenProvider.createToken(user.getId()))
                         .userId(user.getId())

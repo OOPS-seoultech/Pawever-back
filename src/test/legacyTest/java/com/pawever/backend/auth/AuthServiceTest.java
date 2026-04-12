@@ -66,7 +66,7 @@ class AuthServiceTest {
         User user = User.builder().id(1L).build();
 
         when(naverApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByNaverId("naverId")).thenReturn(Optional.of(user));
+        when(userRepository.findByNaverIdAndDeletedAtIsNull("naverId")).thenReturn(Optional.of(user));
         when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
 
         TokenResponse response = authService.naverLogin(request);
@@ -87,7 +87,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(userInfo, "mobile", "010");
 
         when(naverApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByNaverId("naverId")).thenReturn(Optional.empty());
+        when(userRepository.findByNaverIdAndDeletedAtIsNull("naverId")).thenReturn(Optional.empty());
         when(hmacHasher.hash("010")).thenReturn("hashed");
         when(userRepository.save(any())).thenReturn(User.builder().id(1L).build());
         when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
@@ -110,7 +110,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(userInfo, "mobile", "010");
 
         when(naverApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByNaverId("id")).thenReturn(Optional.empty());
+        when(userRepository.findByNaverIdAndDeletedAtIsNull("id")).thenReturn(Optional.empty());
         when(hmacHasher.hash("010")).thenReturn("hashed");
         when(userRepository.existsByPhoneHashAndDeletedAtIsNull("hashed")).thenReturn(true);
 
@@ -128,7 +128,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(userInfo, "id", "id");
 
         when(naverApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByNaverId("id")).thenReturn(Optional.empty());
+        when(userRepository.findByNaverIdAndDeletedAtIsNull("id")).thenReturn(Optional.empty());
         when(userRepository.save(any())).thenReturn(User.builder().id(1L).build());
         when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
 
@@ -154,7 +154,7 @@ class AuthServiceTest {
         User user = User.builder().id(1L).build();
 
         when(kakaoApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByKakaoId(String.valueOf(123L))).thenReturn(Optional.of(user));
+        when(userRepository.findByKakaoIdAndDeletedAtIsNull(String.valueOf(123L))).thenReturn(Optional.of(user));
         when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
 
         TokenResponse response = authService.kakaoLogin(request);
@@ -183,7 +183,7 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(userInfo, "kakaoAccount", account);
 
         when(kakaoApiClient.getUserInfo(token)).thenReturn(userInfo);
-        when(userRepository.findByKakaoId(String.valueOf(123L))).thenReturn(Optional.empty());
+        when(userRepository.findByKakaoIdAndDeletedAtIsNull(String.valueOf(123L))).thenReturn(Optional.empty());
         when(hmacHasher.hash("010-1234-5678")).thenReturn("hashed");
         when(userRepository.save(any())).thenReturn(User.builder().id(1L).build());
         when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
