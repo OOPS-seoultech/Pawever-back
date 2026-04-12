@@ -3,8 +3,8 @@ package com.pawever.backend.pet.controller;
 import com.pawever.backend.global.common.ApiResponse;
 import com.pawever.backend.global.security.UserPrincipal;
 import com.pawever.backend.pet.dto.*;
+import com.pawever.backend.pet.dto.BreedResponse;
 import com.pawever.backend.pet.entity.AnimalType;
-import com.pawever.backend.pet.entity.Breed;
 import com.pawever.backend.pet.repository.AnimalTypeRepository;
 import com.pawever.backend.pet.repository.BreedRepository;
 import com.pawever.backend.pet.service.PetService;
@@ -98,7 +98,11 @@ public class PetController {
 
     @Operation(summary = "품종 목록 조회", description = "특정 동물 종류에 해당하는 품종 목록을 조회합니다.")
     @GetMapping("/animal-types/{animalTypeId}/breeds")
-    public ResponseEntity<ApiResponse<List<Breed>>> getBreeds(@PathVariable Long animalTypeId) {
-        return ResponseEntity.ok(ApiResponse.ok(breedRepository.findByAnimalTypeId(animalTypeId)));
+    public ResponseEntity<ApiResponse<List<BreedResponse>>> getBreeds(@PathVariable Long animalTypeId) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                breedRepository.findByAnimalTypeId(animalTypeId).stream()
+                        .map(BreedResponse::from)
+                        .toList()
+        ));
     }
 }
