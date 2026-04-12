@@ -19,9 +19,9 @@ public class FarewellPreviewProgressResponse {
     private LifecycleStatus lifecycleStatus;
     private int progressPercent;
     private boolean hasCompletedGuide;
-    private String currentStepId;
-    private List<String> enteredStepIds;
-    private List<String> completedStepIds;
+    private Integer currentStep;
+    private List<Integer> enteredSteps;
+    private List<Integer> completedSteps;
     private boolean farewellMethodConfirmed;
     private int restingActiveStepNumber;
     private int restingCompletedStepCount;

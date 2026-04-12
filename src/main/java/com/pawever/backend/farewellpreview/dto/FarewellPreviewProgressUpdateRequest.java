@@ -10,8 +10,8 @@ import java.util.List;
 public class FarewellPreviewProgressUpdateRequest {
 
     private Boolean hasCompletedGuide;
-    private String currentStepId;
-    private List<String> enteredStepIds;
+    private Integer currentStep;
+    private List<Integer> enteredSteps;
     private Boolean farewellMethodConfirmed;
     private Integer restingActiveStepNumber;
     private Integer restingCompletedStepCount;

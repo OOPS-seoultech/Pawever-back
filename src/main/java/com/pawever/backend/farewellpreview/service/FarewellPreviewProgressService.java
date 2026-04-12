@@ -26,13 +26,8 @@ import java.util.function.Supplier;
 @Transactional(readOnly = true)
 public class FarewellPreviewProgressService {
 
-    private static final List<String> STEP_IDS = List.of(
-            "farewellMethod",
-            "resting",
-            "administration",
-            "belongings",
-            "support"
-    );
+    private static final int MIN_STEP = 1;
+    private static final int MAX_STEP = 5;
     private static final List<String> ADMINISTRATION_ITEM_IDS = List.of(
             "registryNumber",
             "reportOffice",
@@ -54,9 +49,6 @@ public class FarewellPreviewProgressService {
     );
     private static final int[] AFTER_FAREWELL_ADMINISTRATION_PROGRESS = {10, 20, 30, 40, 50};
     private static final int[] AFTER_FAREWELL_SUPPORT_PROGRESS = {74, 81, 88, 95};
-    private static final int[] BEFORE_FAREWELL_SUPPORT_PROGRESS = {80, 85, 90, 95};
-    private static final int[] BEFORE_FAREWELL_ADMINISTRATION_PROGRESS = {45, 52, 58, 65, 70};
-    private static final int[] BEFORE_FAREWELL_RESTING_PROGRESS = {26, 29, 32, 35, 38, 40};
 
     private final FarewellPreviewProgressRepository farewellPreviewProgressRepository;
     private final UserPetRepository userPetRepository;
@@ -99,7 +91,7 @@ public class FarewellPreviewProgressService {
                 .orElseGet(() -> FarewellPreviewProgress.builder()
                         .pet(pet)
                         .hasCompletedGuide(false)
-                        .currentStepId(getDefaultCurrentStepId(pet.getLifecycleStatus()))
+                        .currentStep(getDefaultCurrentStep(pet.getLifecycleStatus()))
                         .farewellMethodConfirmed(false)
                         .restingActiveStepNumber(0)
                         .restingCompletedStepCount(0)
@@ -109,8 +101,8 @@ public class FarewellPreviewProgressService {
 
         progress.update(
                 normalizedState.hasCompletedGuide(),
-                normalizedState.currentStepId(),
-                normalizedState.enteredStepIds(),
+                normalizedState.currentStep(),
+                normalizedState.enteredSteps(),
                 normalizedState.farewellMethodConfirmed(),
                 normalizedState.restingActiveStepNumber(),
                 normalizedState.restingCompletedStepCount(),
@@ -154,15 +146,15 @@ public class FarewellPreviewProgressService {
             boolean isOwnerWritable,
             LocalDateTime updatedAt
     ) {
-        List<String> completedStepIds = buildCompletedStepIds(normalizedState);
+        List<Integer> completedSteps = buildCompletedSteps(normalizedState);
 
         return FarewellPreviewProgressResponse.builder()
                 .lifecycleStatus(lifecycleStatus)
                 .progressPercent(computeProgressPercent(normalizedState))
                 .hasCompletedGuide(normalizedState.hasCompletedGuide())
-                .currentStepId(normalizedState.currentStepId())
-                .enteredStepIds(List.copyOf(normalizedState.enteredStepIds()))
-                .completedStepIds(completedStepIds)
+                .currentStep(normalizedState.currentStep())
+                .enteredSteps(List.copyOf(normalizedState.enteredSteps()))
+                .completedSteps(completedSteps)
                 .farewellMethodConfirmed(normalizedState.farewellMethodConfirmed())
                 .restingActiveStepNumber(normalizedState.restingActiveStepNumber())
                 .restingCompletedStepCount(normalizedState.restingCompletedStepCount())
@@ -194,12 +186,12 @@ public class FarewellPreviewProgressService {
             );
         }
 
-        String defaultCurrentStepId = getDefaultCurrentStepId(lifecycleStatus);
+        int defaultCurrentStep = getDefaultCurrentStep(lifecycleStatus);
         boolean isAfterFarewell = lifecycleStatus == LifecycleStatus.AFTER_FAREWELL;
-        Supplier<List<String>> defaultEnteredStepIds = () -> new ArrayList<>(List.of(defaultCurrentStepId));
+        Supplier<List<Integer>> defaultEnteredSteps = () -> new ArrayList<>(List.of(defaultCurrentStep));
 
-        String currentStepId = normalizeStepId(snapshot == null ? null : snapshot.currentStepId());
-        List<String> enteredStepIds = dedupeAndFilter(snapshot == null ? null : snapshot.enteredStepIds(), STEP_IDS);
+        Integer currentStep = normalizeStep(snapshot == null ? null : snapshot.currentStep());
+        List<Integer> enteredSteps = dedupeAndFilterSteps(snapshot == null ? null : snapshot.enteredSteps());
         List<String> administrationCompletedItemIds = dedupeAndFilter(
                 snapshot == null ? null : snapshot.administrationCompletedItemIds(),
                 ADMINISTRATION_ITEM_IDS
@@ -222,34 +214,35 @@ public class FarewellPreviewProgressService {
                 restingCompletedStepCount == 0 ? 0 : Math.min(6, restingCompletedStepCount + 1)
         );
 
-        if (currentStepId == null) {
-            currentStepId = defaultCurrentStepId;
+        if (currentStep == null) {
+            currentStep = defaultCurrentStep;
         }
 
-        if (enteredStepIds.isEmpty()) {
-            enteredStepIds = defaultEnteredStepIds.get();
+        if (enteredSteps.isEmpty()) {
+            enteredSteps = defaultEnteredSteps.get();
         }
 
         if (isAfterFarewell) {
-            currentStepId = switch (currentStepId) {
-                case "farewellMethod", "resting" -> "administration";
-                default -> currentStepId;
+            int resolvedStep = currentStep;
+            currentStep = switch (resolvedStep) {
+                case 1, 2 -> 3;
+                default -> resolvedStep;
             };
-            enteredStepIds = enteredStepIds.stream()
-                    .filter(stepId -> !"farewellMethod".equals(stepId) && !"resting".equals(stepId))
+            enteredSteps = enteredSteps.stream()
+                    .filter(step -> step != 1 && step != 2)
                     .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
-            if (enteredStepIds.isEmpty()) {
-                enteredStepIds = defaultEnteredStepIds.get();
+            if (enteredSteps.isEmpty()) {
+                enteredSteps = defaultEnteredSteps.get();
             }
-            if (!enteredStepIds.contains(currentStepId)) {
-                enteredStepIds.add(currentStepId);
+            if (!enteredSteps.contains(currentStep)) {
+                enteredSteps.add(currentStep);
             }
 
             return new NormalizedState(
                     lifecycleStatus,
                     true,
-                    currentStepId,
-                    enteredStepIds,
+                    currentStep,
+                    enteredSteps,
                     false,
                     0,
                     0,
@@ -261,15 +254,15 @@ public class FarewellPreviewProgressService {
             );
         }
 
-        if (!enteredStepIds.contains(currentStepId)) {
-            enteredStepIds.add(currentStepId);
+        if (!enteredSteps.contains(currentStep)) {
+            enteredSteps.add(currentStep);
         }
 
         return new NormalizedState(
                 lifecycleStatus,
                 snapshot != null && Boolean.TRUE.equals(snapshot.hasCompletedGuide()),
-                currentStepId,
-                enteredStepIds,
+                currentStep,
+                enteredSteps,
                 snapshot != null && Boolean.TRUE.equals(snapshot.farewellMethodConfirmed()),
                 restingActiveStepNumber,
                 restingCompletedStepCount,
@@ -281,26 +274,16 @@ public class FarewellPreviewProgressService {
         );
     }
 
-    private List<String> buildCompletedStepIds(NormalizedState normalizedState) {
-        List<String> completedStepIds = new ArrayList<>();
+    private List<Integer> buildCompletedSteps(NormalizedState normalizedState) {
+        List<Integer> completedSteps = new ArrayList<>();
 
-        if (normalizedState.farewellMethodConfirmed()) {
-            completedStepIds.add("farewellMethod");
-        }
-        if (normalizedState.restingCompletedStepCount() >= 6) {
-            completedStepIds.add("resting");
-        }
-        if (normalizedState.administrationCompletedItemIds().size() == ADMINISTRATION_ITEM_IDS.size()) {
-            completedStepIds.add("administration");
-        }
-        if (normalizedState.belongingsConfirmed()) {
-            completedStepIds.add("belongings");
-        }
-        if (normalizedState.supportConfirmed()) {
-            completedStepIds.add("support");
-        }
+        if (normalizedState.farewellMethodConfirmed()) completedSteps.add(1);
+        if (normalizedState.restingCompletedStepCount() >= 6) completedSteps.add(2);
+        if (normalizedState.administrationCompletedItemIds().size() == ADMINISTRATION_ITEM_IDS.size()) completedSteps.add(3);
+        if (normalizedState.belongingsConfirmed()) completedSteps.add(4);
+        if (normalizedState.supportConfirmed()) completedSteps.add(5);
 
-        return completedStepIds;
+        return completedSteps;
     }
 
     private int computeProgressPercent(NormalizedState normalizedState) {
@@ -313,41 +296,41 @@ public class FarewellPreviewProgressService {
             );
         }
 
-        if (normalizedState.supportConfirmed()) {
-            return 100;
-        }
+        int total = 0;
 
-        int beforeFarewellSupportProgress = resolveProgressByCount(
-                normalizedState.supportCompletedItemIds().size(),
-                BEFORE_FAREWELL_SUPPORT_PROGRESS
-        );
-        if (beforeFarewellSupportProgress > 0) {
-            return beforeFarewellSupportProgress;
-        }
-        if (normalizedState.belongingsConfirmed()) {
-            return 80;
-        }
+        // Main 1: 이별 방법 선택 (20%)
+        if (normalizedState.farewellMethodConfirmed()) total += 20;
 
-        int beforeFarewellAdministrationProgress = resolveProgressByCount(
-                normalizedState.administrationCompletedItemIds().size(),
-                BEFORE_FAREWELL_ADMINISTRATION_PROGRESS
-        );
-        if (beforeFarewellAdministrationProgress > 0) {
-            return beforeFarewellAdministrationProgress;
-        }
+        // Main 2: 안치 준비 (3+3+3+3+3+3+2 = 20%)
+        int restingCompleted = normalizedState.restingCompletedStepCount();
+        if (restingCompleted >= 1) total += 3;
+        if (restingCompleted >= 2) total += 3;
+        if (restingCompleted >= 3) total += 3;
+        if (restingCompleted >= 4) total += 3;
+        if (restingCompleted >= 5) total += 3;
+        if (normalizedState.restingActiveStepNumber() >= 6) total += 3;
+        if (restingCompleted >= 6) total += 2;
 
-        int beforeFarewellRestingProgress = resolveProgressByCount(
-                normalizedState.restingCompletedStepCount(),
-                BEFORE_FAREWELL_RESTING_PROGRESS
-        );
-        if (beforeFarewellRestingProgress > 0) {
-            return beforeFarewellRestingProgress;
-        }
-        if (normalizedState.farewellMethodConfirmed()) {
-            return 20;
-        }
+        // Main 3: 행정처리 (5+7+6+7+5 = 30%)
+        List<String> adminIds = normalizedState.administrationCompletedItemIds();
+        if (adminIds.contains("registryNumber")) total += 5;
+        if (adminIds.contains("reportOffice"))   total += 7;
+        if (adminIds.contains("documents"))      total += 6;
+        if (adminIds.contains("submitReport"))   total += 7;
+        if (adminIds.contains("verifyReport"))   total += 5;
 
-        return 0;
+        // Main 4: 물건정리 (10%)
+        if (normalizedState.belongingsConfirmed()) total += 10;
+
+        // Main 5: 지원사업 (5+5+5+3+2 = 20%)
+        List<String> supportIds = normalizedState.supportCompletedItemIds();
+        if (supportIds.contains("seoulYouthMind"))    total += 5;
+        if (supportIds.contains("youthMind"))         total += 5;
+        if (supportIds.contains("nationalMind"))      total += 5;
+        if (supportIds.contains("seoulMentalCenter")) total += 3;
+        if (normalizedState.supportConfirmed())       total += 2;
+
+        return total;
     }
 
     static int computeAfterFarewellProgress(
@@ -385,12 +368,27 @@ public class FarewellPreviewProgressService {
         return progressByCount[Math.min(progressByCount.length, completedCount) - 1];
     }
 
-    private String normalizeStepId(String value) {
-        if (value == null || value.isBlank()) {
+    private Integer normalizeStep(Integer value) {
+        if (value == null) {
             return null;
         }
 
-        return STEP_IDS.contains(value) ? value : null;
+        return (value >= MIN_STEP && value <= MAX_STEP) ? value : null;
+    }
+
+    private List<Integer> dedupeAndFilterSteps(List<Integer> values) {
+        if (values == null || values.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        Set<Integer> deduped = new LinkedHashSet<>();
+        for (Integer value : values) {
+            if (value != null && value >= MIN_STEP && value <= MAX_STEP) {
+                deduped.add(value);
+            }
+        }
+
+        return new ArrayList<>(deduped);
     }
 
     private List<String> dedupeAndFilter(List<String> values, List<String> allowedValues) {
@@ -416,14 +414,14 @@ public class FarewellPreviewProgressService {
         return Math.max(0, Math.min(6, value));
     }
 
-    private String getDefaultCurrentStepId(LifecycleStatus lifecycleStatus) {
-        return lifecycleStatus == LifecycleStatus.AFTER_FAREWELL ? "administration" : "farewellMethod";
+    private int getDefaultCurrentStep(LifecycleStatus lifecycleStatus) {
+        return lifecycleStatus == LifecycleStatus.AFTER_FAREWELL ? 3 : 1;
     }
 
     private record Snapshot(
             Boolean hasCompletedGuide,
-            String currentStepId,
-            List<String> enteredStepIds,
+            Integer currentStep,
+            List<Integer> enteredSteps,
             Boolean farewellMethodConfirmed,
             Integer restingActiveStepNumber,
             Integer restingCompletedStepCount,
@@ -436,8 +434,8 @@ public class FarewellPreviewProgressService {
         private static Snapshot from(FarewellPreviewProgress progress) {
             return new Snapshot(
                     progress.getHasCompletedGuide(),
-                    progress.getCurrentStepId(),
-                    progress.getEnteredStepIds(),
+                    progress.getCurrentStep(),
+                    progress.getEnteredSteps(),
                     progress.getFarewellMethodConfirmed(),
                     progress.getRestingActiveStepNumber(),
                     progress.getRestingCompletedStepCount(),
@@ -452,8 +450,8 @@ public class FarewellPreviewProgressService {
         private static Snapshot from(FarewellPreviewProgressUpdateRequest request) {
             return new Snapshot(
                     request.getHasCompletedGuide(),
-                    request.getCurrentStepId(),
-                    request.getEnteredStepIds(),
+                    request.getCurrentStep(),
+                    request.getEnteredSteps(),
                     request.getFarewellMethodConfirmed(),
                     request.getRestingActiveStepNumber(),
                     request.getRestingCompletedStepCount(),
@@ -469,8 +467,8 @@ public class FarewellPreviewProgressService {
     private record NormalizedState(
             LifecycleStatus lifecycleStatus,
             boolean hasCompletedGuide,
-            String currentStepId,
-            List<String> enteredStepIds,
+            Integer currentStep,
+            List<Integer> enteredSteps,
             boolean farewellMethodConfirmed,
             int restingActiveStepNumber,
             int restingCompletedStepCount,

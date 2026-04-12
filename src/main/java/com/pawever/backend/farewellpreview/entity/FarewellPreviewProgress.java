@@ -1,6 +1,7 @@
 package com.pawever.backend.farewellpreview.entity;
 
 import com.pawever.backend.global.common.BaseTimeEntity;
+import com.pawever.backend.global.common.IntegerListJsonConverter;
 import com.pawever.backend.global.common.StringListJsonConverter;
 import com.pawever.backend.pet.entity.Pet;
 import jakarta.persistence.Column;
@@ -42,12 +43,12 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
     private Boolean hasCompletedGuide;
 
     @Column(nullable = false)
-    private String currentStepId;
+    private Integer currentStep;
 
     @Builder.Default
-    @Convert(converter = StringListJsonConverter.class)
+    @Convert(converter = IntegerListJsonConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
-    private List<String> enteredStepIds = new ArrayList<>();
+    private List<Integer> enteredSteps = new ArrayList<>();
 
     @Column(nullable = false)
     private Boolean farewellMethodConfirmed;
@@ -81,8 +82,8 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
 
     public void update(
             boolean hasCompletedGuide,
-            String currentStepId,
-            List<String> enteredStepIds,
+            int currentStep,
+            List<Integer> enteredSteps,
             boolean farewellMethodConfirmed,
             int restingActiveStepNumber,
             int restingCompletedStepCount,
@@ -93,8 +94,8 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
             boolean supportConfirmed
     ) {
         this.hasCompletedGuide = hasCompletedGuide;
-        this.currentStepId = currentStepId;
-        this.enteredStepIds = new ArrayList<>(enteredStepIds);
+        this.currentStep = currentStep;
+        this.enteredSteps = new ArrayList<>(enteredSteps);
         this.farewellMethodConfirmed = farewellMethodConfirmed;
         this.restingActiveStepNumber = restingActiveStepNumber;
         this.restingCompletedStepCount = restingCompletedStepCount;
