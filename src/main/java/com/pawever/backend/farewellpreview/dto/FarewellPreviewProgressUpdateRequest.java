@@ -10,14 +10,12 @@ import java.util.List;
 public class FarewellPreviewProgressUpdateRequest {
 
     private Boolean hasCompletedGuide;
-    private String currentStepId;
-    private List<String> enteredStepIds;
-    private Boolean farewellMethodConfirmed;
-    private Integer restingActiveStepNumber;
-    private Integer restingCompletedStepCount;
-    private List<String> administrationCompletedItemIds;
-    private List<String> belongingsSelectedOptionIds;
-    private Boolean belongingsConfirmed;
-    private List<String> supportCompletedItemIds;
-    private Boolean supportConfirmed;
+    private Integer currentStep;
+    private List<Integer> enteredSteps;
+    private List<Integer> completedMainSteps;
+    private List<Integer> restingCompletedSubStepNumbers;
+    private List<Integer> restingStep2CheckedItemNumbers;
+    private List<Integer> administrationCompletedSubStepNumbers;
+    private List<Integer> belongingsSelectedOptionNumbers;
+    private List<Integer> supportCompletedSubStepNumbers;
 }

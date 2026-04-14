@@ -92,7 +92,11 @@ public class MemorialService {
         EmergencyProgress progress = emergencyProgressRepository.findByPetId(petId).orElse(null);
         EmergencyProgressState state = resolveEmergencyProgressState(progress);
 
-        return toEmergencyProgressResponse(pet, state, progress != null ? progress.getUpdatedAt() : null);
+        List<Integer> restingStep2CheckedItemNumbers = farewellPreviewProgressRepository.findByPetId(petId)
+                .map(fp -> fp.getRestingStep2CheckedItemNumbers())
+                .orElse(List.of());
+
+        return toEmergencyProgressResponse(pet, state, restingStep2CheckedItemNumbers, progress != null ? progress.getUpdatedAt() : null);
     }
 
     @Transactional
@@ -119,7 +123,12 @@ public class MemorialService {
         );
 
         EmergencyProgress savedProgress = emergencyProgressRepository.saveAndFlush(progress);
-        return toEmergencyProgressResponse(pet, state, savedProgress.getUpdatedAt());
+
+        List<Integer> restingStep2CheckedItemNumbers = farewellPreviewProgressRepository.findByPetId(petId)
+                .map(fp -> fp.getRestingStep2CheckedItemNumbers())
+                .orElse(List.of());
+
+        return toEmergencyProgressResponse(pet, state, restingStep2CheckedItemNumbers, savedProgress.getUpdatedAt());
     }
 
     /**
@@ -585,6 +594,7 @@ public class MemorialService {
     private EmergencyProgressResponse toEmergencyProgressResponse(
             Pet pet,
             EmergencyProgressState state,
+            List<Integer> restingStep2CheckedItemNumbers,
             LocalDateTime updatedAt
     ) {
         return EmergencyProgressResponse.builder()
@@ -593,6 +603,7 @@ public class MemorialService {
                 .restingActiveStepNumber(state.restingActiveStepNumber())
                 .restingCompletedStepCount(state.restingCompletedStepCount())
                 .restingTotalStepCount(EMERGENCY_RESTING_TOTAL_STEP_COUNT)
+                .restingStep2CheckedItemNumbers(restingStep2CheckedItemNumbers)
                 .funeralCompanyCompleted(state.funeralCompanyCompleted())
                 .updatedAt(updatedAt)
                 .build();
