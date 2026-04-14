@@ -14,6 +14,7 @@ public class FarewellPreviewProgressUpdateRequest {
     private List<Integer> enteredSteps;
     private List<Integer> completedMainSteps;
     private List<Integer> restingCompletedSubStepNumbers;
+    private List<Integer> restingStep2CheckedItemNumbers;
     private List<Integer> administrationCompletedSubStepNumbers;
     private List<Integer> belongingsSelectedOptionNumbers;
     private List<Integer> supportCompletedSubStepNumbers;

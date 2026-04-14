@@ -134,6 +134,7 @@ CREATE TABLE `pet_missions` (
 -- entered_steps: 진입한 메인 스텝 번호 목록 (JSON 배열)
 -- completed_main_steps: 완료된 메인 스텝 번호 목록 (1=이별방법, 4=물건정리)
 -- resting_completed_sub_step_numbers: 안치준비 완료 하위단계 번호 (1~5: 다음으로, 6: 6단계 열기, 7: 6단계 완료)
+-- resting_step2_checked_item_numbers: 안치준비 2단계 체크한 준비물 번호 (1:담요/이불, 2:물티슈/거즈, 3:배변패드/천, 4:아이스팩, 5:목받침수건, 6:위생장갑)
 -- administration_completed_sub_step_numbers: 행정처리 완료 하위단계 번호 (1~5)
 -- belongings_selected_option_numbers: 물건정리 선택 옵션 번호 (1~4)
 -- support_completed_sub_step_numbers: 지원사업 완료 하위단계 번호 (1~4: 토글, 5: 최종확인)
@@ -145,6 +146,7 @@ CREATE TABLE `farewell_preview_progresses` (
     `entered_steps`                             TEXT        NOT NULL,
     `completed_main_steps`                      TEXT        NOT NULL,
     `resting_completed_sub_step_numbers`        TEXT        NOT NULL,
+    `resting_step2_checked_item_numbers`        TEXT        NOT NULL,
     `administration_completed_sub_step_numbers` TEXT        NOT NULL,
     `belongings_selected_option_numbers`        TEXT        NOT NULL,
     `support_completed_sub_step_numbers`        TEXT        NOT NULL,

@@ -62,6 +62,13 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
     @Column(nullable = false, columnDefinition = "TEXT")
     private List<Integer> restingCompletedSubStepNumbers = new ArrayList<>();
 
+    // 안치 준비 2단계에서 체크한 준비물 번호 목록 (1~6, 독립적)
+    // 1: 담요/이불, 2: 물티슈/거즈, 3: 배변패드/깨끗한 천, 4: 아이스팩, 5: 목받침용수건, 6: 위생장갑
+    @Builder.Default
+    @Convert(converter = IntegerListJsonConverter.class)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private List<Integer> restingStep2CheckedItemNumbers = new ArrayList<>();
+
     // 행정처리 완료 단계 번호 목록 (1~5, 독립적)
     @Builder.Default
     @Convert(converter = IntegerListJsonConverter.class)
@@ -87,6 +94,7 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
             List<Integer> enteredSteps,
             List<Integer> completedMainSteps,
             List<Integer> restingCompletedSubStepNumbers,
+            List<Integer> restingStep2CheckedItemNumbers,
             List<Integer> administrationCompletedSubStepNumbers,
             List<Integer> belongingsSelectedOptionNumbers,
             List<Integer> supportCompletedSubStepNumbers
@@ -96,6 +104,7 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
         this.enteredSteps = new ArrayList<>(enteredSteps);
         this.completedMainSteps = new ArrayList<>(completedMainSteps);
         this.restingCompletedSubStepNumbers = new ArrayList<>(restingCompletedSubStepNumbers);
+        this.restingStep2CheckedItemNumbers = new ArrayList<>(restingStep2CheckedItemNumbers);
         this.administrationCompletedSubStepNumbers = new ArrayList<>(administrationCompletedSubStepNumbers);
         this.belongingsSelectedOptionNumbers = new ArrayList<>(belongingsSelectedOptionNumbers);
         this.supportCompletedSubStepNumbers = new ArrayList<>(supportCompletedSubStepNumbers);

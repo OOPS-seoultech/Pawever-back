@@ -29,6 +29,7 @@ public class FarewellPreviewProgressService {
     private static final int MIN_MAIN_STEP = 1;
     private static final int MAX_MAIN_STEP = 5;
     private static final int MAX_RESTING_SUB_STEP = 7;      // 1~5: 다음으로, 6: 6단계 열기, 7: 6단계 완료
+    private static final int MAX_RESTING_STEP2_ITEM = 6;    // 안치준비 2단계 준비물 (1~6)
     private static final int MAX_ADMINISTRATION_SUB_STEP = 5;
     private static final int MAX_BELONGINGS_OPTION = 4;
     private static final int MAX_SUPPORT_SUB_STEP = 5;      // 1~4: 토글 확인, 5: 최종 확인
@@ -86,6 +87,7 @@ public class FarewellPreviewProgressService {
                 normalizedState.enteredSteps(),
                 normalizedState.completedMainSteps(),
                 normalizedState.restingCompletedSubStepNumbers(),
+                normalizedState.restingStep2CheckedItemNumbers(),
                 normalizedState.administrationCompletedSubStepNumbers(),
                 normalizedState.belongingsSelectedOptionNumbers(),
                 normalizedState.supportCompletedSubStepNumbers()
@@ -132,6 +134,7 @@ public class FarewellPreviewProgressService {
                 .enteredSteps(List.copyOf(s.enteredSteps()))
                 .completedMainSteps(List.copyOf(s.completedMainSteps()))
                 .restingCompletedSubStepNumbers(List.copyOf(s.restingCompletedSubStepNumbers()))
+                .restingStep2CheckedItemNumbers(List.copyOf(s.restingStep2CheckedItemNumbers()))
                 .administrationCompletedSubStepNumbers(List.copyOf(s.administrationCompletedSubStepNumbers()))
                 .belongingsSelectedOptionNumbers(List.copyOf(s.belongingsSelectedOptionNumbers()))
                 .supportCompletedSubStepNumbers(List.copyOf(s.supportCompletedSubStepNumbers()))
@@ -146,6 +149,7 @@ public class FarewellPreviewProgressService {
                     lifecycleStatus,
                     false,
                     null,
+                    new ArrayList<>(),
                     new ArrayList<>(),
                     new ArrayList<>(),
                     new ArrayList<>(),
@@ -166,6 +170,8 @@ public class FarewellPreviewProgressService {
                 snapshot == null ? null : snapshot.completedMainSteps(), MIN_MAIN_STEP, MAX_MAIN_STEP);
         List<Integer> restingCompletedSubStepNumbers = dedupeAndFilterInts(
                 snapshot == null ? null : snapshot.restingCompletedSubStepNumbers(), 1, MAX_RESTING_SUB_STEP);
+        List<Integer> restingStep2CheckedItemNumbers = dedupeAndFilterInts(
+                snapshot == null ? null : snapshot.restingStep2CheckedItemNumbers(), 1, MAX_RESTING_STEP2_ITEM);
         List<Integer> administrationCompletedSubStepNumbers = dedupeAndFilterInts(
                 snapshot == null ? null : snapshot.administrationCompletedSubStepNumbers(), 1, MAX_ADMINISTRATION_SUB_STEP);
         List<Integer> belongingsSelectedOptionNumbers = dedupeAndFilterInts(
@@ -207,6 +213,7 @@ public class FarewellPreviewProgressService {
                     enteredSteps,
                     completedMainSteps,
                     new ArrayList<>(),
+                    new ArrayList<>(),
                     administrationCompletedSubStepNumbers,
                     belongingsSelectedOptionNumbers,
                     supportCompletedSubStepNumbers
@@ -224,6 +231,7 @@ public class FarewellPreviewProgressService {
                 enteredSteps,
                 completedMainSteps,
                 restingCompletedSubStepNumbers,
+                restingStep2CheckedItemNumbers,
                 administrationCompletedSubStepNumbers,
                 belongingsSelectedOptionNumbers,
                 supportCompletedSubStepNumbers
@@ -341,6 +349,7 @@ public class FarewellPreviewProgressService {
             List<Integer> enteredSteps,
             List<Integer> completedMainSteps,
             List<Integer> restingCompletedSubStepNumbers,
+            List<Integer> restingStep2CheckedItemNumbers,
             List<Integer> administrationCompletedSubStepNumbers,
             List<Integer> belongingsSelectedOptionNumbers,
             List<Integer> supportCompletedSubStepNumbers
@@ -352,6 +361,7 @@ public class FarewellPreviewProgressService {
                     progress.getEnteredSteps(),
                     progress.getCompletedMainSteps(),
                     progress.getRestingCompletedSubStepNumbers(),
+                    progress.getRestingStep2CheckedItemNumbers(),
                     progress.getAdministrationCompletedSubStepNumbers(),
                     progress.getBelongingsSelectedOptionNumbers(),
                     progress.getSupportCompletedSubStepNumbers()
@@ -365,6 +375,7 @@ public class FarewellPreviewProgressService {
                     request.getEnteredSteps(),
                     request.getCompletedMainSteps(),
                     request.getRestingCompletedSubStepNumbers(),
+                    request.getRestingStep2CheckedItemNumbers(),
                     request.getAdministrationCompletedSubStepNumbers(),
                     request.getBelongingsSelectedOptionNumbers(),
                     request.getSupportCompletedSubStepNumbers()
@@ -379,6 +390,7 @@ public class FarewellPreviewProgressService {
             List<Integer> enteredSteps,
             List<Integer> completedMainSteps,
             List<Integer> restingCompletedSubStepNumbers,
+            List<Integer> restingStep2CheckedItemNumbers,
             List<Integer> administrationCompletedSubStepNumbers,
             List<Integer> belongingsSelectedOptionNumbers,
             List<Integer> supportCompletedSubStepNumbers
