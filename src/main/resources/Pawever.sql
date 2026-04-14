@@ -130,22 +130,26 @@ CREATE TABLE `pet_missions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 8. 미리 살펴보기 진행 상태 (farewell_preview_progresses)
+-- current_step: 현재 보고 있는 메인 스텝 번호 (1~5)
+-- entered_steps: 진입한 메인 스텝 번호 목록 (JSON 배열)
+-- completed_main_steps: 완료된 메인 스텝 번호 목록 (1=이별방법, 4=물건정리)
+-- resting_completed_sub_step_numbers: 안치준비 완료 하위단계 번호 (1~5: 다음으로, 6: 6단계 열기, 7: 6단계 완료)
+-- administration_completed_sub_step_numbers: 행정처리 완료 하위단계 번호 (1~5)
+-- belongings_selected_option_numbers: 물건정리 선택 옵션 번호 (1~4)
+-- support_completed_sub_step_numbers: 지원사업 완료 하위단계 번호 (1~4: 토글, 5: 최종확인)
 CREATE TABLE `farewell_preview_progresses` (
-    `id`                             BIGINT       NOT NULL AUTO_INCREMENT,
-    `pet_id`                         BIGINT       NOT NULL,
-    `has_completed_guide`            BOOLEAN      NOT NULL DEFAULT FALSE,
-    `current_step_id`                VARCHAR(255) NOT NULL,
-    `entered_step_ids`               TEXT         NOT NULL,
-    `farewell_method_confirmed`      BOOLEAN      NOT NULL DEFAULT FALSE,
-    `resting_active_step_number`     INT          NOT NULL DEFAULT 0,
-    `resting_completed_step_count`   INT          NOT NULL DEFAULT 0,
-    `administration_completed_item_ids` TEXT      NOT NULL,
-    `belongings_selected_option_ids` TEXT         NOT NULL,
-    `belongings_confirmed`           BOOLEAN      NOT NULL DEFAULT FALSE,
-    `support_completed_item_ids`     TEXT         NOT NULL,
-    `support_confirmed`              BOOLEAN      NOT NULL DEFAULT FALSE,
-    `created_at`                     DATETIME(6)  NULL,
-    `updated_at`                     DATETIME(6)  NULL,
+    `id`                                        BIGINT      NOT NULL AUTO_INCREMENT,
+    `pet_id`                                    BIGINT      NOT NULL,
+    `has_completed_guide`                       BOOLEAN     NOT NULL DEFAULT FALSE,
+    `current_step`                              INT         NOT NULL DEFAULT 1,
+    `entered_steps`                             TEXT        NOT NULL,
+    `completed_main_steps`                      TEXT        NOT NULL,
+    `resting_completed_sub_step_numbers`        TEXT        NOT NULL,
+    `administration_completed_sub_step_numbers` TEXT        NOT NULL,
+    `belongings_selected_option_numbers`        TEXT        NOT NULL,
+    `support_completed_sub_step_numbers`        TEXT        NOT NULL,
+    `created_at`                                DATETIME(6) NULL,
+    `updated_at`                                DATETIME(6) NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `UK_farewell_preview_progresses_pet_id` (`pet_id`),
     CONSTRAINT `FK_pets_TO_farewell_preview_progresses`

@@ -21,15 +21,11 @@ public class FarewellPreviewProgressResponse {
     private boolean hasCompletedGuide;
     private Integer currentStep;
     private List<Integer> enteredSteps;
-    private List<Integer> completedSteps;
-    private boolean farewellMethodConfirmed;
-    private int restingActiveStepNumber;
-    private int restingCompletedStepCount;
-    private List<String> administrationCompletedItemIds;
-    private List<String> belongingsSelectedOptionIds;
-    private boolean belongingsConfirmed;
-    private List<String> supportCompletedItemIds;
-    private boolean supportConfirmed;
+    private List<Integer> completedMainSteps;
+    private List<Integer> restingCompletedSubStepNumbers;
+    private List<Integer> administrationCompletedSubStepNumbers;
+    private List<Integer> belongingsSelectedOptionNumbers;
+    private List<Integer> supportCompletedSubStepNumbers;
 
     @JsonProperty("isOwnerWritable")
     private boolean ownerWritable;

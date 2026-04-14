@@ -2,7 +2,6 @@ package com.pawever.backend.farewellpreview.entity;
 
 import com.pawever.backend.global.common.BaseTimeEntity;
 import com.pawever.backend.global.common.IntegerListJsonConverter;
-import com.pawever.backend.global.common.StringListJsonConverter;
 import com.pawever.backend.pet.entity.Pet;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
@@ -50,59 +49,55 @@ public class FarewellPreviewProgress extends BaseTimeEntity {
     @Column(nullable = false, columnDefinition = "TEXT")
     private List<Integer> enteredSteps = new ArrayList<>();
 
-    @Column(nullable = false)
-    private Boolean farewellMethodConfirmed;
-
-    @Column(nullable = false)
-    private Integer restingActiveStepNumber;
-
-    @Column(nullable = false)
-    private Integer restingCompletedStepCount;
-
+    // 완료된 메인 스텝 번호 목록 (1~5, 독립적)
     @Builder.Default
-    @Convert(converter = StringListJsonConverter.class)
+    @Convert(converter = IntegerListJsonConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
-    private List<String> administrationCompletedItemIds = new ArrayList<>();
+    private List<Integer> completedMainSteps = new ArrayList<>();
 
+    // 안치 준비 완료 이벤트 번호 목록 (1~7, 독립적)
+    // 1~5: 각 단계 다음으로 클릭, 6: 6단계 페이지 열기, 7: 6단계 완료 클릭
     @Builder.Default
-    @Convert(converter = StringListJsonConverter.class)
+    @Convert(converter = IntegerListJsonConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
-    private List<String> belongingsSelectedOptionIds = new ArrayList<>();
+    private List<Integer> restingCompletedSubStepNumbers = new ArrayList<>();
 
-    @Column(nullable = false)
-    private Boolean belongingsConfirmed;
-
+    // 행정처리 완료 단계 번호 목록 (1~5, 독립적)
     @Builder.Default
-    @Convert(converter = StringListJsonConverter.class)
+    @Convert(converter = IntegerListJsonConverter.class)
     @Column(nullable = false, columnDefinition = "TEXT")
-    private List<String> supportCompletedItemIds = new ArrayList<>();
+    private List<Integer> administrationCompletedSubStepNumbers = new ArrayList<>();
 
-    @Column(nullable = false)
-    private Boolean supportConfirmed;
+    // 물건정리 선택 옵션 번호 목록 (1~4, 독립적)
+    @Builder.Default
+    @Convert(converter = IntegerListJsonConverter.class)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private List<Integer> belongingsSelectedOptionNumbers = new ArrayList<>();
+
+    // 지원사업 완료 이벤트 번호 목록 (1~5, 독립적)
+    // 1~4: 각 토글 확인 완료, 5: 최종 확인 완료 버튼 클릭
+    @Builder.Default
+    @Convert(converter = IntegerListJsonConverter.class)
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private List<Integer> supportCompletedSubStepNumbers = new ArrayList<>();
 
     public void update(
             boolean hasCompletedGuide,
             int currentStep,
             List<Integer> enteredSteps,
-            boolean farewellMethodConfirmed,
-            int restingActiveStepNumber,
-            int restingCompletedStepCount,
-            List<String> administrationCompletedItemIds,
-            List<String> belongingsSelectedOptionIds,
-            boolean belongingsConfirmed,
-            List<String> supportCompletedItemIds,
-            boolean supportConfirmed
+            List<Integer> completedMainSteps,
+            List<Integer> restingCompletedSubStepNumbers,
+            List<Integer> administrationCompletedSubStepNumbers,
+            List<Integer> belongingsSelectedOptionNumbers,
+            List<Integer> supportCompletedSubStepNumbers
     ) {
         this.hasCompletedGuide = hasCompletedGuide;
         this.currentStep = currentStep;
         this.enteredSteps = new ArrayList<>(enteredSteps);
-        this.farewellMethodConfirmed = farewellMethodConfirmed;
-        this.restingActiveStepNumber = restingActiveStepNumber;
-        this.restingCompletedStepCount = restingCompletedStepCount;
-        this.administrationCompletedItemIds = new ArrayList<>(administrationCompletedItemIds);
-        this.belongingsSelectedOptionIds = new ArrayList<>(belongingsSelectedOptionIds);
-        this.belongingsConfirmed = belongingsConfirmed;
-        this.supportCompletedItemIds = new ArrayList<>(supportCompletedItemIds);
-        this.supportConfirmed = supportConfirmed;
+        this.completedMainSteps = new ArrayList<>(completedMainSteps);
+        this.restingCompletedSubStepNumbers = new ArrayList<>(restingCompletedSubStepNumbers);
+        this.administrationCompletedSubStepNumbers = new ArrayList<>(administrationCompletedSubStepNumbers);
+        this.belongingsSelectedOptionNumbers = new ArrayList<>(belongingsSelectedOptionNumbers);
+        this.supportCompletedSubStepNumbers = new ArrayList<>(supportCompletedSubStepNumbers);
     }
 }
