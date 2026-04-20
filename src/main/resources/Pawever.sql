@@ -175,17 +175,20 @@ CREATE TABLE `emergency_progresses` (
 
 -- 10. 댓글 (comments)
 CREATE TABLE `comments` (
-    `id`            BIGINT      NOT NULL AUTO_INCREMENT,
-    `user_id`       BIGINT      NULL,
-    `pet_id`        BIGINT      NOT NULL,
-    `content`       TEXT        NOT NULL,
-    `created_at`    DATETIME(6) NULL,
-    `updated_at`    DATETIME(6) NULL,
+    `id`              BIGINT      NOT NULL AUTO_INCREMENT,
+    `user_id`         BIGINT      NULL,
+    `pet_id`          BIGINT      NOT NULL,
+    `author_pet_id`   BIGINT      NULL,
+    `content`         TEXT        NOT NULL,
+    `created_at`      DATETIME(6) NULL,
+    `updated_at`      DATETIME(6) NULL,
     PRIMARY KEY (`id`),
     CONSTRAINT `FK_users_TO_comments`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     CONSTRAINT `FK_pets_TO_comments`
-        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`)
+        FOREIGN KEY (`pet_id`) REFERENCES `pets` (`id`),
+    CONSTRAINT `FK_author_pets_TO_comments`
+        FOREIGN KEY (`author_pet_id`) REFERENCES `pets` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 10-1. 댓글 신고 사유 (report_reasons)
