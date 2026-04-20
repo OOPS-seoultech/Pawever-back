@@ -32,8 +32,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -240,20 +238,19 @@ public class MemorialService {
                 .findFirst()
                 .orElse(null);
         List<Comment> commentEntities = commentRepository.findByPetIdOrderByCreatedAtDesc(petId);
-        Map<Long, Pet> selectedPetMap = buildSelectedPetMap(commentEntities);
 
         List<CommentResponse> comments = commentEntities
                 .stream()
                 .map(comment -> {
                     User commentUser = comment.getUser();
                     Long commentUserId = commentUser == null ? null : commentUser.getId();
-                    Long selectedPetId = commentUser == null ? null : commentUser.getSelectedPetId();
                     boolean canDelete = commentUserId != null && commentUserId.equals(userId);
+                    Pet authorPet = comment.getAuthorPet();
                     return CommentResponse.of(
                             comment,
                             canDelete,
                             resolveAuthorRoleByOwnerId(ownerUserId, commentUserId),
-                            selectedPetId == null ? null : CommentAuthorPetResponse.from(selectedPetMap.get(selectedPetId))
+                            authorPet == null ? null : CommentAuthorPetResponse.from(authorPet)
                     );
                 })
                 .toList();
@@ -314,6 +311,7 @@ public class MemorialService {
         Comment comment = Comment.builder()
                 .user(user)
                 .pet(pet)
+                .authorPet(authorPet)
                 .content(request.getContent())
                 .build();
         comment = commentRepository.save(comment);
@@ -340,7 +338,7 @@ public class MemorialService {
                 comment,
                 true,
                 resolveAuthorRole(petId, userId),
-                buildAuthorPetResponse(user.getSelectedPetId())
+                authorPet == null ? null : CommentAuthorPetResponse.from(authorPet)
         );
     }
 
@@ -362,7 +360,7 @@ public class MemorialService {
                 comment,
                 true,
                 resolveAuthorRole(comment.getPet().getId(), userId),
-                buildAuthorPetResponse(comment.getUser().getSelectedPetId())
+                comment.getAuthorPet() == null ? null : CommentAuthorPetResponse.from(comment.getAuthorPet())
         );
     }
 
@@ -378,18 +376,6 @@ public class MemorialService {
             return CommentAuthorRole.OWNER;
         }
         return CommentAuthorRole.GUEST;
-    }
-
-    private Map<Long, Pet> buildSelectedPetMap(List<Comment> comments) {
-        Set<Long> selectedPetIds = comments.stream()
-                .map(Comment::getUser)
-                .filter(Objects::nonNull)
-                .map(User::getSelectedPetId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        return petRepository.findAllById(selectedPetIds).stream()
-                .collect(Collectors.toMap(Pet::getId, pet -> pet));
     }
 
     private long resolveSelectedPetUnreadCount(Long userId, User user) {
@@ -466,15 +452,6 @@ public class MemorialService {
         }
 
         return "dog";
-    }
-
-    private CommentAuthorPetResponse buildAuthorPetResponse(Long selectedPetId) {
-        if (selectedPetId == null) {
-            return null;
-        }
-        return petRepository.findById(selectedPetId)
-                .map(CommentAuthorPetResponse::from)
-                .orElse(null);
     }
 
     private Pet resolveAuthorPet(User user) {

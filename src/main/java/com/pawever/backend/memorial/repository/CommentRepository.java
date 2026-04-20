@@ -11,7 +11,15 @@ import java.util.List;
 
 public interface CommentRepository extends JpaRepository<Comment, Long> {
 
-    List<Comment> findByPetIdOrderByCreatedAtDesc(Long petId);
+    @Query("""
+            SELECT c FROM Comment c
+            LEFT JOIN FETCH c.authorPet ap
+            LEFT JOIN FETCH ap.breed b
+            LEFT JOIN FETCH b.animalType
+            WHERE c.pet.id = :petId
+            ORDER BY c.createdAt DESC
+            """)
+    List<Comment> findByPetIdOrderByCreatedAtDesc(@Param("petId") Long petId);
 
     @Query("""
             SELECT COUNT(c)

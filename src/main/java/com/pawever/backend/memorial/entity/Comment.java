@@ -26,6 +26,10 @@ public class Comment extends BaseTimeEntity {
     @JoinColumn(name = "pet_id", nullable = false)
     private Pet pet;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "author_pet_id")
+    private Pet authorPet;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
