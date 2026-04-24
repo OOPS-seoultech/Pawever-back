@@ -138,8 +138,14 @@ public class AuthService {
 
     private void checkDuplicatePhone(String phoneHash) {
         if (phoneHash == null) return;
-        if (userRepository.existsByPhoneHashAndDeletedAtIsNull(phoneHash)) {
-            throw new CustomException(ErrorCode.DUPLICATE_PHONE);
-        }
+        userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash).ifPresent(existing -> {
+            if (existing.getKakaoId() != null) {
+                throw new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
+            } else if (existing.getNaverId() != null) {
+                throw new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
+            } else {
+                throw new CustomException(ErrorCode.DUPLICATE_PHONE);
+            }
+        });
     }
 }

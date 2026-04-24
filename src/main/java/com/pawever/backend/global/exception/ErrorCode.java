@@ -24,6 +24,8 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     USER_ALREADY_DELETED(HttpStatus.BAD_REQUEST, "이미 탈퇴한 사용자입니다."),
     DUPLICATE_PHONE(HttpStatus.CONFLICT, "이미 가입된 전화번호입니다."),
+    DUPLICATE_PHONE_KAKAO(HttpStatus.CONFLICT, "이미 카카오로 가입된 계정이 있어요.\n카카오로 로그인해주세요!"),
+    DUPLICATE_PHONE_NAVER(HttpStatus.CONFLICT, "이미 네이버로 가입된 계정이 있어요.\n네이버로 로그인해주세요!"),
 
     // Pet
     PET_NOT_FOUND(HttpStatus.NOT_FOUND, "반려동물을 찾을 수 없습니다."),
