@@ -64,14 +64,13 @@ jobs:
             FIREBASE_CREDENTIALS_PATH=file:/app/firebase-service-account.json
             EOF
 
-            docker compose down
+            docker compose down > /dev/null 2>&1
             if docker compose up -d --build > /tmp/deploy.log 2>&1; then
-              echo "--- Deploy 성공 ---"
-              docker compose ps
-              echo "--- 미사용 컨테이너·이미지·빌드 캐시 정리 ---"
-              docker system prune -af
+              echo "✅ Deploy 성공"
+              docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+              docker system prune -af > /dev/null 2>&1
             else
-              echo "--- Deploy 실패 (마지막 50줄) ---"
+              echo "❌ Deploy 실패"
               tail -50 /tmp/deploy.log
               exit 1
             fi

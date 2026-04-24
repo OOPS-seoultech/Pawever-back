@@ -84,6 +84,11 @@
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeCallerData>false</includeCallerData>
                 <customFields>{"service":"${APP_NAME}"}</customFields>
+                <fieldNames class="net.logstash.logback.fieldnames.LogstashFieldNames">
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                    <tags>[ignore]</tags>
+                </fieldNames>
                 <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
                     <maxDepthPerThrowable>20</maxDepthPerThrowable>
                     <maxLength>8192</maxLength>
@@ -105,6 +110,11 @@
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeCallerData>false</includeCallerData>
                 <customFields>{"service":"${APP_NAME}"}</customFields>
+                <fieldNames class="net.logstash.logback.fieldnames.LogstashFieldNames">
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                    <tags>[ignore]</tags>
+                </fieldNames>
                 <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
                     <maxDepthPerThrowable>20</maxDepthPerThrowable>
                     <maxLength>8192</maxLength>
@@ -126,6 +136,11 @@
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeCallerData>false</includeCallerData>
                 <customFields>{"service":"${APP_NAME}"}</customFields>
+                <fieldNames class="net.logstash.logback.fieldnames.LogstashFieldNames">
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                    <tags>[ignore]</tags>
+                </fieldNames>
                 <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
                     <maxDepthPerThrowable>30</maxDepthPerThrowable>
                     <maxLength>16384</maxLength>
@@ -147,6 +162,11 @@
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeCallerData>false</includeCallerData>
                 <customFields>{"service":"${APP_NAME}"}</customFields>
+                <fieldNames class="net.logstash.logback.fieldnames.LogstashFieldNames">
+                    <version>[ignore]</version>
+                    <levelValue>[ignore]</levelValue>
+                    <tags>[ignore]</tags>
+                </fieldNames>
             </encoder>
         </appender>
 

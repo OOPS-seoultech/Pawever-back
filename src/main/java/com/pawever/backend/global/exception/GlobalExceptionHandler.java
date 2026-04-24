@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<ApiResponse<Void>> handleCustomException(CustomException e) {
-        log.warn("커스텀 예외 처리: status={}, message={}", e.getErrorCode().getHttpStatus(), e.getMessage(), e);
+        log.info("커스텀 예외 처리: status={}, message={}", e.getErrorCode().getHttpStatus(), e.getMessage());
         return ResponseEntity
                 .status(e.getErrorCode().getHttpStatus())
                 .body(ApiResponse.error(e.getErrorCode().name(), e.getMessage()));
