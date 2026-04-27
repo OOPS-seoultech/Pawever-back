@@ -103,7 +103,23 @@ public class User extends BaseTimeEntity {
 
     public void withdraw() {
         this.deletedAt = LocalDateTime.now();
+        // 개인정보보호법 제21조: 수집 목적 달성(탈퇴) 시 즉시 파기
+        this.name = null;
+        this.email = null;
+        this.phone = null;
         this.phoneHash = null;
+        this.gender = null;
+        this.birthday = null;
+        this.birthYear = null;
+        this.ageRange = null;
+        this.nickname = null;
+        this.kakaoId = null;
+        this.naverId = null;
+        this.fcmToken = null;
+        this.profileImageUrl = null;
+        this.referralMemo = null;
+        this.notificationAgreedAt = null;
+        this.marketingAgreedAt = null;
     }
 
     public boolean isDeleted() {

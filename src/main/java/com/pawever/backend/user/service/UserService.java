@@ -117,6 +117,10 @@ public class UserService {
         // 탈퇴 유저가 남긴 댓글은 보존하되 작성자 FK만 제거한다.
         commentRepository.detachUserFromComments(userId);
 
+        if (user.getProfileImageUrl() != null) {
+            storageService.delete(user.getProfileImageUrl());
+        }
+
         user.withdraw();
         userRepository.save(user);
     }
