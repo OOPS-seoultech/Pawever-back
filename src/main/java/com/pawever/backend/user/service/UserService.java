@@ -1,5 +1,6 @@
 package com.pawever.backend.user.service;
 
+import com.pawever.backend.auth.client.AppleApiClient;
 import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
@@ -13,10 +14,12 @@ import com.pawever.backend.user.dto.UserUpdateRequest;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -28,6 +31,7 @@ public class UserService {
     private final PetService petService;
     private final StorageService storageService;
     private final HmacHasher hmacHasher;
+    private final AppleApiClient appleApiClient;
 
     public UserProfileResponse getProfile(Long userId) {
         User user = findActiveUser(userId);
@@ -116,6 +120,15 @@ public class UserService {
 
         // 탈퇴 유저가 남긴 댓글은 보존하되 작성자 FK만 제거한다.
         commentRepository.detachUserFromComments(userId);
+
+        // Apple 계정 연동 해제 (App Store 심사 요구사항 - 탈퇴 시 토큰 취소)
+        if (user.getAppleId() != null && user.getAppleRefreshToken() != null) {
+            try {
+                appleApiClient.revokeToken(user.getAppleRefreshToken());
+            } catch (Exception e) {
+                log.warn("Apple token revocation failed for user {}: {}", userId, e.getMessage());
+            }
+        }
 
         if (user.getProfileImageUrl() != null) {
             storageService.delete(user.getProfileImageUrl());

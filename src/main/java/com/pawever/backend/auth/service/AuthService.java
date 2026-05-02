@@ -1,7 +1,9 @@
 package com.pawever.backend.auth.service;
 
+import com.pawever.backend.auth.client.AppleApiClient;
 import com.pawever.backend.auth.client.KakaoApiClient;
 import com.pawever.backend.auth.client.NaverApiClient;
+import com.pawever.backend.auth.dto.AppleLoginRequest;
 import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.KakaoLoginRequest;
 import com.pawever.backend.auth.dto.NaverLoginRequest;
@@ -14,10 +16,13 @@ import com.pawever.backend.global.util.UrlUtils;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -27,6 +32,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final KakaoApiClient kakaoApiClient;
     private final NaverApiClient naverApiClient;
+    private final AppleApiClient appleApiClient;
     private final HmacHasher hmacHasher;
 
     @Value("${dev.login.password:}")
@@ -112,6 +118,43 @@ public class AuthService {
                 });
     }
 
+    @Transactional
+    public TokenResponse appleLogin(AppleLoginRequest request) {
+        AppleApiClient.AppleUserInfo userInfo = appleApiClient.getUserInfo(request.getIdentityToken());
+
+        boolean isNewUser;
+        User user;
+        var existing = userRepository.findByAppleIdAndDeletedAtIsNull(userInfo.appleId());
+        if (existing.isPresent()) {
+            user = existing.get();
+            isNewUser = false;
+        } else {
+            user = userRepository.save(User.builder()
+                    .appleId(userInfo.appleId())
+                    .email(userInfo.email())
+                    .build());
+            isNewUser = true;
+        }
+
+        // authorizationCode가 있으면 refresh_token 교환하여 저장 (탈퇴 시 취소용)
+        if (StringUtils.hasText(request.getAuthorizationCode())) {
+            try {
+                String refreshToken = appleApiClient.exchangeAuthCode(request.getAuthorizationCode());
+                user.updateAppleRefreshToken(refreshToken);
+            } catch (Exception e) {
+                log.warn("Apple auth code exchange failed for user {}: {}", user.getId(), e.getMessage());
+            }
+        }
+
+        return TokenResponse.builder()
+                .accessToken(jwtTokenProvider.createToken(user.getId()))
+                .userId(user.getId())
+                .isNewUser(isNewUser)
+                .selectedPetId(user.getSelectedPetId())
+                .onboardingComplete(user.isOnboardingComplete())
+                .build();
+    }
+
     /**
      * 개발용 로그인 (비밀번호 검증 후 테스트 유저 생성 및 JWT 발급)
      */
@@ -143,6 +186,8 @@ public class AuthService {
                 throw new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
             } else if (existing.getNaverId() != null) {
                 throw new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
+            } else if (existing.getAppleId() != null) {
+                throw new CustomException(ErrorCode.DUPLICATE_PHONE_APPLE);
             } else {
                 throw new CustomException(ErrorCode.DUPLICATE_PHONE);
             }

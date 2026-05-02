@@ -50,6 +50,12 @@ naver:
   client-secret: ${NAVER_CLIENT_SECRET:}
   redirect-uri: ${NAVER_REDIRECT_URI:http://localhost:28080/oauth/naver/callback}
 
+apple:
+  bundle-id: ${APPLE_BUNDLE_ID:}
+  team-id: ${APPLE_TEAM_ID:}
+  key-id: ${APPLE_KEY_ID:}
+  private-key: ${APPLE_PRIVATE_KEY:}
+
 firebase:
   credentials-path: ${FIREBASE_CREDENTIALS_PATH:classpath:firebase-service-account.json}
 

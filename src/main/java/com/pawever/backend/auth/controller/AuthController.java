@@ -1,5 +1,6 @@
 package com.pawever.backend.auth.controller;
 
+import com.pawever.backend.auth.dto.AppleLoginRequest;
 import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.KakaoLoginRequest;
 import com.pawever.backend.auth.dto.NaverLoginRequest;
@@ -31,6 +32,12 @@ public class AuthController {
     @PostMapping("/login/naver")
     public ResponseEntity<ApiResponse<TokenResponse>> naverLogin(@Valid @RequestBody NaverLoginRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(authService.naverLogin(request)));
+    }
+
+    @Operation(summary = "애플 소셜 로그인", description = "Apple identityToken으로 로그인 또는 회원가입 후 JWT를 발급합니다.")
+    @PostMapping("/login/apple")
+    public ResponseEntity<ApiResponse<TokenResponse>> appleLogin(@Valid @RequestBody AppleLoginRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.appleLogin(request)));
     }
 
     @Operation(summary = "개발용 로그인", description = "비밀번호 검증 후 기존 사용자의 JWT 토큰을 발급합니다.")

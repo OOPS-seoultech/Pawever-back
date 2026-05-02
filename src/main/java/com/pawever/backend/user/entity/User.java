@@ -49,6 +49,12 @@ public class User extends BaseTimeEntity {
 
     private String naverId;
 
+    private String appleId;
+
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(length = 500)
+    private String appleRefreshToken;
+
     private String profileImageUrl;
 
     private Long selectedPetId;
@@ -115,6 +121,8 @@ public class User extends BaseTimeEntity {
         this.nickname = null;
         this.kakaoId = null;
         this.naverId = null;
+        this.appleId = null;
+        this.appleRefreshToken = null;
         this.fcmToken = null;
         this.profileImageUrl = null;
         this.referralMemo = null;
@@ -148,5 +156,9 @@ public class User extends BaseTimeEntity {
 
     public void updateFcmToken(String fcmToken) {
         this.fcmToken = fcmToken;
+    }
+
+    public void updateAppleRefreshToken(String token) {
+        this.appleRefreshToken = token;
     }
 }
