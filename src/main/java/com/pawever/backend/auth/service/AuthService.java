@@ -41,6 +41,7 @@ public class AuthService {
     @Transactional
     public TokenResponse naverLogin(NaverLoginRequest request) {
         NaverApiClient.NaverUserInfo userInfo = naverApiClient.getUserInfo(request.getAccessToken());
+        log.info("[NaverLogin] naverId={} mobile={}", userInfo.getId(), userInfo.getMobile());
 
         return userRepository.findByNaverIdAndDeletedAtIsNull(userInfo.getId())
                 .map(user -> TokenResponse.builder()
