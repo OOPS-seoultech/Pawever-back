@@ -33,6 +33,10 @@ public class User extends BaseTimeEntity {
     @Column(unique = true)
     private String phoneHash;
 
+    /** 이메일 중복 검색용 Blind Index (HMAC-SHA256, Apple 로그인 전용) */
+    @Column(unique = true)
+    private String emailHash;
+
     @Convert(converter = EncryptedStringConverter.class)
     @Column(length = 500)
     private String email;
@@ -112,6 +116,7 @@ public class User extends BaseTimeEntity {
         // 개인정보보호법 제21조: 수집 목적 달성(탈퇴) 시 즉시 파기
         this.name = null;
         this.email = null;
+        this.emailHash = null;
         this.phone = null;
         this.phoneHash = null;
         this.gender = null;
@@ -160,5 +165,13 @@ public class User extends BaseTimeEntity {
 
     public void updateAppleRefreshToken(String token) {
         this.appleRefreshToken = token;
+    }
+
+    public void updateNaverId(String naverId) {
+        this.naverId = naverId;
+    }
+
+    public void updateAppleId(String appleId) {
+        this.appleId = appleId;
     }
 }

@@ -41,42 +41,60 @@ public class AuthService {
     @Transactional
     public TokenResponse naverLogin(NaverLoginRequest request) {
         NaverApiClient.NaverUserInfo userInfo = naverApiClient.getUserInfo(request.getAccessToken());
-        log.info("[NaverLogin] naverId={} mobile={}", userInfo.getId(), userInfo.getMobile());
 
-        return userRepository.findByNaverIdAndDeletedAtIsNull(userInfo.getId())
-                .map(user -> TokenResponse.builder()
+        // 1. naverId로 기존 유저 조회
+        var byNaverId = userRepository.findByNaverIdAndDeletedAtIsNull(userInfo.getId());
+        if (byNaverId.isPresent()) {
+            User user = byNaverId.get();
+            return TokenResponse.builder()
+                    .accessToken(jwtTokenProvider.createToken(user.getId()))
+                    .userId(user.getId())
+                    .isNewUser(false)
+                    .selectedPetId(user.getSelectedPetId())
+                    .onboardingComplete(user.isOnboardingComplete())
+                    .build();
+        }
+
+        // 2. naverId 불일치 → 전화번호 해시로 동일인 확인
+        String phoneHash = hashPhone(userInfo.getMobile());
+        if (phoneHash != null) {
+            var byPhone = userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash);
+            if (byPhone.isPresent()) {
+                User user = byPhone.get();
+                log.info("[NaverLogin] naverId 변경 감지: userId={} old={} new={}", user.getId(), user.getNaverId(), userInfo.getId());
+                user.updateNaverId(userInfo.getId());
+                return TokenResponse.builder()
                         .accessToken(jwtTokenProvider.createToken(user.getId()))
                         .userId(user.getId())
                         .isNewUser(false)
                         .selectedPetId(user.getSelectedPetId())
                         .onboardingComplete(user.isOnboardingComplete())
-                        .build())
-                .orElseGet(() -> {
-                    String phoneHash = hashPhone(userInfo.getMobile());
-                    checkDuplicatePhone(phoneHash);
+                        .build();
+            }
+        }
 
-                    User newUser = User.builder()
-                            .naverId(userInfo.getId())
-                            .nickname(userInfo.getNickname())
-                            .name(userInfo.getName())
-                            .email(userInfo.getEmail())
-                            .phone(userInfo.getMobile())
-                            .phoneHash(phoneHash)
-                            .gender(userInfo.getGender())
-                            .birthday(userInfo.getBirthday())
-                            .birthYear(userInfo.getBirthyear())
-                            .ageRange(userInfo.getAge())
-                            .profileImageUrl(UrlUtils.toHttpsUrl(userInfo.getProfileImage()))
-                            .build();
-                    User saved = userRepository.save(newUser);
-                    return TokenResponse.builder()
-                            .accessToken(jwtTokenProvider.createToken(saved.getId()))
-                            .userId(saved.getId())
-                            .isNewUser(true)
-                            .selectedPetId(null)
-                            .onboardingComplete(saved.isOnboardingComplete())
-                            .build();
-                });
+        // 3. 신규 유저 생성 (전화번호 중복은 이미 위에서 처리됨)
+        User newUser = User.builder()
+                .naverId(userInfo.getId())
+                .nickname(userInfo.getNickname())
+                .name(userInfo.getName())
+                .email(userInfo.getEmail())
+                .phone(userInfo.getMobile())
+                .phoneHash(phoneHash)
+                .gender(userInfo.getGender())
+                .birthday(userInfo.getBirthday())
+                .birthYear(userInfo.getBirthyear())
+                .ageRange(userInfo.getAge())
+                .profileImageUrl(UrlUtils.toHttpsUrl(userInfo.getProfileImage()))
+                .build();
+        User saved = userRepository.save(newUser);
+        return TokenResponse.builder()
+                .accessToken(jwtTokenProvider.createToken(saved.getId()))
+                .userId(saved.getId())
+                .isNewUser(true)
+                .selectedPetId(null)
+                .onboardingComplete(saved.isOnboardingComplete())
+                .build();
     }
 
     @Transactional
@@ -125,16 +143,29 @@ public class AuthService {
 
         boolean isNewUser;
         User user;
-        var existing = userRepository.findByAppleIdAndDeletedAtIsNull(userInfo.appleId());
-        if (existing.isPresent()) {
-            user = existing.get();
+
+        // 1. appleId로 기존 유저 조회
+        var byAppleId = userRepository.findByAppleIdAndDeletedAtIsNull(userInfo.appleId());
+        if (byAppleId.isPresent()) {
+            user = byAppleId.get();
             isNewUser = false;
         } else {
-            user = userRepository.save(User.builder()
-                    .appleId(userInfo.appleId())
-                    .email(userInfo.email())
-                    .build());
-            isNewUser = true;
+            // 2. 이메일 해시로 동일인 확인 (appleId가 바뀐 경우)
+            String emailHash = hashEmail(userInfo.email());
+            var byEmail = emailHash != null ? userRepository.findByEmailHashAndDeletedAtIsNull(emailHash) : java.util.Optional.<User>empty();
+            if (byEmail.isPresent()) {
+                user = byEmail.get();
+                log.info("[AppleLogin] appleId 변경 감지: userId={} new appleId={}", user.getId(), userInfo.appleId());
+                user.updateAppleId(userInfo.appleId());
+                isNewUser = false;
+            } else {
+                user = userRepository.save(User.builder()
+                        .appleId(userInfo.appleId())
+                        .email(userInfo.email())
+                        .emailHash(emailHash)
+                        .build());
+                isNewUser = true;
+            }
         }
 
         // authorizationCode가 있으면 refresh_token 교환하여 저장 (탈퇴 시 취소용)
@@ -178,6 +209,11 @@ public class AuthService {
     private String hashPhone(String phone) {
         if (phone == null || phone.isBlank()) return null;
         return hmacHasher.hash(phone);
+    }
+
+    private String hashEmail(String email) {
+        if (email == null || email.isBlank()) return null;
+        return hmacHasher.hash(email);
     }
 
     private void checkDuplicatePhone(String phoneHash) {
