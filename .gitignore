@@ -44,3 +44,7 @@ logs/
 
 ### Firebase ###
 /src/main/resources/firebase-service-account.json
+/firebase-service-account.json
+
+### DB 백업 / 로컬 보관 (커밋 금지) ###
+/pawever_backup_*.sql

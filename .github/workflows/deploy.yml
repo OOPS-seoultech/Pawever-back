@@ -1,4 +1,4 @@
-name: Deploy to NCP
+name: Deploy to AWS
 
 on:
   push:
@@ -32,17 +32,17 @@ jobs:
       - name: 서버에 배포
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 211.188.62.74
-          username: root
+          host: 3.34.55.28
+          username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: DB_NAME,DB_USER,DB_PASSWORD,DB_ROOT_PASSWORD,JWT_SECRET,ENCRYPTION_SECRET_KEY,ENCRYPTION_HASH_KEY,KAKAO_REST_API_KEY,NAVER_CLIENT_ID,NAVER_CLIENT_SECRET,NAVER_REDIRECT_URI,NCP_ACCESS_KEY,NCP_SECRET_KEY,NCP_BUCKET,NCP_CDN_DOMAIN,DEV_LOGIN_PASSWORD,FIREBASE_SERVICE_ACCOUNT_JSON,APPLE_BUNDLE_ID,APPLE_TEAM_ID,APPLE_KEY_ID,APPLE_PRIVATE_KEY
           script: |
-            cd /root/Pawever-back
+            cd /home/ubuntu/Pawever-back
 
             git pull origin main
 
             # Firebase 서비스 계정 키 파일 생성
-            echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > /root/Pawever-back/firebase-service-account.json
+            echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > /home/ubuntu/Pawever-back/firebase-service-account.json
 
             cat > .env << EOF
             DB_NAME=$DB_NAME
