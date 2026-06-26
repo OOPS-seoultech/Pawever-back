@@ -45,16 +45,21 @@ public class NcpStorageConfig {
 
     @Bean
     public S3Client s3Client() {
-        return S3Client.builder()
-                .endpointOverride(URI.create(s3.getEndpoint()))
+        // 공통 설정: region + 자격증명
+        var builder = S3Client.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(
                                 credentials.getAccessKey(),
                                 credentials.getSecretKey()
                         )
-                ))
-                .forcePathStyle(true)
-                .build();
+                ));
+        // endpoint가 지정된 경우(NCP 등 S3 호환 스토리지)에만 override + path-style 적용.
+        // AWS S3는 endpoint를 비워두면 기본 엔드포인트(virtual-hosted style)를 사용.
+        if (s3.getEndpoint() != null && !s3.getEndpoint().isBlank()) {
+            builder.endpointOverride(URI.create(s3.getEndpoint()))
+                    .forcePathStyle(true);
+        }
+        return builder.build();
     }
 }
