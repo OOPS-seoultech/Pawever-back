@@ -306,7 +306,17 @@ public class PetService {
         clearPetScopedState(pet.getId());
         archiveInviteCode(pet);
         pet.deactivateEmergencyMode();
+        deletePetProfileImage(pet);
         userPetRepository.deleteAll(allUserPets);
+    }
+
+    // 펫 프로필 이미지를 오브젝트 스토리지에서 파기하고 참조를 제거한다 (탈퇴/삭제 시 개인정보 잔존 방지).
+    private void deletePetProfileImage(Pet pet) {
+        if (pet.getProfileImageUrl() == null) {
+            return;
+        }
+        storageService.delete(pet.getProfileImageUrl());
+        pet.updateProfileImage(null);
     }
 
     private void clearSelectedPetForLinkedUsers(List<UserPet> userPets, Long petId) {

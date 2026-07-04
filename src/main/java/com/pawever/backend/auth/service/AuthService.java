@@ -61,6 +61,11 @@ public class AuthService {
             var byPhone = userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash);
             if (byPhone.isPresent()) {
                 User user = byPhone.get();
+                // 전화번호 해시가 같아도, 기존 "네이버 계정(naverId 존재)"의 id 변경일 때만 갱신한다.
+                // 카카오/애플 등 타 provider 계정은 전화번호가 같아도 계정 탈취를 막기 위해 거부한다.
+                if (user.getNaverId() == null) {
+                    throw duplicatePhoneException(user);
+                }
                 log.info("[NaverLogin] naverId 변경 감지: userId={} old={} new={}", user.getId(), user.getNaverId(), userInfo.getId());
                 user.updateNaverId(userInfo.getId());
                 return TokenResponse.builder()
@@ -218,16 +223,20 @@ public class AuthService {
 
     private void checkDuplicatePhone(String phoneHash) {
         if (phoneHash == null) return;
-        userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash).ifPresent(existing -> {
-            if (existing.getKakaoId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
-            } else if (existing.getNaverId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
-            } else if (existing.getAppleId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_APPLE);
-            } else {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE);
-            }
-        });
+        userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash)
+                .ifPresent(existing -> { throw duplicatePhoneException(existing); });
+    }
+
+    // 전화번호 해시가 이미 존재할 때, 그 계정의 provider에 맞는 안내 예외를 만든다.
+    private CustomException duplicatePhoneException(User existing) {
+        if (existing.getKakaoId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
+        } else if (existing.getNaverId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
+        } else if (existing.getAppleId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_APPLE);
+        } else {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE);
+        }
     }
 }
