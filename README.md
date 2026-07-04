@@ -8,7 +8,7 @@
 - **Spring Data JPA** · **MariaDB**
 - **Spring Security** · **JWT** (jjwt)
 - **SpringDoc OpenAPI** (Swagger UI)
-- **NCP Object Storage** (S3 호환) · CDN
+- **AWS S3** (오브젝트 스토리지) · CDN
 - **Gradle** · **Docker / Docker Compose**
 <br><br>
 
@@ -20,12 +20,12 @@
 
 | 도메인 | 설명 |
 |--------|------|
-| **Auth** | 카카오/네이버 소셜 로그인, JWT 발급, 개발용 로그인 |
+| **Auth** | 카카오/네이버/애플 소셜 로그인, JWT 발급, 개발용 로그인 |
 | **User** | 회원 정보, 온보딩, 추천 경로(referral) |
 | **Pet** | 반려동물 등록(품종/동물종), 초대 코드, 생애 단계(BEFORE/AFTER_FAREWELL) |
 | **Sharing** | 반려동물 공유(초대 코드 발급/참여) |
 | **Mission** | 발자국 남기기(추억 남기기) 미션 목록·완료, 홈 진행률 요약 |
-| **Checklist** | 이별준비 체크리스트 진행률, 항목 토글 |
+| **FarewellPreview** | 미리 살펴보기(이별 준비) 단계별 진행률 저장·복원 |
 | **Memorial** | 추모 댓글, 댓글 신고 |
 | **Funeral** | 장례 업체 목록/상세, 리뷰 및 이미지 |
 | **Review** | 서비스 리뷰(ServiceReview) |
@@ -44,16 +44,18 @@
 ```
 src/main/java/com/pawever/backend/
 ├── PaweverBackendApplication.java
-├── auth/          # 소셜 로그인, JWT
-├── user/           # 회원
-├── pet/            # 반려동물, 품종/동물종
-├── sharing/        # 반려동물 공유(초대)
-├── mission/        # 발자국 남기기 미션
-├── checklist/      # 이별준비 체크리스트
-├── memorial/       # 추모 댓글, 신고
-├── funeral/        # 장례 업체, 리뷰
-├── review/         # 서비스 리뷰
-└── global/         # 공통 응답, 보안, 예외, 설정
+├── auth/             # 소셜 로그인(카카오/네이버/애플), JWT
+├── user/             # 회원
+├── pet/              # 반려동물, 품종/동물종
+├── sharing/          # 반려동물 공유(초대)
+├── mission/          # 발자국 남기기 미션
+├── farewellpreview/  # 미리 살펴보기(이별 준비) 진행률
+├── memorial/         # 추모 댓글, 신고
+├── funeral/          # 장례 업체, 리뷰
+├── review/           # 서비스 리뷰
+├── faq/              # FAQ
+├── notification/     # FCM 푸시 알림
+└── global/           # 공통 응답, 보안, 예외, 설정
 ```
 
 - **DB 스키마**: `src/main/resources/Pawever.sql`
@@ -69,6 +71,6 @@ src/main/java/com/pawever/backend/
 
 ## 🚀 배포
 
-- **main** 브랜치 push 시 GitHub Actions로 NCP 서버에 SSH 배포됩니다.
+- **main** 브랜치 push 시 GitHub Actions로 AWS EC2 서버에 SSH 배포됩니다.
 - 워크플로: `.github/workflows/deploy.yml`
 - 서버에서 `docker compose`로 앱·DB를 빌드 및 실행합니다.
