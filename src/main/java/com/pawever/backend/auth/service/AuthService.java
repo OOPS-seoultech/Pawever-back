@@ -18,9 +18,13 @@ import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Slf4j
 @Service
@@ -34,6 +38,7 @@ public class AuthService {
     private final NaverApiClient naverApiClient;
     private final AppleApiClient appleApiClient;
     private final HmacHasher hmacHasher;
+    private final Environment environment;
 
     @Value("${dev.login.password:}")
     private String devLoginPassword;
@@ -197,7 +202,11 @@ public class AuthService {
      */
     @Transactional
     public TokenResponse devLogin(DevLoginRequest request) {
-        if (devLoginPassword.isBlank() || !devLoginPassword.equals(request.getPassword())) {
+        // 운영(prod) 환경에서는 개발용 로그인을 비활성화한다.
+        if (environment.matchesProfiles("prod")) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        if (devLoginPassword.isBlank() || !constantTimeEquals(devLoginPassword, request.getPassword())) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
 
@@ -209,6 +218,14 @@ public class AuthService {
                 .isNewUser(true)
                 .onboardingComplete(user.isOnboardingComplete())
                 .build();
+    }
+
+    // 타이밍 사이드채널을 방지하는 상수시간 문자열 비교
+    private boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 
     private String hashPhone(String phone) {

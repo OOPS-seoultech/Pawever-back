@@ -5,7 +5,6 @@ import com.google.firebase.messaging.ApnsConfig;
 import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.ApsAlert;
 import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,39 +34,43 @@ public class FcmService {
             String petProfileImageUrl,
             String petAnimalTypeKey
     ) {
-        Map<String, String> data = new HashMap<>();
-        data.put("title", senderNickname);
-        data.put("body", content);
-        data.put("petId", String.valueOf(petId));
-
-        if (petProfileImageUrl != null && !petProfileImageUrl.isBlank()) {
-            data.put("petProfileImageUrl", petProfileImageUrl);
+        if (fcmToken == null || fcmToken.isBlank()) {
+            return; // 수신 토큰이 없으면 조용히 skip
         }
-
-        if (petAnimalTypeKey != null && !petAnimalTypeKey.isBlank()) {
-            data.put("petAnimalTypeKey", petAnimalTypeKey);
-        }
-
-        Message message = Message.builder()
-                .setToken(fcmToken)
-                .putAllData(data)
-                .setAndroidConfig(AndroidConfig.builder()
-                        .setPriority(AndroidConfig.Priority.HIGH)
-                        .build())
-                .setApnsConfig(ApnsConfig.builder()
-                        .setAps(Aps.builder()
-                                .setSound("default")
-                                .setAlert(ApsAlert.builder()
-                                        .setTitle(senderNickname)
-                                        .setBody(content)
-                                        .build())
-                                .build())
-                        .build())
-                .build();
         try {
+            Map<String, String> data = new HashMap<>();
+            data.put("title", senderNickname);
+            data.put("body", content);
+            data.put("petId", String.valueOf(petId));
+
+            if (petProfileImageUrl != null && !petProfileImageUrl.isBlank()) {
+                data.put("petProfileImageUrl", petProfileImageUrl);
+            }
+
+            if (petAnimalTypeKey != null && !petAnimalTypeKey.isBlank()) {
+                data.put("petAnimalTypeKey", petAnimalTypeKey);
+            }
+
+            Message message = Message.builder()
+                    .setToken(fcmToken)
+                    .putAllData(data)
+                    .setAndroidConfig(AndroidConfig.builder()
+                            .setPriority(AndroidConfig.Priority.HIGH)
+                            .build())
+                    .setApnsConfig(ApnsConfig.builder()
+                            .setAps(Aps.builder()
+                                    .setSound("default")
+                                    .setAlert(ApsAlert.builder()
+                                            .setTitle(senderNickname)
+                                            .setBody(content)
+                                            .build())
+                                    .build())
+                            .build())
+                    .build();
             FirebaseMessaging.getInstance().send(message);
-        } catch (FirebaseMessagingException e) {
-            log.error("FCM 전송 실패: {}", e.getMessage());
+        } catch (Exception e) {
+            // 알림 실패가 호출측 트랜잭션(댓글 작성 등)을 롤백시키지 않도록 모두 흡수
+            log.warn("FCM 전송 실패(무시): {}", e.getMessage());
         }
     }
 }

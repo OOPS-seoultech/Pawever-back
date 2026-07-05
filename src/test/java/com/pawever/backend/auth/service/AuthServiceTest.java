@@ -3,6 +3,7 @@ package com.pawever.backend.auth.service;
 import com.pawever.backend.auth.client.AppleApiClient;
 import com.pawever.backend.auth.client.KakaoApiClient;
 import com.pawever.backend.auth.client.NaverApiClient;
+import com.pawever.backend.auth.dto.DevLoginRequest;
 import com.pawever.backend.auth.dto.NaverLoginRequest;
 import com.pawever.backend.auth.dto.TokenResponse;
 import com.pawever.backend.global.exception.CustomException;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.env.Environment;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
@@ -24,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 네이버 로그인의 전화번호-해시 매칭이 타 provider 계정을 탈취하지 못하도록 하는 fail-closed 동작 검증.
+ * 네이버 로그인 fail-closed(계정 탈취 방지) + dev-login 운영 차단·상수시간 비교 검증.
  */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -35,6 +37,7 @@ class AuthServiceTest {
     @Mock private NaverApiClient naverApiClient;
     @Mock private AppleApiClient appleApiClient;
     @Mock private HmacHasher hmacHasher;
+    @Mock private Environment environment;
 
     @InjectMocks
     private AuthService authService;
@@ -52,6 +55,14 @@ class AuthServiceTest {
         return info;
     }
 
+    private DevLoginRequest devRequest(String password) {
+        DevLoginRequest request = new DevLoginRequest();
+        ReflectionTestUtils.setField(request, "password", password);
+        return request;
+    }
+
+    // ===== 네이버 로그인 fail-closed =====
+
     @Test
     void naverLogin_whenPhoneMatchesKakaoOnlyAccount_throwsAndDoesNotTakeOver() {
         when(naverApiClient.getUserInfo("t")).thenReturn(naverUserInfo("naver-new", "010-1111-2222"));
@@ -64,7 +75,7 @@ class AuthServiceTest {
         CustomException ex = assertThrows(CustomException.class, () -> authService.naverLogin(naverRequest("t")));
 
         assertEquals(ErrorCode.DUPLICATE_PHONE_KAKAO, ex.getErrorCode());
-        assertNull(kakaoUser.getNaverId());                 // 탈취(덮어쓰기) 발생하지 않음
+        assertNull(kakaoUser.getNaverId());                       // 탈취(덮어쓰기) 발생하지 않음
         verify(jwtTokenProvider, never()).createToken(anyLong()); // 토큰도 발급되지 않음
     }
 
@@ -82,7 +93,7 @@ class AuthServiceTest {
 
         assertFalse(response.isNewUser());
         assertEquals("jwt", response.getAccessToken());
-        assertEquals("naver-new", naverUser.getNaverId());  // id 회전 반영됨
+        assertEquals("naver-new", naverUser.getNaverId());        // id 회전 반영됨
     }
 
     @Test
@@ -98,5 +109,37 @@ class AuthServiceTest {
 
         assertTrue(response.isNewUser());
         assertEquals("jwt", response.getAccessToken());
+    }
+
+    // ===== dev-login =====
+
+    @Test
+    void devLogin_whenProdProfile_throws() {
+        ReflectionTestUtils.setField(authService, "devLoginPassword", "correct");
+        when(environment.matchesProfiles("prod")).thenReturn(true);
+
+        assertThrows(CustomException.class, () -> authService.devLogin(devRequest("correct")));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void devLogin_whenNonProdAndCorrectPassword_issuesToken() {
+        ReflectionTestUtils.setField(authService, "devLoginPassword", "correct");
+        when(environment.matchesProfiles("prod")).thenReturn(false);
+        when(userRepository.save(any())).thenReturn(User.builder().id(1L).build());
+        when(jwtTokenProvider.createToken(1L)).thenReturn("jwt");
+
+        TokenResponse response = authService.devLogin(devRequest("correct"));
+
+        assertEquals("jwt", response.getAccessToken());
+    }
+
+    @Test
+    void devLogin_whenWrongPassword_throws() {
+        ReflectionTestUtils.setField(authService, "devLoginPassword", "correct");
+        when(environment.matchesProfiles("prod")).thenReturn(false);
+
+        assertThrows(CustomException.class, () -> authService.devLogin(devRequest("wrong")));
+        verify(userRepository, never()).save(any());
     }
 }
