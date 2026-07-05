@@ -19,7 +19,7 @@ class PetTest {
         pet.generateInviteCode();
 
         assertNotNull(pet.getInviteCode());
-        assertEquals(8, pet.getInviteCode().length());
+        assertEquals(12, pet.getInviteCode().length());
         assertEquals(pet.getInviteCode(), pet.getInviteCode().toUpperCase());
     }
 
@@ -47,7 +47,7 @@ class PetTest {
         pet.regenerateInviteCode();
 
         assertNotNull(pet.getInviteCode());
-        assertEquals(8, pet.getInviteCode().length());
+        assertEquals(12, pet.getInviteCode().length());
         assertNotEquals("AAAAAAAA", pet.getInviteCode());
     }
 

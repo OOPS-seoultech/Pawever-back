@@ -3,6 +3,8 @@ package com.pawever.backend.pet.service;
 import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRepository;
 import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 import com.pawever.backend.global.common.StorageService;
+import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
@@ -43,6 +45,7 @@ class PetServiceTest {
     @Mock private PetFuneralCompanyRepository petFuneralCompanyRepository;
     @Mock private PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
     @Mock private StorageService storageService;
+    @Mock private SelectedPetResetter selectedPetResetter;
 
     @InjectMocks
     private PetService petService;
@@ -76,5 +79,17 @@ class PetServiceTest {
 
         verify(storageService).delete("https://cdn.example.com/pets/10/profile/y.jpg");
         assertNull(pet.getProfileImageUrl()); // 참조도 제거되어 dangling URL 없음
+    }
+
+    @Test
+    void getSelectedPet_whenSelectedPetUnlinked_clearsViaResetterAndThrows() {
+        User user = User.builder().id(1L).selectedPetId(10L).build();
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        when(userPetRepository.findByUserIdAndPetId(1L, 10L)).thenReturn(Optional.empty());
+
+        CustomException ex = assertThrows(CustomException.class, () -> petService.getSelectedPet(1L));
+
+        assertEquals(ErrorCode.SELECTED_PET_DELETED, ex.getErrorCode());
+        verify(selectedPetResetter).clear(1L); // 별도 트랜잭션으로 selectedPetId 초기화가 호출됨
     }
 }

@@ -54,8 +54,13 @@ public class Pet extends BaseTimeEntity {
     @PrePersist
     public void generateInviteCode() {
         if (this.inviteCode == null) {
-            this.inviteCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            this.inviteCode = newInviteCode();
         }
+    }
+
+    // 대시 제거 후 12자(48비트) — 8자(32비트) 대비 충돌·온라인 열거 위험을 크게 낮춘다.
+    private static String newInviteCode() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 
     public void update(
@@ -103,6 +108,6 @@ public class Pet extends BaseTimeEntity {
     }
 
     public void regenerateInviteCode() {
-        this.inviteCode = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        this.inviteCode = newInviteCode();
     }
 }
