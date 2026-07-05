@@ -13,6 +13,7 @@ import com.pawever.backend.sharing.dto.SharedMemberResponse;
 import com.pawever.backend.user.entity.User;
 import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -116,7 +117,12 @@ public class SharingService {
                 .pet(pet)
                 .isOwner(false)
                 .build();
-        userPetRepository.save(userPet);
+        try {
+            // 유니크 제약(uq_user_pet)으로 동시 요청 중복 참여를 방지 — 위반 시 이미 참여된 것으로 처리
+            userPetRepository.saveAndFlush(userPet);
+        } catch (DataIntegrityViolationException e) {
+            throw new CustomException(ErrorCode.ALREADY_SHARED);
+        }
 
         // 초대받은 펫을 선택
         user.selectPet(pet.getId());

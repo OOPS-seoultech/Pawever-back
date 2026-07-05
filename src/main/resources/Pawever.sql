@@ -80,6 +80,7 @@ CREATE TABLE `user_pets` (
     `is_owner`              BOOLEAN     DEFAULT FALSE,
     `memorial_last_read_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '추모관 마지막 읽음 시각',
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_user_pet` (`user_id`, `pet_id`),
     CONSTRAINT `FK_users_TO_user_pets`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
     CONSTRAINT `FK_pets_TO_user_pets`

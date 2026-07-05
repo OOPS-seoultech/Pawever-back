@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Optional;
 
@@ -81,7 +82,24 @@ class SharingServiceTest {
         CustomException ex = assertThrows(CustomException.class, () -> sharingService.joinByInviteCode(1L, "CODE"));
 
         assertEquals(ErrorCode.ALREADY_SHARED, ex.getErrorCode());
-        verify(userPetRepository, never()).save(any());
+        verify(userPetRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void joinByInviteCode_whenUniqueConstraintViolated_throwsAlreadyShared() {
+        Pet pet = Pet.builder().id(10L).name("pet").inviteCode("CODE").build();
+        User user = User.builder().id(1L).build();
+        when(petRepository.findByInviteCode("CODE")).thenReturn(Optional.of(pet));
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        // 사전 존재 체크는 통과하지만(동시 요청 레이스), DB 유니크 제약이 두 번째 삽입을 막는다.
+        when(userPetRepository.existsByUserIdAndPetId(1L, 10L)).thenReturn(false);
+        when(userPetRepository.countByUserIdAndIsOwnerFalse(1L)).thenReturn(0L);
+        when(userPetRepository.saveAndFlush(any()))
+                .thenThrow(new DataIntegrityViolationException("Duplicate entry for key 'uq_user_pet'"));
+
+        CustomException ex = assertThrows(CustomException.class, () -> sharingService.joinByInviteCode(1L, "CODE"));
+
+        assertEquals(ErrorCode.ALREADY_SHARED, ex.getErrorCode());
     }
 
     @Test
@@ -97,11 +115,10 @@ class SharingServiceTest {
         sharingService.joinByInviteCode(1L, "CODE");
 
         assertEquals(10L, user.getSelectedPetId());
-        verify(userPetRepository).save(argThat(up ->
+        verify(userPetRepository).saveAndFlush(argThat(up ->
                 up.getUser().getId().equals(1L) &&
                 up.getPet().getId().equals(10L) &&
                 Boolean.FALSE.equals(up.getIsOwner())
         ));
     }
 }
-

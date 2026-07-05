@@ -7,7 +7,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "user_pets")
+@Table(name = "user_pets", uniqueConstraints = @UniqueConstraint(name = "uq_user_pet", columnNames = {"user_id", "pet_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
