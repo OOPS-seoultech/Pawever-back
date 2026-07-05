@@ -16,6 +16,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        default_batch_fetch_size: 100  # 지연 로딩 N+1 완화 (IN 절 배치 조회)
     defer-datasource-initialization: true
 
   sql:

@@ -4,6 +4,7 @@ import com.pawever.backend.farewellpreview.repository.FarewellPreviewProgressRep
 import com.pawever.backend.funeral.repository.PetFuneralCompanyRepository;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.memorial.dto.CommentCreateRequest;
 import com.pawever.backend.memorial.repository.CommentReportRepository;
 import com.pawever.backend.memorial.repository.CommentRepository;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 
@@ -84,5 +86,20 @@ class MemorialServiceTest {
         CustomException ex = assertThrows(CustomException.class, () -> memorialService.deactivateEmergencyMode(1L, 10L));
 
         assertEquals(ErrorCode.NOT_OWNER, ex.getErrorCode());
+    }
+
+    @Test
+    void createComment_whenPetNotMemorial_throwsMemorialNotFound() {
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
+        Pet livePet = Pet.builder().id(10L).lifecycleStatus(LifecycleStatus.BEFORE_FAREWELL).build();
+        when(petRepository.findById(10L)).thenReturn(Optional.of(livePet));
+
+        CommentCreateRequest request = new CommentCreateRequest();
+        ReflectionTestUtils.setField(request, "content", "hi");
+
+        CustomException ex = assertThrows(CustomException.class,
+                () -> memorialService.createComment(1L, 10L, request));
+
+        assertEquals(ErrorCode.MEMORIAL_NOT_FOUND, ex.getErrorCode()); // 살아있는 펫엔 댓글 불가
     }
 }

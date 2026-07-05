@@ -309,6 +309,10 @@ public class MemorialService {
 
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
+        // 추모관(이별 후)이 된 펫에만 댓글 허용 — 살아있는 펫 대상 댓글/알림 스팸 차단
+        if (pet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            throw new CustomException(ErrorCode.MEMORIAL_NOT_FOUND);
+        }
         Pet authorPet = resolveAuthorPet(user);
 
         Comment comment = Comment.builder()
