@@ -8,6 +8,7 @@ import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
+import com.pawever.backend.pet.dto.PetCreateRequest;
 import com.pawever.backend.pet.entity.Pet;
 import com.pawever.backend.pet.entity.UserPet;
 import com.pawever.backend.pet.repository.BreedRepository;
@@ -91,5 +92,16 @@ class PetServiceTest {
 
         assertEquals(ErrorCode.SELECTED_PET_DELETED, ex.getErrorCode());
         verify(selectedPetResetter).clear(1L); // 별도 트랜잭션으로 selectedPetId 초기화가 호출됨
+    }
+
+    @Test
+    void createPet_whenAlreadyOwnsPet_throwsOwnerLimit() {
+        // 락 조회(findByIdAndDeletedAtIsNullForUpdate)로 유저를 얻은 뒤 소유 한도 검사
+        when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
+        when(userPetRepository.existsByUserIdAndIsOwnerTrue(1L)).thenReturn(true);
+
+        CustomException ex = assertThrows(CustomException.class, () -> petService.createPet(1L, new PetCreateRequest()));
+
+        assertEquals(ErrorCode.OWNER_PET_LIMIT_EXCEEDED, ex.getErrorCode());
     }
 }

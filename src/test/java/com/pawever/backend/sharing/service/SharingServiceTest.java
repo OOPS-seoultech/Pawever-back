@@ -76,7 +76,7 @@ class SharingServiceTest {
     void joinByInviteCode_whenAlreadyShared_throwsAlreadyShared() {
         Pet pet = Pet.builder().id(10L).name("pet").inviteCode("CODE").build();
         when(petRepository.findByInviteCode("CODE")).thenReturn(Optional.of(pet));
-        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
+        when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
         when(userPetRepository.existsByUserIdAndPetId(1L, 10L)).thenReturn(true);
 
         CustomException ex = assertThrows(CustomException.class, () -> sharingService.joinByInviteCode(1L, "CODE"));
@@ -90,7 +90,7 @@ class SharingServiceTest {
         Pet pet = Pet.builder().id(10L).name("pet").inviteCode("CODE").build();
         User user = User.builder().id(1L).build();
         when(petRepository.findByInviteCode("CODE")).thenReturn(Optional.of(pet));
-        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
         // 사전 존재 체크는 통과하지만(동시 요청 레이스), DB 유니크 제약이 두 번째 삽입을 막는다.
         when(userPetRepository.existsByUserIdAndPetId(1L, 10L)).thenReturn(false);
         when(userPetRepository.countByUserIdAndIsOwnerFalse(1L)).thenReturn(0L);
@@ -108,7 +108,7 @@ class SharingServiceTest {
         User user = User.builder().id(1L).selectedPetId(null).build();
 
         when(petRepository.findByInviteCode("CODE")).thenReturn(Optional.of(pet));
-        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
         when(userPetRepository.existsByUserIdAndPetId(1L, 10L)).thenReturn(false);
         when(userPetRepository.countByUserIdAndIsOwnerFalse(1L)).thenReturn(0L);
 

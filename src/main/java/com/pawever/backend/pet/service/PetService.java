@@ -89,7 +89,8 @@ public class PetService {
 
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+        // 소유 펫 1마리 제한을 동시 생성 레이스로부터 보호하기 위해 유저 행을 락으로 조회
+        User user = userRepository.findByIdAndDeletedAtIsNullForUpdate(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         if (userPetRepository.existsByUserIdAndIsOwnerTrue(userId)) {

@@ -101,7 +101,8 @@ public class SharingService {
                     return new CustomException(ErrorCode.INVALID_INVITE_CODE);
                 });
 
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+        // 게스트 10마리 제한을 동시 참여 레이스로부터 보호하기 위해 유저 행을 락으로 조회
+        User user = userRepository.findByIdAndDeletedAtIsNullForUpdate(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         if (userPetRepository.existsByUserIdAndPetId(userId, pet.getId())) {
