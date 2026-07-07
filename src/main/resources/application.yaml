@@ -54,7 +54,6 @@ kakao:
 naver:
   client-id: ${NAVER_CLIENT_ID:}
   client-secret: ${NAVER_CLIENT_SECRET:}
-  redirect-uri: ${NAVER_REDIRECT_URI:http://localhost:28080/oauth/naver/callback}
 
 apple:
   bundle-id: ${APPLE_BUNDLE_ID:}
