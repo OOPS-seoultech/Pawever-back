@@ -1,3 +1,24 @@
+# 공통 앱 설정 — 로컬용 app 과 운영 무중단용 app-blue/app-green 이 공유 (포트만 다름)
+x-app-common: &app-common
+  build: .
+  env_file:
+    - .env
+  environment:
+    SPRING_PROFILES_ACTIVE: prod
+    LOG_PATH: /app/logs
+    NCP_ACCESS_KEY: ${NCP_ACCESS_KEY:-}
+    NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
+    NCP_BUCKET: ${NCP_BUCKET:-}
+    NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
+  volumes:
+    - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    - ./logs:/app/logs
+  depends_on:
+    mariadb:
+      condition: service_healthy
+  networks:
+    - pawever-net
+
 services:
   mariadb:
     image: mariadb:latest
@@ -26,28 +47,24 @@ services:
     networks:
       - pawever-net
 
+  # 로컬 개발용 (docker compose up 하면 이게 뜸). 운영에선 안 씀.
   app:
-    build: .
+    <<: *app-common
     ports:
       - "28080:8080"
-    env_file:
-      - .env
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      LOG_PATH: /app/logs
-      NCP_ACCESS_KEY: ${NCP_ACCESS_KEY:-}
-      NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
-      NCP_BUCKET: ${NCP_BUCKET:-}
-      NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
-    # 앱 로그는 Docker 볼륨이 아니라 서버의 이 compose 기준 ./logs 폴더에만 저장 (컨테이너 /app/logs 와 동기화).
-    volumes:
-      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
-      - ./logs:/app/logs
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    networks:
-      - pawever-net
+
+  # 운영 무중단(blue-green)용 — profile 로 격리되어 bare `docker compose up` 에는 안 뜸.
+  # 배포 스크립트가 비활성 색을 명시적으로 기동한 뒤 nginx upstream 을 전환한다.
+  app-blue:
+    <<: *app-common
+    profiles: ["bluegreen"]
+    ports:
+      - "28080:8080"
+  app-green:
+    <<: *app-common
+    profiles: ["bluegreen"]
+    ports:
+      - "28081:8080"
 
 volumes:
   mariadb-data:

@@ -39,8 +39,7 @@ jobs:
           script: |
             cd /home/ubuntu/Pawever-back
 
-            # 롤백 대비: 현재(정상 동작 중) 커밋을 기록한 뒤 origin/main 으로 정렬
-            PREV_COMMIT=$(git rev-parse HEAD)
+            # 최신 코드로 정렬
             git fetch origin main
             git checkout -B main origin/main
 
@@ -71,35 +70,44 @@ jobs:
             APPLE_PRIVATE_KEY=$APPLE_PRIVATE_KEY
             EOF
 
-            # /health 가 200 될 때까지 최대 120초 대기 (앱 기동·정상 여부 확인)
+            UPSTREAM_CONF=/etc/nginx/conf.d/pawever-upstream.conf
+
+            # 대상 포트의 /health 가 200 될 때까지 최대 120초 대기
             wait_healthy() {
               for _ in $(seq 1 24); do
-                if curl -fsS http://localhost:28080/health > /dev/null 2>&1; then
-                  return 0
-                fi
+                if curl -fsS "http://localhost:$1/health" > /dev/null 2>&1; then return 0; fi
                 sleep 5
               done
               return 1
             }
 
-            # DB(mariadb)는 그대로 두고 app 컨테이너만 재빌드·교체
-            docker compose up -d --build app > /tmp/deploy.log 2>&1
-
-            if wait_healthy; then
-              echo "✅ Deploy 성공"
-              docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-              docker system prune -af > /dev/null 2>&1
+            # 현재 nginx 활성 포트 → 반대편(비활성) 색 결정
+            CURRENT_PORT=$(grep -oE '28080|28081' "$UPSTREAM_CONF" 2>/dev/null | head -1)
+            if [ "$CURRENT_PORT" = "28081" ]; then
+              NEW_COLOR=blue;  NEW_PORT=28080; OLD_COLOR=green
             else
-              echo "❌ 새 버전 헬스체크 실패 → 이전 버전($PREV_COMMIT)으로 자동 롤백"
-              tail -50 /tmp/deploy.log
-              git checkout -f "$PREV_COMMIT"
-              docker compose up -d --build app > /tmp/rollback.log 2>&1
-              if wait_healthy; then
-                echo "↩️ 롤백 완료 — 이전 버전이 정상 기동 중. origin/main 을 고친 뒤 다시 배포하세요."
+              NEW_COLOR=green; NEW_PORT=28081; OLD_COLOR=blue
+            fi
+            echo "▶ 배포: ${OLD_COLOR}(${CURRENT_PORT:-none}) → ${NEW_COLOR}(${NEW_PORT})"
+
+            # 비활성 색만 빌드·기동 (DB·현재 서빙 색은 그대로 유지)
+            docker compose --profile bluegreen up -d --build "app-${NEW_COLOR}" > /tmp/deploy.log 2>&1
+
+            if wait_healthy "$NEW_PORT"; then
+              # nginx upstream 을 새 포트로 전환 + graceful reload → 끊김 0
+              echo "upstream pawever_backend { server 127.0.0.1:${NEW_PORT}; }" | sudo tee "$UPSTREAM_CONF" > /dev/null
+              if sudo nginx -t && sudo nginx -s reload; then
+                echo "✅ 무중단 전환 성공 → ${NEW_COLOR}:${NEW_PORT}"
+                docker compose stop "app-${OLD_COLOR}" > /dev/null 2>&1 || true
               else
-                echo "🚨 롤백도 실패 — 서버 수동 확인 필요"
-                tail -50 /tmp/rollback.log
+                echo "🚨 nginx 리로드 실패 → 전환 취소(기존 ${OLD_COLOR} 유지)"
+                docker compose stop "app-${NEW_COLOR}" > /dev/null 2>&1 || true
+                exit 1
               fi
+            else
+              echo "❌ 새 버전(${NEW_COLOR}:${NEW_PORT}) 헬스체크 실패 → 전환 안 함(기존 ${OLD_COLOR} 계속 서빙, 무중단 유지)"
+              tail -50 /tmp/deploy.log
+              docker compose stop "app-${NEW_COLOR}" > /dev/null 2>&1 || true
               exit 1
             fi
         env:
