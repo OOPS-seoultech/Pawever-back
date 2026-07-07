@@ -9,7 +9,9 @@ spring:
       - org.springframework.boot.security.autoconfigure.userdetails.UserDetailsServiceAutoConfiguration
 
   datasource:
-    url: jdbc:mariadb://mariadb:3306/${DB_NAME:pawever}
+    # DB 호스트를 env로 분리 — 기본값은 현재 compose의 mariadb 컨테이너.
+    # 나중에 RDS 등 관리형 DB로 전환 시 DB_HOST 환경변수만 rds 엔드포인트로 바꾸면 됨.
+    url: jdbc:mariadb://${DB_HOST:mariadb:3306}/${DB_NAME:pawever}
 
   jpa:
     open-in-view: false
