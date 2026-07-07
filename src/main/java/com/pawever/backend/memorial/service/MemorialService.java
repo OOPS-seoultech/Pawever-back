@@ -67,7 +67,8 @@ public class MemorialService {
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
 
-        getAccessibleUserPet(userId, petId);
+        // 사망 전환(추모관 생성)은 소유자만 가능 — 게스트가 남의 펫을 사망 처리하는 권한상승 방지
+        getOwnerUserPet(userId, petId);
 
         if (pet.getLifecycleStatus() == LifecycleStatus.AFTER_FAREWELL) {
             throw new CustomException(ErrorCode.MEMORIAL_ALREADY_EXISTS);
@@ -137,7 +138,8 @@ public class MemorialService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        UserPet userPet = getAccessibleUserPet(userId, petId);
+        // 긴급 모드 완료(이별준비·장례 데이터 삭제 동반)는 소유자만 가능
+        UserPet userPet = getOwnerUserPet(userId, petId);
         Pet pet = userPet.getPet();
 
         validateEmergencyModeActive(pet);
@@ -156,7 +158,8 @@ public class MemorialService {
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
-        UserPet userPet = getAccessibleUserPet(userId, petId);
+        // 긴급 모드 해제(이별 전 복귀)는 소유자만 가능
+        UserPet userPet = getOwnerUserPet(userId, petId);
         Pet pet = userPet.getPet();
 
         validateEmergencyModeActive(pet);
@@ -306,6 +309,10 @@ public class MemorialService {
 
         Pet pet = petRepository.findById(petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_FOUND));
+        // 추모관(이별 후)이 된 펫에만 댓글 허용 — 살아있는 펫 대상 댓글/알림 스팸 차단
+        if (pet.getLifecycleStatus() != LifecycleStatus.AFTER_FAREWELL) {
+            throw new CustomException(ErrorCode.MEMORIAL_NOT_FOUND);
+        }
         Pet authorPet = resolveAuthorPet(user);
 
         Comment comment = Comment.builder()

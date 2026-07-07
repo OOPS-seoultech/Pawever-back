@@ -14,6 +14,8 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -21,19 +23,33 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StorageService {
 
+    // 허용 확장자 → 저장 시 강제할 안전한 Content-Type. SVG/HTML 등 스크립트 실행 가능 형식은 차단한다.
+    private static final Map<String, String> ALLOWED_IMAGE_TYPES = Map.of(
+            "jpg", "image/jpeg",
+            "jpeg", "image/jpeg",
+            "png", "image/png",
+            "webp", "image/webp",
+            "heic", "image/heic",
+            "heif", "image/heif"
+    );
+
     private final S3Client s3Client;
     private final NcpStorageConfig ncpStorageConfig;
 
     public String upload(MultipartFile file, String dirPath) {
         String originalFilename = file.getOriginalFilename();
-        String extension = extractExtension(originalFilename);
-        String key = dirPath + "/" + UUID.randomUUID() + extension;
+        String extension = normalizeExtension(originalFilename);
+        String contentType = ALLOWED_IMAGE_TYPES.get(extension);
+        if (contentType == null) {
+            throw new CustomException(ErrorCode.UNSUPPORTED_FILE_TYPE);
+        }
+        String key = dirPath + "/" + UUID.randomUUID() + "." + extension;
 
         try {
             PutObjectRequest request = PutObjectRequest.builder()
                     .bucket(ncpStorageConfig.getS3().getBucket())
                     .key(key)
-                    .contentType(file.getContentType())
+                    .contentType(contentType)
                     .build();
 
             s3Client.putObject(request, RequestBody.fromBytes(file.getBytes()));
@@ -92,10 +108,12 @@ public class StorageService {
         }
     }
 
-    private String extractExtension(String filename) {
+    // 확장자를 소문자·영숫자만 남겨 정규화한다 (경로/특수문자 오염 및 대소문자 우회 방지).
+    private String normalizeExtension(String filename) {
         if (filename == null || !filename.contains(".")) {
             return "";
         }
-        return filename.substring(filename.lastIndexOf("."));
+        String extension = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase(Locale.ROOT);
+        return extension.replaceAll("[^a-z0-9]", "");
     }
 }

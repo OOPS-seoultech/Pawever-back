@@ -1,5 +1,8 @@
 # 미리 살펴보기 — 체크리스트·콘텐츠 구조 (참고)
 
+> ⚠️ **초기 설계 노트입니다(과거 용어 기준).** 이 기능은 코드에서 `farewellpreview` 도메인으로 구현되었으며, 아래에 나오는 `checklist_items`·`pet_checklists` 테이블과 `GET /api/pets/{petId}/checklist`, `POST .../checklist/{id}/toggle` 엔드포인트는 **더 이상 존재하지 않습니다.**
+> 현재 진행 상태 API는 전체 스냅샷 방식(`GET`/`PUT /api/pets/{petId}/farewell-preview-progress`)이며 [`farewell-preview-progress-api.md`](./farewell-preview-progress-api.md)에 정리되어 있습니다. 아래 Figma 매핑·콘텐츠 배치 전략만 참고용으로 유지합니다.
+
 Figma 기준 **“미리 살펴보기”** 는 **체크리스트 5단계**(`checklist_items` id 1~5, `pet_checklists` 완료 여부)와 **화면 카피·카드 UI** 로 나누어 다루는 것을 전제로 한다.
 
 ## 백엔드 API

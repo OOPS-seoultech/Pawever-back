@@ -41,6 +41,7 @@ public class PetService {
     private final PetFuneralCompanyRepository petFuneralCompanyRepository;
     private final PetExpiredInviteCodeRepository petExpiredInviteCodeRepository;
     private final StorageService storageService;
+    private final SelectedPetResetter selectedPetResetter;
 
     private LocalDateTime toDeathDateTime(LocalDate deathDate) {
         return deathDate == null ? null : deathDate.atStartOfDay();
@@ -88,7 +89,8 @@ public class PetService {
 
     @Transactional
     public PetResponse createPet(Long userId, PetCreateRequest request) {
-        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+        // 소유 펫 1마리 제한을 동시 생성 레이스로부터 보호하기 위해 유저 행을 락으로 조회
+        User user = userRepository.findByIdAndDeletedAtIsNullForUpdate(userId)
                 .orElseThrow(() -> new CustomException(ErrorCode.USER_NOT_FOUND));
 
         if (userPetRepository.existsByUserIdAndIsOwnerTrue(userId)) {
@@ -172,23 +174,14 @@ public class PetService {
             throw new CustomException(ErrorCode.PET_NOT_FOUND);
         }
 
-        var userPetOpt = userPetRepository.findByUserIdAndPetId(userId, selectedPetId);
-        if (userPetOpt.isEmpty()) {
-            clearSelectedPetAndThrowDeleted(user);
+        UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, selectedPetId)
+                .orElse(null);
+        if (userPet == null) {
+            // 선택된 펫이 이미 삭제됨(owner 탈퇴 등): 별도 트랜잭션에서 selectedPetId를 확정 초기화한 뒤 안내
+            selectedPetResetter.clear(userId);
+            throw new CustomException(ErrorCode.SELECTED_PET_DELETED);
         }
-        UserPet userPet = userPetOpt.get();
         return PetResponse.of(userPet.getPet(), selectedPetId, userPet.getIsOwner());
-    }
-
-    /**
-     * 선택된 반려동물이 이미 삭제된 경우(owner 탈퇴 등): selectedPetId 초기화 후 SELECTED_PET_DELETED 예외.
-     * 클라이언트는 "이용 중이던 반려동물 프로필이 삭제되었습니다" 메시지 표시 후 선택 해제 상태로 전환.
-     */
-    @Transactional
-    public PetResponse clearSelectedPetAndThrowDeleted(User user) {
-        user.selectPet(null);
-        userRepository.save(user);
-        throw new CustomException(ErrorCode.SELECTED_PET_DELETED);
     }
 
     @Transactional
@@ -275,12 +268,13 @@ public class PetService {
         UserPet userPet = userPetRepository.findByUserIdAndPetId(userId, petId)
                 .orElseThrow(() -> new CustomException(ErrorCode.PET_NOT_OWNED));
 
-        if (pet.getProfileImageUrl() != null) {
-            storageService.delete(pet.getProfileImageUrl());
-        }
+        // 새 이미지 업로드 성공 후 기존 이미지를 삭제 (업로드 실패 시 기존 이미지 유실 방지)
+        String oldImageUrl = pet.getProfileImageUrl();
         String imageUrl = storageService.upload(file, "pets/" + petId + "/profile");
-
         pet.updateProfileImage(imageUrl);
+        if (oldImageUrl != null) {
+            storageService.delete(oldImageUrl);
+        }
 
         return PetResponse.of(pet, user.getSelectedPetId(), userPet.getIsOwner());
     }
@@ -306,7 +300,17 @@ public class PetService {
         clearPetScopedState(pet.getId());
         archiveInviteCode(pet);
         pet.deactivateEmergencyMode();
+        deletePetProfileImage(pet);
         userPetRepository.deleteAll(allUserPets);
+    }
+
+    // 펫 프로필 이미지를 오브젝트 스토리지에서 파기하고 참조를 제거한다 (탈퇴/삭제 시 개인정보 잔존 방지).
+    private void deletePetProfileImage(Pet pet) {
+        if (pet.getProfileImageUrl() == null) {
+            return;
+        }
+        storageService.delete(pet.getProfileImageUrl());
+        pet.updateProfileImage(null);
     }
 
     private void clearSelectedPetForLinkedUsers(List<UserPet> userPets, Long petId) {

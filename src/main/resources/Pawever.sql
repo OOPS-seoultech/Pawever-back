@@ -12,6 +12,7 @@ CREATE TABLE `users` (
     `nickname`          VARCHAR(255)    NULL,
     `phone`             VARCHAR(500)    NULL,
     `phone_hash`        VARCHAR(255)    NULL UNIQUE,
+    `email_hash`        VARCHAR(255)    NULL UNIQUE,
     `email`             VARCHAR(500)    NULL,
     `gender`            VARCHAR(20)     NULL,
     `birthday`          VARCHAR(10)     NULL,
@@ -19,6 +20,8 @@ CREATE TABLE `users` (
     `age_range`         VARCHAR(20)     NULL,
     `kakao_id`          VARCHAR(255)    NULL,
     `naver_id`          VARCHAR(255)    NULL,
+    `apple_id`          VARCHAR(255)    NULL,
+    `apple_refresh_token` VARCHAR(500)  NULL,
     `profile_image_url` VARCHAR(255)    NULL,
     `selected_pet_id`   BIGINT          NULL,
     `onboarding_complete` BOOLEAN       NOT NULL DEFAULT FALSE COMMENT '온보딩(서비스 상 회원가입) 완료 여부',
@@ -80,6 +83,7 @@ CREATE TABLE `user_pets` (
     `is_owner`              BOOLEAN     DEFAULT FALSE,
     `memorial_last_read_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '추모관 마지막 읽음 시각',
     PRIMARY KEY (`id`),
+    UNIQUE KEY `uq_user_pet` (`user_id`, `pet_id`),
     CONSTRAINT `FK_users_TO_user_pets`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
     CONSTRAINT `FK_pets_TO_user_pets`

@@ -69,7 +69,7 @@ public class UserService {
 
         user.updateProfile(
                 request.getName(),
-                request.getNickname(),
+                request.getNickname() != null ? request.getNickname().trim() : null,
                 newPhone,
                 newPhoneHash,
                 request.getAgeRange()
@@ -92,12 +92,13 @@ public class UserService {
     public UserProfileResponse updateProfileImage(Long userId, MultipartFile file) {
         User user = findActiveUser(userId);
 
-        if (user.getProfileImageUrl() != null) {
-            storageService.delete(user.getProfileImageUrl());
-        }
+        // 새 이미지 업로드 성공 후 기존 이미지를 삭제 (업로드 실패 시 기존 이미지 유실 방지)
+        String oldImageUrl = user.getProfileImageUrl();
         String imageUrl = storageService.upload(file, "users/" + userId + "/profile");
-
         user.updateProfileImage(imageUrl);
+        if (oldImageUrl != null) {
+            storageService.delete(oldImageUrl);
+        }
         return UserProfileResponse.from(user);
     }
 

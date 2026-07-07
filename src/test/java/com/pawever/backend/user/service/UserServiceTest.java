@@ -16,7 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -80,6 +82,34 @@ class UserServiceTest {
         verify(commentRepository).detachUserFromComments(1L);
         verify(userRepository).save(user);
         assertTrue(user.isDeleted());
+    }
+
+    @Test
+    void updateProfile_trimsNickname() {
+        User user = User.builder().id(1L).build();
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+
+        UserUpdateRequest request = new UserUpdateRequest();
+        ReflectionTestUtils.setField(request, "nickname", "  bob  ");
+
+        userService.updateProfile(1L, request);
+
+        assertEquals("bob", user.getNickname());
+    }
+
+    @Test
+    void updateProfileImage_uploadsNewBeforeDeletingOld() {
+        User user = User.builder().id(1L).profileImageUrl("https://cdn/old.jpg").build();
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        MockMultipartFile file = new MockMultipartFile("file", "new.jpg", "image/jpeg", new byte[]{1});
+        when(storageService.upload(file, "users/1/profile")).thenReturn("https://cdn/new.jpg");
+
+        userService.updateProfileImage(1L, file);
+
+        InOrder order = inOrder(storageService);
+        order.verify(storageService).upload(file, "users/1/profile");
+        order.verify(storageService).delete("https://cdn/old.jpg");
+        assertEquals("https://cdn/new.jpg", user.getProfileImageUrl());
     }
 }
 

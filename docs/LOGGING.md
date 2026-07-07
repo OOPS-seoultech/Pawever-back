@@ -4,7 +4,7 @@
 
 | 항목 | 내용 |
 |------|------|
-| **저장 위치** | GitHub 인프라 (NCP 서버 아님). 저장소 **Actions** 탭 → 워크플로 실행 → job/step 로그 |
+| **저장 위치** | GitHub 인프라 (배포 서버 아님). 저장소 **Actions** 탭 → 워크플로 실행 → job/step 로그 |
 | **보관** | 기본 **90일** — **Settings → Actions → General → Artifact and log retention** 에서 변경 |
 
 ### 배포 워크플로 로그 정책
@@ -15,7 +15,7 @@
 
 ---
 
-## 2. Spring Boot 앱 로그 (NCP 등 배포 서버)
+## 2. Spring Boot 앱 로그 (AWS 등 배포 서버)
 
 | 항목 | 내용 |
 |------|------|

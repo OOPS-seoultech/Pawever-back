@@ -18,9 +18,13 @@ import com.pawever.backend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Slf4j
 @Service
@@ -34,6 +38,7 @@ public class AuthService {
     private final NaverApiClient naverApiClient;
     private final AppleApiClient appleApiClient;
     private final HmacHasher hmacHasher;
+    private final Environment environment;
 
     @Value("${dev.login.password:}")
     private String devLoginPassword;
@@ -61,6 +66,11 @@ public class AuthService {
             var byPhone = userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash);
             if (byPhone.isPresent()) {
                 User user = byPhone.get();
+                // 전화번호 해시가 같아도, 기존 "네이버 계정(naverId 존재)"의 id 변경일 때만 갱신한다.
+                // 카카오/애플 등 타 provider 계정은 전화번호가 같아도 계정 탈취를 막기 위해 거부한다.
+                if (user.getNaverId() == null) {
+                    throw duplicatePhoneException(user);
+                }
                 log.info("[NaverLogin] naverId 변경 감지: userId={} old={} new={}", user.getId(), user.getNaverId(), userInfo.getId());
                 user.updateNaverId(userInfo.getId());
                 return TokenResponse.builder()
@@ -192,7 +202,11 @@ public class AuthService {
      */
     @Transactional
     public TokenResponse devLogin(DevLoginRequest request) {
-        if (devLoginPassword.isBlank() || !devLoginPassword.equals(request.getPassword())) {
+        // 운영(prod) 환경에서는 개발용 로그인을 비활성화한다.
+        if (environment.matchesProfiles("prod")) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        if (devLoginPassword.isBlank() || !constantTimeEquals(devLoginPassword, request.getPassword())) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
 
@@ -204,6 +218,14 @@ public class AuthService {
                 .isNewUser(true)
                 .onboardingComplete(user.isOnboardingComplete())
                 .build();
+    }
+
+    // 타이밍 사이드채널을 방지하는 상수시간 문자열 비교
+    private boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 
     private String hashPhone(String phone) {
@@ -218,16 +240,20 @@ public class AuthService {
 
     private void checkDuplicatePhone(String phoneHash) {
         if (phoneHash == null) return;
-        userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash).ifPresent(existing -> {
-            if (existing.getKakaoId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
-            } else if (existing.getNaverId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
-            } else if (existing.getAppleId() != null) {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE_APPLE);
-            } else {
-                throw new CustomException(ErrorCode.DUPLICATE_PHONE);
-            }
-        });
+        userRepository.findByPhoneHashAndDeletedAtIsNull(phoneHash)
+                .ifPresent(existing -> { throw duplicatePhoneException(existing); });
+    }
+
+    // 전화번호 해시가 이미 존재할 때, 그 계정의 provider에 맞는 안내 예외를 만든다.
+    private CustomException duplicatePhoneException(User existing) {
+        if (existing.getKakaoId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_KAKAO);
+        } else if (existing.getNaverId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_NAVER);
+        } else if (existing.getAppleId() != null) {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE_APPLE);
+        } else {
+            return new CustomException(ErrorCode.DUPLICATE_PHONE);
+        }
     }
 }
