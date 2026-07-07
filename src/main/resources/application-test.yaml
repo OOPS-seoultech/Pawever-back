@@ -1,4 +1,7 @@
 spring:
+  # 테스트는 H2 + create-drop 사용. Flyway 마이그레이션(MariaDB SQL)은 비활성화.
+  flyway:
+    enabled: false
   datasource:
     url: jdbc:h2:mem:pawever_test;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE
     driver-class-name: org.h2.Driver

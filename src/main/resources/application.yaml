@@ -8,9 +8,14 @@ spring:
     password: ${DB_PASSWORD:pawever1234}
     driver-class-name: org.mariadb.jdbc.Driver
 
+  # 스키마는 Flyway가 관리한다. 이미 스키마가 있는 DB(운영)는 V1을 실행하지 않고 기준선으로만 마킹.
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 1
+
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     show-sql: true
     properties:
