@@ -39,7 +39,10 @@ jobs:
           script: |
             cd /home/ubuntu/Pawever-back
 
-            git pull origin main
+            # 롤백 대비: 현재(정상 동작 중) 커밋을 기록한 뒤 origin/main 으로 정렬
+            PREV_COMMIT=$(git rev-parse HEAD)
+            git fetch origin main
+            git checkout -B main origin/main
 
             # Firebase 서비스 계정 키 파일 생성
             echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > /home/ubuntu/Pawever-back/firebase-service-account.json
@@ -68,14 +71,35 @@ jobs:
             APPLE_PRIVATE_KEY=$APPLE_PRIVATE_KEY
             EOF
 
-            docker compose down > /dev/null 2>&1
-            if docker compose up -d --build > /tmp/deploy.log 2>&1; then
+            # /health 가 200 될 때까지 최대 120초 대기 (앱 기동·정상 여부 확인)
+            wait_healthy() {
+              for _ in $(seq 1 24); do
+                if curl -fsS http://localhost:28080/health > /dev/null 2>&1; then
+                  return 0
+                fi
+                sleep 5
+              done
+              return 1
+            }
+
+            # DB(mariadb)는 그대로 두고 app 컨테이너만 재빌드·교체
+            docker compose up -d --build app > /tmp/deploy.log 2>&1
+
+            if wait_healthy; then
               echo "✅ Deploy 성공"
               docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
               docker system prune -af > /dev/null 2>&1
             else
-              echo "❌ Deploy 실패"
+              echo "❌ 새 버전 헬스체크 실패 → 이전 버전($PREV_COMMIT)으로 자동 롤백"
               tail -50 /tmp/deploy.log
+              git checkout -f "$PREV_COMMIT"
+              docker compose up -d --build app > /tmp/rollback.log 2>&1
+              if wait_healthy; then
+                echo "↩️ 롤백 완료 — 이전 버전이 정상 기동 중. origin/main 을 고친 뒤 다시 배포하세요."
+              else
+                echo "🚨 롤백도 실패 — 서버 수동 확인 필요"
+                tail -50 /tmp/rollback.log
+              fi
               exit 1
             fi
         env:
