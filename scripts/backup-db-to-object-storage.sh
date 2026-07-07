@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# MariaDB 덤프 → gzip → NCP Object Storage(S3 호환) 업로드 + 보관 정리
+# MariaDB 덤프 → gzip → 오브젝트 스토리지 업로드 + 보관 정리
+# 스토리지 접속은 앱(application.yaml 의 cloud.ncp.*)과 동일: 기본 AWS S3, NCP_S3_ENDPOINT 지정 시 NCP 등 S3 호환
 # 스타트업 기본값: 일별 14일, 주간(일요일) 56일(8주), 객체 키에 타임스탬프
 #
 # 필요: docker, docker compose(v2), aws-cli v2, gzip, GNU date, jq(보관 정리 시)
@@ -20,15 +21,25 @@ if [[ -f "$ROOT/.env" ]]; then
   set +a
 fi
 
-: "${NCP_S3_ENDPOINT:=https://kr.object.ncloudstorage.com}"
+# 스토리지 접속은 앱(application.yaml 의 cloud.ncp.*)과 동일하게 맞춘다.
+#   - NCP_S3_ENDPOINT 가 비어 있으면 AWS S3 기본 엔드포인트 사용(현재 운영값).
+#   - NCP_S3_ENDPOINT 를 지정하면 NCP 등 S3 호환 스토리지로 override.
+: "${NCP_S3_ENDPOINT:=}"
 : "${BACKUP_S3_PREFIX:=backups/pawever-db}"
 : "${BACKUP_RETAIN_DAILY_DAYS:=14}"
 : "${BACKUP_RETAIN_WEEKLY_DAYS:=56}"
 : "${COMPOSE_SERVICE_DB:=mariadb}"
-: "${AWS_DEFAULT_REGION:=kr-standard}"
+# 리전 기본값도 앱과 동일(cloud.ncp.region = ${NCP_REGION:ap-northeast-2}).
+: "${AWS_DEFAULT_REGION:=${NCP_REGION:-ap-northeast-2}}"
 
 export AWS_ACCESS_KEY_ID="${NCP_ACCESS_KEY:-}"
 export AWS_SECRET_ACCESS_KEY="${NCP_SECRET_KEY:-}"
+
+# endpoint 가 지정된 경우에만 --endpoint-url 을 붙인다(AWS S3는 붙이지 않음).
+S3_ENDPOINT_ARGS=()
+if [[ -n "$NCP_S3_ENDPOINT" ]]; then
+  S3_ENDPOINT_ARGS=(--endpoint-url "$NCP_S3_ENDPOINT")
+fi
 
 require_nonempty() {
   local name="$1" val="$2"
@@ -92,7 +103,7 @@ daily_uri="s3://${NCP_BUCKET}/${daily_key}"
 
 log "업로드 (일별): ${daily_uri}"
 aws s3 cp "$tmp_gz" "$daily_uri" \
-  --endpoint-url "$NCP_S3_ENDPOINT" \
+  "${S3_ENDPOINT_ARGS[@]}" \
   --region "$AWS_DEFAULT_REGION" \
   --no-progress
 
@@ -103,7 +114,7 @@ if [[ "$dow" == "7" ]]; then
   weekly_uri="s3://${NCP_BUCKET}/${weekly_key}"
   log "업로드 (주간): ${weekly_uri}"
   aws s3 cp "$tmp_gz" "$weekly_uri" \
-    --endpoint-url "$NCP_S3_ENDPOINT" \
+    "${S3_ENDPOINT_ARGS[@]}" \
     --region "$AWS_DEFAULT_REGION" \
     --no-progress
 fi
@@ -123,7 +134,7 @@ prune_if_jq() {
   json="$(aws s3api list-objects-v2 \
     --bucket "$NCP_BUCKET" \
     --prefix "$prefix_rel" \
-    --endpoint-url "$NCP_S3_ENDPOINT" \
+    "${S3_ENDPOINT_ARGS[@]}" \
     --region "$AWS_DEFAULT_REGION" \
     --output json)"
 
@@ -141,7 +152,7 @@ prune_if_jq() {
     aws s3api delete-object \
       --bucket "$NCP_BUCKET" \
       --key "$k" \
-      --endpoint-url "$NCP_S3_ENDPOINT" \
+      "${S3_ENDPOINT_ARGS[@]}" \
       --region "$AWS_DEFAULT_REGION" >/dev/null
     ((++n)) || true
   done
