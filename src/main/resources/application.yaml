@@ -21,6 +21,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          time_zone: UTC
         default_batch_fetch_size: 100  # 지연 로딩 N+1 완화 (IN 절 배치 조회)
     defer-datasource-initialization: true
 
@@ -75,3 +77,14 @@ cloud:
       bucket: ${NCP_BUCKET:}
     cdn:
       domain: ${NCP_CDN_DOMAIN:}
+
+survey:
+  goods:
+    campaign-id: ${GOODS_SURVEY_CAMPAIGN_ID:goods-2026-07}
+    questionnaire-version: 2026-07-23-v1
+    privacy-consent-version: 2026-07-23
+    # 제작 사진은 기존 공개 이미지 버킷과 분리한 AWS S3 비공개 버킷에 저장한다.
+    photo-bucket: ${GOODS_SURVEY_S3_BUCKET:}
+    reservation-minutes: 15
+    upload-url-minutes: 10
+    personal-data-retention-days: 90

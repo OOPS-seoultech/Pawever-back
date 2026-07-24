@@ -9,6 +9,8 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.net.URI;
 
@@ -59,6 +61,25 @@ public class NcpStorageConfig {
         if (s3.getEndpoint() != null && !s3.getEndpoint().isBlank()) {
             builder.endpointOverride(URI.create(s3.getEndpoint()))
                     .forcePathStyle(true);
+        }
+        return builder.build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner() {
+        var builder = S3Presigner.builder()
+                .region(Region.of(region))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(
+                                credentials.getAccessKey(),
+                                credentials.getSecretKey()
+                        )
+                ));
+        if (s3.getEndpoint() != null && !s3.getEndpoint().isBlank()) {
+            builder.endpointOverride(URI.create(s3.getEndpoint()))
+                    .serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            .build());
         }
         return builder.build();
     }

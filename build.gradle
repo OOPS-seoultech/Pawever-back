@@ -29,6 +29,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-jackson'
 
 	// Swagger (SpringDoc OpenAPI)
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
@@ -38,7 +39,7 @@ dependencies {
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
-	// NCP Object Storage (S3 compatible)
+	// AWS S3 (endpoint override 시 S3-compatible storage도 지원)
 	implementation platform('software.amazon.awssdk:bom:2.25.27')
 	implementation 'software.amazon.awssdk:s3'
 
@@ -54,9 +55,9 @@ dependencies {
 	runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
 	runtimeOnly 'com.h2database:h2'
 
-	// DB 스키마 마이그레이션 (Flyway) — flyway-mysql 이 MariaDB 지원
-	implementation 'org.flywaydb:flyway-core'
-	implementation 'org.flywaydb:flyway-mysql'
+	// Spring Boot 4는 전용 starter가 있어야 Flyway 자동 구성이 활성화된다.
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	runtimeOnly 'org.flywaydb:flyway-mysql'
 
 	// JSON 라인 로그 + StructuredArguments (프로덕션: CloudWatch/ELK/Loki 등 수집용)
 	implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
