@@ -67,7 +67,23 @@ public enum ErrorCode {
     // File
     FILE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다. (jpg, png, webp, heic, heif만 허용)"),
-    FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "파일 용량이 너무 큽니다. (최대 10MB)");
+    FILE_TOO_LARGE(HttpStatus.CONTENT_TOO_LARGE, "파일 용량이 너무 큽니다. (최대 10MB)"),
+
+    // Goods survey
+    SURVEY_CAMPAIGN_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 캠페인을 찾을 수 없습니다."),
+    SURVEY_CAMPAIGN_CLOSED(HttpStatus.GONE, "굿즈 신청 기간이 종료되었습니다."),
+    SURVEY_CAMPAIGN_FULL(HttpStatus.CONFLICT, "무료 굿즈 선착순 모집이 마감되었습니다."),
+    SURVEY_RESPONSE_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 응답을 찾을 수 없습니다."),
+    SURVEY_EDIT_TOKEN_INVALID(HttpStatus.FORBIDDEN, "설문 편집 권한이 없습니다."),
+    SURVEY_INVALID_ANSWERS(HttpStatus.BAD_REQUEST, "설문 응답 형식 또는 분기가 올바르지 않습니다."),
+    SURVEY_INVALID_STATE(HttpStatus.CONFLICT, "현재 설문 상태에서는 요청을 처리할 수 없습니다."),
+    SURVEY_RESERVATION_EXPIRED(HttpStatus.GONE, "선착순 예약 시간이 만료되었습니다."),
+    SURVEY_DUPLICATE_PHONE(HttpStatus.CONFLICT, "이미 이 캠페인에 신청한 연락처입니다."),
+    SURVEY_IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "같은 제출 키로 다른 요청을 처리할 수 없습니다."),
+    SURVEY_PHOTO_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "사진은 최대 5장까지 업로드할 수 있습니다."),
+    SURVEY_PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드할 사진 정보를 찾을 수 없습니다."),
+    SURVEY_PHOTO_NOT_READY(HttpStatus.BAD_REQUEST, "사진 업로드가 완료되지 않았습니다."),
+    SURVEY_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장소가 아직 설정되지 않았습니다.");
 
     private final HttpStatus httpStatus;
     private final String message;

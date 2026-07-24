@@ -29,6 +29,7 @@
 | **Memorial** | 추모 댓글, 댓글 신고 |
 | **Funeral** | 장례 업체 목록/상세, 리뷰 및 이미지 |
 | **Review** | 서비스 리뷰(ServiceReview) |
+| **GoodsSurvey** | 랜딩 내부 설문, 선착순 예약, 제작·배송 신청, 비공개 사진 업로드 |
 
 <br>
 
@@ -67,6 +68,7 @@ src/main/java/com/pawever/backend/
 
 실행 후 다음 주소에서 확인할 수 있습니다.
 - **Swagger UI**: `/swagger-ui.html`
+- **굿즈 설문 운영**: [`docs/goods-survey.md`](docs/goods-survey.md)
 <br><br>
 
 ## 🚀 배포

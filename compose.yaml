@@ -10,6 +10,7 @@ x-app-common: &app-common
     NCP_SECRET_KEY: ${NCP_SECRET_KEY:-}
     NCP_BUCKET: ${NCP_BUCKET:-}
     NCP_CDN_DOMAIN: ${NCP_CDN_DOMAIN:-}
+    GOODS_SURVEY_S3_BUCKET: ${GOODS_SURVEY_S3_BUCKET:-}
   volumes:
     - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     - ./logs:/app/logs
