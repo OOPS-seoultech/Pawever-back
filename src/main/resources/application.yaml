@@ -24,7 +24,8 @@ spring:
         jdbc:
           time_zone: UTC
         default_batch_fetch_size: 100  # 지연 로딩 N+1 완화 (IN 절 배치 조회)
-    defer-datasource-initialization: true
+    # Flyway가 Hibernate보다 먼저 스키마를 준비해야 하므로 JPA 뒤로 초기화를 미루지 않는다.
+    defer-datasource-initialization: false
 
   sql:
     init:
