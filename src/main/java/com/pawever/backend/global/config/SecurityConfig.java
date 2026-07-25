@@ -9,6 +9,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
+
+import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @EnableWebSecurity
@@ -16,11 +22,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CorsProperties corsProperties;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
+                .cors(withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/health").permitAll()
@@ -34,5 +42,23 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of(
+                "Content-Type",
+                "X-Survey-Edit-Token",
+                "Idempotency-Key"
+        ));
+        configuration.setAllowCredentials(false);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/public/goods-survey/**", configuration);
+        return source;
     }
 }

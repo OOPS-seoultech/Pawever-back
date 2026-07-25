@@ -12,10 +12,13 @@
 ## 필수 환경 설정
 
 - `GOODS_SURVEY_S3_BUCKET`: 반려견 제작 사진 전용 AWS S3 비공개 버킷
+- `APP_CORS_ALLOWED_ORIGINS`: 설문 API 호출을 허용할 프론트엔드 origin의 쉼표 구분 목록
 - 운영 S3 클라이언트는 서울 리전(`ap-northeast-2`)과 기존 AWS IAM 자격증명을 사용합니다.
 - 운영용 `ENCRYPTION_SECRET_KEY`, `ENCRYPTION_HASH_KEY`
 
-비공개 S3 버킷에는 `https://www.pawever.kr`의 `PUT` 요청을 허용하는 CORS 규칙이 필요합니다. S3 Block Public Access는 모두 유지하고 CloudFront에는 연결하지 않습니다. 브라우저는 10분짜리 presigned URL로 직접 업로드하고 API는 `HEAD`로 콘텐츠 형식과 용량을 확인합니다.
+설문 API는 `https://www.pawever.kr`, `https://pawever.kr`, `https://pawever-landing.pages.dev`, `https://feat-goods-survey-landing.pawever-landing.pages.dev`만 운영 기본 origin으로 허용합니다. Cloudflare의 커밋 해시 URL 대신 고정 브랜치 별칭으로 미리보기를 검증합니다.
+
+비공개 S3 버킷에는 위 네 origin의 `PUT` 요청을 허용하는 CORS 규칙이 필요합니다. S3 Block Public Access는 모두 유지하고 CloudFront에는 연결하지 않습니다. 브라우저는 10분짜리 presigned URL로 직접 업로드하고 API는 `HEAD`로 콘텐츠 형식과 용량을 확인합니다.
 
 ## 운영 전 확인
 
