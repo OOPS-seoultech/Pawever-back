@@ -113,7 +113,7 @@ class GoodsSurveyServiceTest {
                 draft.responseId(),
                 draft.editToken(),
                 new SaveGoodsSurveyDraftRequest(
-                        Map.of("q1", new ObjectMapper().getNodeFactory().textNode("current_only")),
+                        reservableAnswers(),
                         "q33",
                         120_000L,
                         Map.of("q1", 3_000L),
@@ -146,7 +146,7 @@ class GoodsSurveyServiceTest {
                 draft.responseId(),
                 draft.editToken(),
                 new SaveGoodsSurveyDraftRequest(
-                        Map.of("q1", new ObjectMapper().getNodeFactory().textNode("current_only")),
+                        reservableAnswers(),
                         "q33",
                         90_000L,
                         Map.of(),
@@ -188,6 +188,30 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
+    void nonTerminatingCompletionWithoutEnoughAnswersCannotReserveASlot() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-thin");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+
+        assertThatThrownBy(() -> service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        Map.of("q1", objectMapper.getNodeFactory().textNode("current_only")),
+                        "q1",
+                        4_000L,
+                        Map.of(),
+                        tracking
+                )
+        )).hasMessageContaining("최소 설문 응답 수");
+
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.DRAFT);
+    }
+
+    @Test
     void applicationStoresPublicationConsentForEachConfirmedPhoto() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
@@ -198,7 +222,7 @@ class GoodsSurveyServiceTest {
                 draft.responseId(),
                 draft.editToken(),
                 new SaveGoodsSurveyDraftRequest(
-                        Map.of("q1", objectMapper.getNodeFactory().textNode("current_only")),
+                        reservableAnswers(),
                         "q33",
                         30_000L,
                         Map.of(),
@@ -249,7 +273,7 @@ class GoodsSurveyServiceTest {
                 draft.responseId(),
                 draft.editToken(),
                 new SaveGoodsSurveyDraftRequest(
-                        Map.of("q1", objectMapper.getNodeFactory().textNode("current_only")),
+                        reservableAnswers(),
                         "q33",
                         30_000L,
                         Map.of(),
@@ -285,6 +309,18 @@ class GoodsSurveyServiceTest {
         );
 
         assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+    }
+
+    private static Map<String, JsonNode> reservableAnswers() {
+        ObjectMapper mapper = new ObjectMapper();
+        return Map.of(
+                "q1", mapper.getNodeFactory().textNode("current_only"),
+                "q2", mapper.getNodeFactory().textNode("current"),
+                "q3", mapper.getNodeFactory().textNode("3"),
+                "q4", mapper.getNodeFactory().textNode("healthy"),
+                "q5", mapper.getNodeFactory().textNode("2"),
+                "q6", mapper.getNodeFactory().textNode("1")
+        );
     }
 
     private GoodsSurveyPhoto confirmedPhoto(String id, String responseId) {
