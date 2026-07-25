@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -16,11 +17,16 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "app.cors.allowed-origins=https://pawever-landing.pages.dev,https://feat-goods-survey-landing.pawever-landing.pages.dev"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class GoodsSurveyControllerIntegrationTest {
@@ -98,5 +104,41 @@ class GoodsSurveyControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.status").value("RESERVED"))
                 .andExpect(jsonPath("$.data.remaining").value(72))
                 .andExpect(jsonPath("$.data.reservationExpiresAt").isNotEmpty());
+    }
+
+    @Test
+    void cloudflarePagesCanPreflightGoodsSurveyRequests() throws Exception {
+        String origin = "https://feat-goods-survey-landing.pawever-landing.pages.dev";
+
+        mockMvc.perform(
+                        options("/api/public/goods-survey/responses")
+                                .header(HttpHeaders.ORIGIN, origin)
+                                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                                .header(
+                                        HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                        "content-type,x-survey-edit-token,idempotency-key"
+                                )
+                )
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+                        containsString("POST")
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        containsString("idempotency-key")
+                ));
+    }
+
+    @Test
+    void untrustedOriginCannotPreflightGoodsSurveyRequests() throws Exception {
+        mockMvc.perform(
+                        options("/api/public/goods-survey/responses")
+                                .header(HttpHeaders.ORIGIN, "https://untrusted.example")
+                                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                )
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
     }
 }
