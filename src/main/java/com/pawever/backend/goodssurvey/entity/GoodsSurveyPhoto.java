@@ -49,6 +49,9 @@ public class GoodsSurveyPhoto extends BaseTimeEntity {
 
     private Instant confirmedAt;
 
+    @Column(nullable = false)
+    private boolean publicationAgreed;
+
     public static GoodsSurveyPhoto pending(
             String id,
             String responseId,
@@ -67,6 +70,7 @@ public class GoodsSurveyPhoto extends BaseTimeEntity {
         photo.expectedSize = expectedSize;
         photo.status = GoodsSurveyPhotoStatus.PENDING;
         photo.uploadExpiresAt = uploadExpiresAt;
+        photo.publicationAgreed = false;
         return photo;
     }
 
@@ -78,5 +82,9 @@ public class GoodsSurveyPhoto extends BaseTimeEntity {
         this.actualSize = actualSize;
         this.status = GoodsSurveyPhotoStatus.CONFIRMED;
         this.confirmedAt = confirmedAt;
+    }
+
+    public void setPublicationAgreed(boolean publicationAgreed) {
+        this.publicationAgreed = publicationAgreed;
     }
 }

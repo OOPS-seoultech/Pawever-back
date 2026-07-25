@@ -6,7 +6,9 @@ import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyRequest;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyCompletionResponse;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyDraftResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
+import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
+import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyCampaignRepository;
@@ -25,6 +27,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -103,7 +106,7 @@ class GoodsSurveyServiceTest {
                 "device", Map.of("category", "mobile")
         ));
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-23-v1", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -162,7 +165,7 @@ class GoodsSurveyServiceTest {
     void arbitraryOptionIdsCannotReserveARewardSlot() {
         GoodsSurveyDraftResponse draft = service.createDraft(
                 new CreateGoodsSurveyRequest(
-                        "2026-07-23-v1",
+                        "2026-07-25-v2",
                         "figure",
                         new ObjectMapper().createObjectNode().put("visitId", "visit-3")
                 )
@@ -182,5 +185,119 @@ class GoodsSurveyServiceTest {
                         new ObjectMapper().createObjectNode().put("visitId", "visit-3")
                 )
         )).hasMessageContaining("설문 응답 형식");
+    }
+
+    @Test
+    void applicationStoresPublicationConsentForEachConfirmedPhoto() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        Map.of("q1", objectMapper.getNodeFactory().textNode("current_only")),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        GoodsSurveyPhoto publicPhoto = confirmedPhoto("photo-public", draft.responseId());
+        GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-private", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(publicPhoto, privatePhoto));
+
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-photo-consent",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "acrylic",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-public", "photo-private"),
+                        List.of("photo-public"),
+                        "conversion-photo-consent",
+                        tracking,
+                        true,
+                        true
+                )
+        );
+
+        assertThat(publicPhoto.isPublicationAgreed()).isTrue();
+        assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+    }
+
+    @Test
+    void legacyApplicationWithoutPhotoPublicationConsentKeepsEveryPhotoPrivate() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-legacy-photo");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-23-v1", "face", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        Map.of("q1", objectMapper.getNodeFactory().textNode("current_only")),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-legacy-private", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(privatePhoto));
+
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-legacy-photo",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "face",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-legacy-private"),
+                        null,
+                        "conversion-legacy-photo",
+                        tracking,
+                        true,
+                        true
+                )
+        );
+
+        assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+    }
+
+    private GoodsSurveyPhoto confirmedPhoto(String id, String responseId) {
+        GoodsSurveyPhoto photo = GoodsSurveyPhoto.pending(
+                id,
+                responseId,
+                "client-" + id,
+                "goods-survey/" + responseId + "/" + id + ".jpg",
+                "image/jpeg",
+                1024,
+                NOW.plusSeconds(600)
+        );
+        photo.confirm(1024, NOW);
+        return photo;
     }
 }
