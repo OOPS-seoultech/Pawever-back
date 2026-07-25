@@ -56,7 +56,7 @@ class GoodsSurveyControllerIntegrationTest {
     void anonymousBrowserCanCreateAndCompleteAnInternalSurvey() throws Exception {
         String createBody = """
                 {
-                  "questionnaireVersion": "2026-07-23-v1",
+                  "questionnaireVersion": "2026-07-25-v2",
                   "selectedGoods": "acrylic",
                   "tracking": {
                     "visitId": "visit-integration",

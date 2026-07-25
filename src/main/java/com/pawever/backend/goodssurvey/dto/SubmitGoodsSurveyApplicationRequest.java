@@ -21,6 +21,7 @@ public record SubmitGoodsSurveyApplicationRequest(
         @NotBlank @Size(max = 200) String address,
         @Size(max = 200) String addressDetail,
         @Size(min = 1, max = 5) List<@NotBlank @Size(max = 36) String> photoIds,
+        @Size(max = 5) List<@NotBlank @Size(max = 36) String> publicPhotoIds,
         @NotBlank @Size(max = 80) String conversionEventId,
         @NotNull JsonNode tracking,
         @AssertTrue boolean privacyAgreed,

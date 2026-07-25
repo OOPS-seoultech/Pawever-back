@@ -62,7 +62,7 @@ class GoodsSurveyRepositoryTest {
         return GoodsSurveyResponse.draft(
                 UUID.nameUUIDFromBytes(suffix.getBytes(StandardCharsets.UTF_8)).toString(),
                 campaignId,
-                "2026-07-23-v1",
+                "2026-07-25-v2",
                 "token-hash-" + suffix,
                 "acrylic",
                 "{}"

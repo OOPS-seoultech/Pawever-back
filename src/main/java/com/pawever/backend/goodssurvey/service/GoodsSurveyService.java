@@ -41,6 +41,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -359,14 +360,25 @@ public class GoodsSurveyService {
                 || uniquePhotoIds.size() > 5) {
             throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
         }
-        int confirmedPhotos = photoRepository.findAllByIdInAndResponseIdAndStatus(
+        List<String> requestedPublicPhotoIds =
+                request.publicPhotoIds() == null ? List.of() : request.publicPhotoIds();
+        Set<String> publicPhotoIds = new LinkedHashSet<>(requestedPublicPhotoIds);
+        if (publicPhotoIds.size() != requestedPublicPhotoIds.size()
+                || !uniquePhotoIds.containsAll(publicPhotoIds)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        List<GoodsSurveyPhoto> confirmedPhotos = photoRepository.findAllByIdInAndResponseIdAndStatus(
                 uniquePhotoIds,
                 responseId,
                 GoodsSurveyPhotoStatus.CONFIRMED
-        ).size();
-        if (confirmedPhotos != uniquePhotoIds.size()) {
+        );
+        if (confirmedPhotos.size() != uniquePhotoIds.size()) {
             throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
         }
+        confirmedPhotos.forEach(
+                photo -> photo.setPublicationAgreed(publicPhotoIds.contains(photo.getId()))
+        );
+        photoRepository.saveAll(confirmedPhotos);
 
         String normalizedPhone = normalizePhone(request.phone());
         String phoneHash = hmacHasher.hash(response.getCampaignId() + ":" + normalizedPhone);
@@ -513,7 +525,8 @@ public class GoodsSurveyService {
     }
 
     private void validateQuestionnaireVersion(String version) {
-        if (!properties.getQuestionnaireVersion().equals(version)) {
+        if (!properties.getQuestionnaireVersion().equals(version)
+                && !properties.getLegacyQuestionnaireVersions().contains(version)) {
             throw new CustomException(ErrorCode.SURVEY_INVALID_ANSWERS);
         }
     }
