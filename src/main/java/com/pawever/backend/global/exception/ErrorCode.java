@@ -76,6 +76,7 @@ public enum ErrorCode {
     SURVEY_RESPONSE_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 응답을 찾을 수 없습니다."),
     SURVEY_EDIT_TOKEN_INVALID(HttpStatus.FORBIDDEN, "설문 편집 권한이 없습니다."),
     SURVEY_INVALID_ANSWERS(HttpStatus.BAD_REQUEST, "설문 응답 형식 또는 분기가 올바르지 않습니다."),
+    SURVEY_INSUFFICIENT_ANSWERS(HttpStatus.BAD_REQUEST, "무료 제작 신청에 필요한 최소 설문 응답 수를 충족하지 않았습니다."),
     SURVEY_INVALID_STATE(HttpStatus.CONFLICT, "현재 설문 상태에서는 요청을 처리할 수 없습니다."),
     SURVEY_RESERVATION_EXPIRED(HttpStatus.GONE, "선착순 예약 시간이 만료되었습니다."),
     SURVEY_DUPLICATE_PHONE(HttpStatus.CONFLICT, "이미 이 캠페인에 신청한 연락처입니다."),

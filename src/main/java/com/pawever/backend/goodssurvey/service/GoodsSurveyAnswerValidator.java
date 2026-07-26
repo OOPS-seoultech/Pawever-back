@@ -20,6 +20,11 @@ public class GoodsSurveyAnswerValidator {
     private static final long MAX_SURVEY_ACTIVE_MS = 6 * 60 * 60 * 1000L;
     private static final long MAX_QUESTION_ACTIVE_MS = 4 * 60 * 60 * 1000L;
 
+    // 프런트 게이트(goodsSurveySchema.ts의 MIN_ANSWERED_FOR_RESERVATION)를 우회해
+    // 자격 문항만 답하고 완료를 호출하는 어뷰징이 무료 제작 슬롯을 선점하지 못하도록,
+    // 종료 대상이 아닌 완료 응답은 최소 응답 수를 충족해야 한다. 프런트와 같은 값(5)을 유지한다.
+    private static final int MIN_ANSWERS_FOR_RESERVATION = 5;
+
     private static final Set<String> QUESTION_IDS = Set.of(
             "q1", "q2", "q3", "q4", "q4_1", "q4_2", "q5", "q6", "q7",
             "q8", "q8_1a", "q8_1b", "q8_1c", "q8_1d", "q9", "q10",
@@ -110,7 +115,13 @@ public class GoodsSurveyAnswerValidator {
         validateDraft(answers, surveyActiveMs, questionActiveMs, tracking);
         String q1 = textValue(answers, "q1");
         if (q1 == null || !VALID_Q1.contains(q1)) invalid();
-        if (TERMINATING_Q1.contains(q1) && answers.size() != 1) invalid();
+        if (TERMINATING_Q1.contains(q1)) {
+            if (answers.size() != 1) invalid();
+            return;
+        }
+        if (answers.size() < MIN_ANSWERS_FOR_RESERVATION) {
+            throw new CustomException(ErrorCode.SURVEY_INSUFFICIENT_ANSWERS);
+        }
     }
 
     public boolean isTerminated(Map<String, JsonNode> answers) {
