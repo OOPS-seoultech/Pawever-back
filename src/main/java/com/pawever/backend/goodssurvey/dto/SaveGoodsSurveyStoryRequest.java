@@ -18,8 +18,6 @@ public record SaveGoodsSurveyStoryRequest(
         @Size(max = 800) String finalHelp,
         @Size(max = 100) String oneLine,
         @AssertTrue boolean analysisAgreed,
-        boolean publishAgreed,
-        boolean reviewContactAgreed,
-        boolean interviewAgreed
+        boolean publishAgreed
 ) {
 }

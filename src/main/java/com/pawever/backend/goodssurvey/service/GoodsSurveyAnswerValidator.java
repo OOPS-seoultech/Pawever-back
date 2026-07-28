@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Component
 public class GoodsSurveyAnswerValidator {
@@ -49,7 +51,16 @@ public class GoodsSurveyAnswerValidator {
             "answers", "answer", "phone", "address", "addressDetail",
             "guardianName", "petName", "email", "photo", "photos", "file", "files"
     );
-    private static final Set<String> NUMBERED_OPTIONS = Set.of("1", "2", "3", "4", "5");
+    private static final Set<String> NUMBERED_OPTIONS = numberedOptions(5);
+
+    // 노션 개정본에서 하나였던 선택지가 쪼개지면서 5개를 넘긴 문항들.
+    // 프런트 goodsSurveySchema.ts의 문항별 선택지 수와 같은 값을 유지해야 하며,
+    // 여기에 없는 번호형 문항은 그대로 5개까지만 받는다.
+    private static final Map<String, Set<String>> NUMBERED_OPTION_OVERRIDES = Map.of(
+            "q3", numberedOptions(6),
+            "q12", numberedOptions(6),
+            "q33", numberedOptions(7)
+    );
     private static final Set<String> MULTI_QUESTION_IDS = Set.of("q4_2", "q7", "q27");
     private static final Map<String, Integer> MAX_MULTI_SELECTIONS = Map.of(
             "q4_2", 5,
@@ -65,12 +76,14 @@ public class GoodsSurveyAnswerValidator {
             Map.entry("q11_1b", Set.of("symptom", "treatment", "care", "cost", "farewell")),
             Map.entry("q14", Set.of("health_only", "future_only", "health_first", "future_first", "none")),
             Map.entry("q16", Set.of("medical", "finance", "care", "farewell", "none")),
-            Map.entry("q18", Set.of("healthy", "aging", "diagnosis", "care", "late_or_never")),
+            // late_or_never는 Q18이 late(이별 무렵)·never(아직 안 찾아봄)로 쪼개지기 전의 값이다.
+            // 저장된 임시 응답이 남아 있을 수 있어 계속 받아준다.
+            Map.entry("q18", Set.of("healthy", "aging", "diagnosis", "care", "late", "never", "late_or_never")),
             Map.entry("q19", Set.of("emotion", "timing", "search", "trust", "other")),
             Map.entry("q21", Set.of("healthy", "aging", "signal", "diagnosis", "later")),
             Map.entry("q23", Set.of("memory", "health", "daily", "info", "never")),
-            Map.entry("q29_current", Set.of("health", "quality", "cost", "memory", "emotion")),
-            Map.entry("q29_departed", Set.of("health", "quality", "cost", "memory", "emotion"))
+            Map.entry("q29_current", Set.of("health", "quality", "cost", "memory", "emotion", "none")),
+            Map.entry("q29_departed", Set.of("health", "quality", "cost", "memory", "emotion", "none"))
     );
 
     private final ObjectMapper objectMapper;
@@ -140,7 +153,7 @@ public class GoodsSurveyAnswerValidator {
 
     private void validateAnswer(String questionId, JsonNode answer) {
         if (!QUESTION_IDS.contains(questionId) || answer == null) invalid();
-        Set<String> allowedOptions = NAMED_OPTIONS.getOrDefault(questionId, NUMBERED_OPTIONS);
+        Set<String> allowedOptions = allowedOptions(questionId);
         if (answer.isTextual()) {
             if (MULTI_QUESTION_IDS.contains(questionId)
                     || !allowedOptions.contains(answer.stringValue())) {
@@ -208,7 +221,7 @@ public class GoodsSurveyAnswerValidator {
         requireChild(answers, "q16_1b", "q16", Set.of("finance"));
         requireChild(answers, "q16_1c", "q16", Set.of("care"));
         requireChild(answers, "q16_1d", "q16", Set.of("farewell"));
-        requireChild(answers, "q18_1", "q18", Set.of("late_or_never"));
+        requireChild(answers, "q18_1", "q18", Set.of("late", "late_or_never"));
 
         requireChild(answers, "q19_1a", "q19", Set.of("emotion"));
         requireChild(answers, "q19_1b", "q19", Set.of("timing"));
@@ -267,6 +280,20 @@ public class GoodsSurveyAnswerValidator {
                 invalid();
             }
         }
+    }
+
+    private static Set<String> numberedOptions(int count) {
+        return IntStream.rangeClosed(1, count)
+                .mapToObj(String::valueOf)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static Set<String> allowedOptions(String questionId) {
+        Set<String> named = NAMED_OPTIONS.get(questionId);
+        if (named != null) {
+            return named;
+        }
+        return NUMBERED_OPTION_OVERRIDES.getOrDefault(questionId, NUMBERED_OPTIONS);
     }
 
     private String textValue(Map<String, JsonNode> answers, String questionId) {

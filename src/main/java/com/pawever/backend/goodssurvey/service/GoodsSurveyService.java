@@ -204,8 +204,6 @@ public class GoodsSurveyService {
                         storyJson,
                         request.analysisAgreed(),
                         request.publishAgreed(),
-                        request.reviewContactAgreed(),
-                        request.interviewAgreed(),
                         properties.getPrivacyConsentVersion(),
                         now
                 ));
@@ -213,8 +211,6 @@ public class GoodsSurveyService {
                 storyJson,
                 request.analysisAgreed(),
                 request.publishAgreed(),
-                request.reviewContactAgreed(),
-                request.interviewAgreed(),
                 properties.getPrivacyConsentVersion(),
                 now
         );
