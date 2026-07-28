@@ -317,7 +317,7 @@ class GoodsSurveyServiceTest {
                 "q1", mapper.getNodeFactory().textNode("current_only"),
                 "q2", mapper.getNodeFactory().textNode("current"),
                 "q3", mapper.getNodeFactory().textNode("3"),
-                "q4", mapper.getNodeFactory().textNode("healthy"),
+                "q4", mapper.getNodeFactory().arrayNode().add("healthy"),
                 "q5", mapper.getNodeFactory().textNode("2"),
                 "q6", mapper.getNodeFactory().textNode("1")
         );

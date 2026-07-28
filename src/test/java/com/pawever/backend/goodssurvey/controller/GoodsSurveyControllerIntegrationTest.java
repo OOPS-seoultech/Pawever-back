@@ -82,7 +82,7 @@ class GoodsSurveyControllerIntegrationTest {
 
         String completeBody = """
                 {
-                  "answers": {"q1": "current_only", "q2": "current", "q3": "3", "q4": "healthy", "q5": "2", "q6": "1"},
+                  "answers": {"q1": "current_only", "q2": "current", "q3": "3", "q4": ["healthy"], "q5": "2", "q6": "1"},
                   "currentQuestionId": "q6",
                   "surveyActiveMs": 15000,
                   "questionActiveMs": {"q1": 3000},

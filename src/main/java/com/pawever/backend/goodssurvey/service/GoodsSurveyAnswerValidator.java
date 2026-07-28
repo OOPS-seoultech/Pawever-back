@@ -61,11 +61,24 @@ public class GoodsSurveyAnswerValidator {
             "q12", numberedOptions(6),
             "q33", numberedOptions(7)
     );
-    private static final Set<String> MULTI_QUESTION_IDS = Set.of("q4_2", "q7", "q27");
+    private static final Set<String> MULTI_QUESTION_IDS = Set.of(
+            "q4", "q4_2", "q7", "q8", "q11_1a", "q27", "q30"
+    );
     private static final Map<String, Integer> MAX_MULTI_SELECTIONS = Map.of(
+            "q4", 5,
             "q4_2", 5,
             "q7", 5,
-            "q27", 2
+            "q8", 5,
+            "q11_1a", 5,
+            "q27", 2,
+            "q30", 5
+    );
+
+    // 고르면 다른 선택지와 함께 둘 수 없는 값. 프런트 exclusiveOptionIds와 짝이다.
+    private static final Map<String, String> EXCLUSIVE_OPTIONS = Map.of(
+            "q7", "5",
+            "q8", "not_yet",
+            "q30", "5"
     );
     private static final Map<String, Set<String>> NAMED_OPTIONS = Map.ofEntries(
             Map.entry("q1", VALID_Q1),
@@ -175,6 +188,11 @@ public class GoodsSurveyAnswerValidator {
                 invalid();
             }
         }
+
+        String exclusive = EXCLUSIVE_OPTIONS.get(questionId);
+        if (exclusive != null && seen.contains(exclusive) && seen.size() > 1) {
+            invalid();
+        }
     }
 
     private void validateTracking(JsonNode tracking) {
@@ -201,7 +219,7 @@ public class GoodsSurveyAnswerValidator {
         requireChild(answers, "q8_1b", "q8", Set.of("change"));
         requireChild(answers, "q8_1c", "q8", Set.of("medical"));
         requireChild(answers, "q8_1d", "q8", Set.of("others"));
-        if ("not_yet".equals(textValue(answers, "q8"))
+        if (selectedValues(answers, "q8").contains("not_yet")
                 && (answers.containsKey("q9") || answers.containsKey("q10"))) {
             invalid();
         }
@@ -262,11 +280,26 @@ public class GoodsSurveyAnswerValidator {
             Set<String> allowedParentValues
     ) {
         if (answers.containsKey(child)) {
-            String parentValue = textValue(answers, parent);
-            if (parentValue == null || !allowedParentValues.contains(parentValue)) {
+            // 부모가 복수선택이면 고른 값 중 하나만 해당해도 꼬리 문항이 열린다.
+            Set<String> parentValues = selectedValues(answers, parent);
+            if (parentValues.stream().noneMatch(allowedParentValues::contains)) {
                 invalid();
             }
         }
+    }
+
+    /** 단일·복수선택을 가리지 않고 고른 값들을 돌려준다. */
+    private Set<String> selectedValues(Map<String, JsonNode> answers, String questionId) {
+        JsonNode value = answers.get(questionId);
+        if (value == null) return Set.of();
+        if (value.isTextual()) return Set.of(value.stringValue());
+        if (!value.isArray()) return Set.of();
+
+        Set<String> values = new HashSet<>();
+        value.forEach(option -> {
+            if (option.isTextual()) values.add(option.stringValue());
+        });
+        return values;
     }
 
     private void requireChildValue(
