@@ -40,12 +40,6 @@ public class GoodsSurveyStory extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean publishAgreed;
 
-    @Column(nullable = false)
-    private boolean reviewContactAgreed;
-
-    @Column(nullable = false)
-    private boolean interviewAgreed;
-
     @Column(nullable = false, length = 30)
     private String consentVersion;
 
@@ -57,22 +51,12 @@ public class GoodsSurveyStory extends BaseTimeEntity {
             String storyJson,
             boolean analysisAgreed,
             boolean publishAgreed,
-            boolean reviewContactAgreed,
-            boolean interviewAgreed,
             String consentVersion,
             Instant consentedAt
     ) {
         GoodsSurveyStory story = new GoodsSurveyStory();
         story.responseId = responseId;
-        story.update(
-                storyJson,
-                analysisAgreed,
-                publishAgreed,
-                reviewContactAgreed,
-                interviewAgreed,
-                consentVersion,
-                consentedAt
-        );
+        story.update(storyJson, analysisAgreed, publishAgreed, consentVersion, consentedAt);
         return story;
     }
 
@@ -80,16 +64,12 @@ public class GoodsSurveyStory extends BaseTimeEntity {
             String storyJson,
             boolean analysisAgreed,
             boolean publishAgreed,
-            boolean reviewContactAgreed,
-            boolean interviewAgreed,
             String consentVersion,
             Instant consentedAt
     ) {
         this.storyJson = storyJson;
         this.analysisAgreed = analysisAgreed;
         this.publishAgreed = publishAgreed;
-        this.reviewContactAgreed = reviewContactAgreed;
-        this.interviewAgreed = interviewAgreed;
         this.consentVersion = consentVersion;
         this.consentedAt = consentedAt;
     }
