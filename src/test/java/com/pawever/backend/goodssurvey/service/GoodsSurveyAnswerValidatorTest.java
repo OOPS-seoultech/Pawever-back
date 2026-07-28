@@ -122,6 +122,33 @@ class GoodsSurveyAnswerValidatorTest {
     }
 
     @Test
+    void acceptsFreeTextOnlyWhenTheDirectInputChoiceIsSelected() {
+        assertThatCode(() -> validateMulti(Map.of("q17", List.of("6"), "q17_text", "장난감")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> validateMulti(Map.of(
+                "q23", "memory", "q23_1a", "6", "q23_1a_text", "손편지"
+        ))).doesNotThrowAnyException();
+
+        // 직접 입력을 고르지 않았으면 자유 텍스트를 받지 않는다.
+        assertThatThrownBy(() -> validateMulti(Map.of("q17", List.of("1"), "q17_text", "장난감")))
+                .isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> validateMulti(Map.of("q17_text", "장난감")))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void rejectsFreeTextThatIsBlankOrTooLong() {
+        assertThatThrownBy(() -> validateMulti(Map.of("q17", List.of("6"), "q17_text", "   ")))
+                .isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> validateMulti(Map.of(
+                "q17", List.of("6"), "q17_text", "가".repeat(101)
+        ))).isInstanceOf(CustomException.class);
+        assertThatCode(() -> validateMulti(Map.of(
+                "q17", List.of("6"), "q17_text", "가".repeat(100)
+        ))).doesNotThrowAnyException();
+    }
+
+    @Test
     void acceptsTheAddedNoneChoiceOnTheUnmetInformationQuestions() {
         assertThatCode(() -> validate(Map.of("q2", "current", "q29_current", "none")))
                 .doesNotThrowAnyException();

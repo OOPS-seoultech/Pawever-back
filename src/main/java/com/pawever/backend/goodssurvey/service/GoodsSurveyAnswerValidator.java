@@ -40,8 +40,22 @@ public class GoodsSurveyAnswerValidator {
             "q24", "q25", "q26", "q27",
             "q28_1", "q28_2", "q28_3", "q28_4", "q28_5",
             "q29_current", "q29_departed", "q29_1a", "q29_1b", "q29_1c",
-            "q29_1d", "q29_1e", "q30", "q31", "q32", "q33"
+            "q29_1d", "q29_1e", "q30", "q31", "q32", "q33",
+            // "직접 입력" 선택지의 자유 텍스트. 프런트 freeTextKey()와 이름이 같다.
+            "q17_text", "q23_1a_text", "q23_1b_text", "q23_1c_text", "q23_1d_text"
     );
+
+    private static final int FREE_TEXT_MAX_LENGTH = 100;
+
+    /** 자유 텍스트 키 -> 그 값을 열어주는 문항. 부모에서 "직접 입력"(6번)을 골라야 받는다. */
+    private static final Map<String, String> FREE_TEXT_PARENTS = Map.of(
+            "q17_text", "q17",
+            "q23_1a_text", "q23_1a",
+            "q23_1b_text", "q23_1b",
+            "q23_1c_text", "q23_1c",
+            "q23_1d_text", "q23_1d"
+    );
+    private static final String FREE_TEXT_OPTION = "6";
 
     private static final Set<String> TERMINATING_Q1 = Set.of("no_experience", "prefer_not");
     private static final Set<String> VALID_Q1 = Set.of(
@@ -59,10 +73,15 @@ public class GoodsSurveyAnswerValidator {
     private static final Map<String, Set<String>> NUMBERED_OPTION_OVERRIDES = Map.of(
             "q3", numberedOptions(6),
             "q12", numberedOptions(6),
+            "q17", numberedOptions(6),
+            "q23_1a", numberedOptions(6),
+            "q23_1b", numberedOptions(6),
+            "q23_1c", numberedOptions(6),
+            "q23_1d", numberedOptions(6),
             "q33", numberedOptions(7)
     );
     private static final Set<String> MULTI_QUESTION_IDS = Set.of(
-            "q4", "q4_2", "q7", "q8", "q11_1a", "q27", "q30"
+            "q4", "q4_2", "q7", "q8", "q11_1a", "q17", "q27", "q30"
     );
     private static final Map<String, Integer> MAX_MULTI_SELECTIONS = Map.of(
             "q4", 5,
@@ -70,6 +89,7 @@ public class GoodsSurveyAnswerValidator {
             "q7", 5,
             "q8", 5,
             "q11_1a", 5,
+            "q17", 6,
             "q27", 2,
             "q30", 5
     );
@@ -78,6 +98,7 @@ public class GoodsSurveyAnswerValidator {
     private static final Map<String, String> EXCLUSIVE_OPTIONS = Map.of(
             "q7", "5",
             "q8", "not_yet",
+            "q17", "5",
             "q30", "5"
     );
     private static final Map<String, Set<String>> NAMED_OPTIONS = Map.ofEntries(
@@ -166,6 +187,14 @@ public class GoodsSurveyAnswerValidator {
 
     private void validateAnswer(String questionId, JsonNode answer) {
         if (!QUESTION_IDS.contains(questionId) || answer == null) invalid();
+
+        if (FREE_TEXT_PARENTS.containsKey(questionId)) {
+            if (!answer.isTextual()) invalid();
+            String text = answer.stringValue().trim();
+            if (text.isEmpty() || text.length() > FREE_TEXT_MAX_LENGTH) invalid();
+            return;
+        }
+
         Set<String> allowedOptions = allowedOptions(questionId);
         if (answer.isTextual()) {
             if (MULTI_QUESTION_IDS.contains(questionId)
@@ -213,6 +242,14 @@ public class GoodsSurveyAnswerValidator {
     }
 
     private void validateBranchConsistency(Map<String, JsonNode> answers) {
+        // 자유 텍스트는 부모 문항에서 "직접 입력"을 고른 경우에만 받는다.
+        FREE_TEXT_PARENTS.forEach((textKey, parent) -> {
+            if (answers.containsKey(textKey)
+                    && !selectedValues(answers, parent).contains(FREE_TEXT_OPTION)) {
+                invalid();
+            }
+        });
+
         requireChild(answers, "q4_1", "q4", Set.of("small_change"));
         requireChild(answers, "q4_2", "q4", Set.of("diagnosed", "continuous_care"));
         requireChild(answers, "q8_1a", "q8", Set.of("anniversary"));
