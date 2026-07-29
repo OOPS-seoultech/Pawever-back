@@ -76,7 +76,7 @@ public class GoodsSurveyService {
     public GoodsSurveyCampaignResponse getCampaign() {
         Instant now = clock.instant();
         GoodsSurveyCampaign campaign = findCampaign();
-        long active = countActiveAllocations(campaign.getId(), now);
+        long active = countSubmittedAllocations(campaign.getId());
         return new GoodsSurveyCampaignResponse(
                 campaign.getId(),
                 campaign.getCapacity(),
@@ -97,7 +97,7 @@ public class GoodsSurveyService {
         if (!campaign.isOpenAt(now)) {
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_CLOSED);
         }
-        long active = countActiveAllocations(campaign.getId(), now);
+        long active = countSubmittedAllocations(campaign.getId());
         if (campaign.remaining(active) <= 0) {
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
         }
@@ -144,13 +144,13 @@ public class GoodsSurveyService {
 
         if (response.hasActiveReservation(now)) {
             GoodsSurveyCampaign campaign = findCampaign();
-            int remaining = campaign.remaining(countActiveAllocations(campaign.getId(), now));
+            int remaining = campaign.remaining(countSubmittedAllocations(campaign.getId()));
             return completion(response, remaining);
         }
         if (response.getStatus() == GoodsSurveyResponseStatus.COMPLETED_NO_SLOT
                 || response.getStatus() == GoodsSurveyResponseStatus.TERMINATED) {
             GoodsSurveyCampaign campaign = findCampaign();
-            int remaining = campaign.remaining(countActiveAllocations(campaign.getId(), now));
+            int remaining = campaign.remaining(countSubmittedAllocations(campaign.getId()));
             return completion(response, remaining);
         }
         if (response.getStatus() != GoodsSurveyResponseStatus.DRAFT) {
@@ -170,18 +170,20 @@ public class GoodsSurveyService {
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_CLOSED);
         }
 
-        long activeBeforeReservation = countActiveAllocations(campaign.getId(), now);
+        long activeBeforeReservation = countSubmittedAllocations(campaign.getId());
         int remainingBeforeReservation = campaign.remaining(activeBeforeReservation);
         if (remainingBeforeReservation <= 0) {
             response.completeWithoutSlot(now);
             return completion(response, 0);
         }
 
+        // 예약은 제출 자격을 확인하는 표시일 뿐 자리를 잡아두지 않는다.
+        // 자리는 굿즈 제작 정보까지 제출해야 줄어들므로 여기서 1을 빼지 않는다.
         response.reserve(
                 now,
                 now.plus(properties.getReservationMinutes(), ChronoUnit.MINUTES)
         );
-        return completion(response, remainingBeforeReservation - 1);
+        return completion(response, remainingBeforeReservation);
     }
 
     @Transactional
@@ -343,6 +345,16 @@ public class GoodsSurveyService {
 
         Instant now = clock.instant();
         requireActiveReservation(response, now);
+
+        // 예약이 자리를 잡아두지 않으므로 마감 판정은 이 시점에 해야 한다.
+        // 여기서 확인하지 않으면 정원을 넘겨 접수될 수 있다.
+        GoodsSurveyCampaign campaign = campaignRepository
+                .findByIdForUpdate(response.getCampaignId())
+                .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
+        if (campaign.remaining(countSubmittedAllocations(campaign.getId())) <= 0) {
+            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
+        }
+
         validateIdempotencyKey(idempotencyKey);
         validateGoodsType(request.goodsType(), request.customGoods());
         answerValidator.validateTrackingOnly(request.tracking());
@@ -444,7 +456,7 @@ public class GoodsSurveyService {
     ) {
         GoodsSurveyCampaign campaign = findCampaign();
         int remaining = campaign.remaining(
-                countActiveAllocations(campaign.getId(), clock.instant())
+                countSubmittedAllocations(campaign.getId())
         );
         return new GoodsSurveyApplicationResponse(
                 response.getId(),
@@ -495,11 +507,9 @@ public class GoodsSurveyService {
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
     }
 
-    private long countActiveAllocations(String campaignId, Instant now) {
-        return responseRepository.countActiveAllocations(
+    private long countSubmittedAllocations(String campaignId) {
+        return responseRepository.countSubmittedAllocations(
                 campaignId,
-                now,
-                GoodsSurveyResponseStatus.RESERVED,
                 GoodsSurveyResponseStatus.SUBMITTED
         );
     }

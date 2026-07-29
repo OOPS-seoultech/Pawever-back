@@ -80,9 +80,8 @@ class GoodsSurveyServiceTest {
                 });
         when(responseRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(storedResponse.get()));
-        when(responseRepository.countActiveAllocations(
-                any(), any(), any(), any()
-        )).thenReturn(0L);
+        when(responseRepository.countSubmittedAllocations(any(), any()))
+                .thenReturn(0L);
 
         service = new GoodsSurveyService(
                 campaignRepository,
@@ -100,7 +99,7 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void completedSurveyReservesOneOfTheRealRemainingSlots() {
+    void completedSurveyKeepsEverySlotUntilTheApplicationIsSubmitted() {
         JsonNode tracking = new ObjectMapper().valueToTree(Map.of(
                 "visitId", "visit-1",
                 "device", Map.of("category", "mobile")
@@ -122,7 +121,8 @@ class GoodsSurveyServiceTest {
         );
 
         assertThat(result.status()).isEqualTo("RESERVED");
-        assertThat(result.remaining()).isEqualTo(72);
+        // 노션 기준: 설문만 끝낸 예약은 자리를 잡아두지 않는다.
+        assertThat(result.remaining()).isEqualTo(73);
         assertThat(result.reservationExpiresAt()).isEqualTo(NOW.plusSeconds(15 * 60));
         assertThat(storedResponse.get().getStatus()).isEqualTo(GoodsSurveyResponseStatus.RESERVED);
         assertThat(storedResponse.get().getAnswersJson()).contains("\"q1\":\"current_only\"");
@@ -138,9 +138,8 @@ class GoodsSurveyServiceTest {
                         new ObjectMapper().createObjectNode().put("visitId", "visit-2")
                 )
         );
-        when(responseRepository.countActiveAllocations(
-                any(), any(), any(), any()
-        )).thenReturn(73L);
+        when(responseRepository.countSubmittedAllocations(any(), any()))
+                .thenReturn(73L);
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
                 draft.responseId(),
@@ -260,6 +259,57 @@ class GoodsSurveyServiceTest {
 
         assertThat(publicPhoto.isPublicationAgreed()).isTrue();
         assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+    }
+
+    @Test
+    void applicationIsRejectedWhenTheLastSlotIsTakenWhileTheFormIsBeingFilled() {
+        // 예약이 자리를 잡아두지 않으므로 마감 판정은 제출 시점에 해야 한다.
+        // 이 확인이 없으면 정원을 넘겨 접수된다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        // 배송 정보를 적는 동안 남은 자리가 모두 나갔다.
+        when(responseRepository.countSubmittedAllocations(any(), any()))
+                .thenReturn(73L);
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-late",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "acrylic",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-late"),
+                        List.of(),
+                        "conversion-late",
+                        tracking,
+                        true,
+                        true
+                )
+        )).hasMessageContaining("선착순 모집이 마감");
+
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.RESERVED);
     }
 
     @Test
