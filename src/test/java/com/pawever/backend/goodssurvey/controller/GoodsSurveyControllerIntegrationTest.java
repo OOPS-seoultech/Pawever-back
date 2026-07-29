@@ -102,7 +102,9 @@ class GoodsSurveyControllerIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("RESERVED"))
-                .andExpect(jsonPath("$.data.remaining").value(72))
+                // 설문만 끝낸 예약은 자리를 잡아두지 않으므로 남은 자리가 그대로다.
+                // 이 테스트가 만든 캠페인은 정원 100, 과거 배정 27이라 73이 남는다.
+                .andExpect(jsonPath("$.data.remaining").value(73))
                 .andExpect(jsonPath("$.data.reservationExpiresAt").isNotEmpty());
     }
 

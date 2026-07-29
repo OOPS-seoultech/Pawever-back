@@ -22,7 +22,7 @@ class GoodsSurveyRepositoryTest {
     @Autowired private GoodsSurveyResponseRepository responseRepository;
 
     @Test
-    void allocationCountIncludesSubmittedAndOnlyUnexpiredReservations() {
+    void allocationCountIgnoresReservationsAndCountsOnlySubmittedApplications() {
         Instant now = Instant.parse("2026-07-24T09:00:00Z");
         GoodsSurveyCampaign campaign = campaignRepository.save(
                 GoodsSurveyCampaign.create(
@@ -47,14 +47,14 @@ class GoodsSurveyRepositoryTest {
         submitted.submit();
         responseRepository.save(submitted);
 
-        long activeAllocations = responseRepository.countActiveAllocations(
+        long activeAllocations = responseRepository.countSubmittedAllocations(
                 campaign.getId(),
-                now,
-                GoodsSurveyResponseStatus.RESERVED,
                 GoodsSurveyResponseStatus.SUBMITTED
         );
 
-        assertThat(activeAllocations).isEqualTo(2);
+        // 노션 기준: 설문과 굿즈 제작 정보를 모두 마친 사람만 자리를 차지한다.
+        // 유효한 예약이 있어도 제출 전이면 세지 않는다.
+        assertThat(activeAllocations).isEqualTo(1);
         assertThat(campaignRepository.findByIdForUpdate(campaign.getId())).isPresent();
     }
 
