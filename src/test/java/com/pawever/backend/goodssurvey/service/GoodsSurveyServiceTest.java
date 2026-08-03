@@ -279,9 +279,9 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void applicationIsRejectedWhenTheLastSlotIsTakenWhileTheFormIsBeingFilled() {
-        // 예약이 자리를 잡아두지 않으므로 마감 판정은 제출 시점에 해야 한다.
-        // 이 확인이 없으면 정원을 넘겨 접수된다.
+    void surveyFinishersStillGetThroughEvenIfTheLastSlotWasTakenMeanwhile() {
+        // 마지막 한 자리를 여러 명이 동시에 향할 수 있다.
+        // 다 채우고 나서 돌려보내지 않도록, 설문을 끝낸 사람은 정원을 넘겨도 받는다.
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -303,7 +303,12 @@ class GoodsSurveyServiceTest {
         when(responseRepository.countSubmittedAllocations(any(), any()))
                 .thenReturn(73L);
 
-        assertThatThrownBy(() -> service.submitApplication(
+        GoodsSurveyPhoto photo = confirmedPhoto("photo-late", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(photo));
+
+        service.submitApplication(
                 draft.responseId(),
                 draft.editToken(),
                 "idempotency-late",
@@ -323,10 +328,10 @@ class GoodsSurveyServiceTest {
                         true,
                         true
                 )
-        )).hasMessageContaining("선착순 모집이 마감");
+        );
 
         assertThat(storedResponse.get().getStatus())
-                .isEqualTo(GoodsSurveyResponseStatus.RESERVED);
+                .isEqualTo(GoodsSurveyResponseStatus.SUBMITTED);
     }
 
     @Test
