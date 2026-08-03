@@ -16,6 +16,9 @@ public interface GoodsSurveyPhotoStorage {
 
     StoredObject head(String objectKey);
 
+    /** 제작에 넘길 사진을 원본 그대로 읽는다. */
+    byte[] download(String objectKey);
+
     record PresignedUpload(
             String url,
             Map<String, String> headers,

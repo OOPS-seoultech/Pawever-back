@@ -86,6 +86,23 @@ public class S3GoodsSurveyPhotoStorage implements GoodsSurveyPhotoStorage {
         }
     }
 
+    @Override
+    public byte[] download(String objectKey) {
+        try {
+            return s3Client.getObject(
+                    GetObjectRequest.builder()
+                            .bucket(privateBucket())
+                            .key(objectKey)
+                            .build(),
+                    ResponseTransformer.toBytes()
+            ).asByteArray();
+        } catch (CustomException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        }
+    }
+
     private String privateBucket() {
         String bucket = properties.getPhotoBucket();
         if (bucket == null || bucket.isBlank()) {

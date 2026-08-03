@@ -16,6 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.global.exception.ErrorCode;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -24,6 +30,8 @@ import java.util.Objects;
 import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 운영에서 설문 결과를 꺼내기 위한 CSV 생성.
@@ -46,6 +54,7 @@ public class GoodsSurveyExportService {
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyStoryRepository storyRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
+    private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsSurveyProperties properties;
     private final ObjectMapper objectMapper;
 
@@ -88,6 +97,134 @@ public class GoodsSurveyExportService {
                 .toList();
 
         return GoodsSurveyCsv.document(header, rows);
+    }
+
+    /**
+     * 제작에 넘길 목록. 개인정보를 뺀다.
+     *
+     * 만드는 데 필요한 것은 사진과 굿즈 종류, 반려견 이름뿐이다.
+     * 보호자 이름·연락처·주소는 배송 단계에서 쓰이므로 여기 담지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public String productionCsv(int from, int to) {
+        List<String> header = List.of(
+                "번호", "굿즈종류", "반려견이름", "사진파일명", "요청사항", "응답ID"
+        );
+
+        List<List<String>> rows = productionItems(from, to).stream()
+                .map(item -> List.of(
+                        String.valueOf(item.order()),
+                        item.goodsType(),
+                        item.petName(),
+                        item.fileNames().stream().collect(Collectors.joining(" | ")),
+                        item.request(),
+                        item.responseId()
+                ))
+                .toList();
+
+        return GoodsSurveyCsv.document(header, rows);
+    }
+
+    /**
+     * 제작용 사진 묶음.
+     *
+     * 링크로 넘기면 받는 쪽이 파일을 하나씩 눌러 받아야 하고, 저장된 이름이
+     * 무작위라 누구 것인지 알 수 없다. 파일을 통째로 넘기면 그 두 가지가 없다.
+     * 사진이 커서 통째로 메모리에 담지 않고 하나씩 흘려보낸다.
+     */
+    @Transactional(readOnly = true)
+    public void writePhotoArchive(int from, int to, OutputStream target) {
+        try (ZipOutputStream archive = new ZipOutputStream(target, StandardCharsets.UTF_8)) {
+            for (ProductionItem item : productionItems(from, to)) {
+                for (int index = 0; index < item.photos().size(); index += 1) {
+                    archive.putNextEntry(new ZipEntry(item.fileNames().get(index)));
+                    archive.write(photoStorage.download(item.photos().get(index).getObjectKey()));
+                    archive.closeEntry();
+                }
+            }
+        } catch (IOException exception) {
+            throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        }
+    }
+
+    /** 신청이 들어온 순서대로 번호를 매기고, 요청한 구간만 잘라 낸다. */
+    private List<ProductionItem> productionItems(int from, int to) {
+        Map<String, List<GoodsSurveyPhoto>> photos = confirmedPhotosByResponse();
+        Map<String, GoodsSurveyResponse> responses = campaignResponses().stream()
+                .collect(Collectors.toMap(GoodsSurveyResponse::getId, Function.identity()));
+
+        List<GoodsSurveyFulfillment> ordered = fulfillmentRepository.findAll().stream()
+                .filter(fulfillment -> responses.containsKey(fulfillment.getResponseId()))
+                .sorted(Comparator.comparing(GoodsSurveyFulfillment::getCreatedAt)
+                        .thenComparing(GoodsSurveyFulfillment::getId))
+                .toList();
+
+        List<ProductionItem> items = new ArrayList<>();
+        for (int index = 0; index < ordered.size(); index += 1) {
+            int order = index + 1;
+            if (order < from || order > to) {
+                continue;
+            }
+            GoodsSurveyFulfillment fulfillment = ordered.get(index);
+            List<GoodsSurveyPhoto> attached =
+                    photos.getOrDefault(fulfillment.getResponseId(), List.of());
+            items.add(new ProductionItem(
+                    order,
+                    fulfillment.getResponseId(),
+                    fulfillment.getGoodsType(),
+                    fulfillment.getPetName(),
+                    text(fulfillment.getCustomGoods()),
+                    attached,
+                    photoNames(order, fulfillment.getGoodsType(), fulfillment.getPetName(), attached)
+            ));
+        }
+        return items;
+    }
+
+    /** 압축을 풀자마자 누구 것인지 보이도록 이름을 붙인다. */
+    private List<String> photoNames(
+            int order,
+            String goodsType,
+            String petName,
+            List<GoodsSurveyPhoto> photos
+    ) {
+        List<String> names = new ArrayList<>();
+        for (int index = 0; index < photos.size(); index += 1) {
+            names.add("%02d_%s_%s_%d.%s".formatted(
+                    order,
+                    safeFileName(goodsType),
+                    safeFileName(petName),
+                    index + 1,
+                    extensionOf(photos.get(index).getContentType())
+            ));
+        }
+        return names;
+    }
+
+    /** 반려견 이름에 파일명으로 쓸 수 없는 글자가 들어올 수 있다. */
+    private String safeFileName(String value) {
+        String trimmed = Objects.toString(value, "").trim();
+        String cleaned = trimmed.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
+        return cleaned.isEmpty() ? "이름없음" : cleaned;
+    }
+
+    private String extensionOf(String contentType) {
+        return switch (Objects.toString(contentType, "")) {
+            case "image/png" -> "png";
+            case "image/webp" -> "webp";
+            default -> "jpg";
+        };
+    }
+
+    private record ProductionItem(
+            int order,
+            String responseId,
+            String goodsType,
+            String petName,
+            String request,
+            List<GoodsSurveyPhoto> photos,
+            List<String> fileNames
+    ) {
     }
 
     /** 설문 응답. 문항 하나가 한 열이 되도록 펼친다. */
