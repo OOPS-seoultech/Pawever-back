@@ -65,12 +65,26 @@ class GoodsSurveyExportServiceTest {
         String csv = service.productionCsv(1, 3);
 
         // 만드는 데 필요한 것만 있어야 한다.
-        assertThat(csv).contains("번호,굿즈종류,반려견이름,사진파일명,요청사항,응답ID");
+        assertThat(csv).contains("번호,굿즈이름,굿즈종류,반려견이름,사진파일명,요청사항,응답ID");
+        // 코드값만 보면 무엇을 만들어야 하는지 알 수 없다.
+        assertThat(csv).contains("3D 얼굴 키링").contains("3D 전신 피규어");
         assertThat(csv).contains("몽이");
         // 보호자 이름·연락처·주소는 배송 단계에서 쓰인다. 제작에는 나가지 않는다.
         assertThat(csv).doesNotContain("보호자");
         assertThat(csv).doesNotContain("01012345678");
         assertThat(csv).doesNotContain("서울시 노원구");
+    }
+
+    @Test
+    void unknownGoodsTypeFallsBackToTheCodeInsteadOfAnEmptyCell() {
+        // 굿즈가 늘었는데 이름을 안 더하면 빈칸이 되어 무엇인지 알 수 없다.
+        lenient().when(responseRepository.findAll()).thenReturn(List.of(response("r9")));
+        lenient().when(fulfillmentRepository.findAll()).thenReturn(List.of(
+                fulfillment(9L, "r9", "hologram", "새봄", LocalDateTime.parse("2026-08-02T11:00:00"))
+        ));
+        lenient().when(photoRepository.findAll()).thenReturn(List.of());
+
+        assertThat(service.productionCsv(1, 1)).contains("1,hologram,hologram,새봄");
     }
 
     @Test

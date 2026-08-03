@@ -43,6 +43,20 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 public class GoodsSurveyExportService {
 
+    /**
+     * 화면에서 쓰는 굿즈 이름.
+     *
+     * 코드값만 보면 무엇을 만들어야 하는지 알 수 없어서 제작·배송 목록에 함께 싣는다.
+     * 굿즈가 늘면 여기에도 더해야 한다. 모르는 값은 코드값을 그대로 둬서 빈칸이 되지 않게 한다.
+     */
+    private static final Map<String, String> GOODS_NAMES = Map.of(
+            "acrylic", "아크릴 얼굴 키링",
+            "face", "3D 얼굴 키링",
+            "backplate", "뒷판형 3D 얼굴 키링",
+            "figure", "3D 전신 피규어",
+            "custom", "원하는 형태 직접 제안"
+    );
+
     // 사연은 화면 순서대로 고정해 둔다. 응답마다 키가 달라지지 않는다.
     private static final List<String> STORY_FIELDS = List.of(
             "status", "age", "condition", "scene", "changedDay", "startedNow",
@@ -66,7 +80,7 @@ public class GoodsSurveyExportService {
         Map<String, List<GoodsSurveyPhoto>> photos = confirmedPhotosByResponse();
 
         List<String> header = List.of(
-                "응답ID", "신청일시", "굿즈종류", "직접입력굿즈", "반려견이름",
+                "응답ID", "신청일시", "굿즈이름", "굿즈종류", "직접입력굿즈", "반려견이름",
                 "보호자이름", "연락처", "우편번호", "주소", "상세주소",
                 "사진수", "사진저장키"
         );
@@ -80,6 +94,7 @@ public class GoodsSurveyExportService {
                     return List.of(
                             fulfillment.getResponseId(),
                             text(fulfillment.getCreatedAt()),
+                            goodsName(fulfillment.getGoodsType()),
                             fulfillment.getGoodsType(),
                             text(fulfillment.getCustomGoods()),
                             fulfillment.getPetName(),
@@ -108,12 +123,13 @@ public class GoodsSurveyExportService {
     @Transactional(readOnly = true)
     public String productionCsv(int from, int to) {
         List<String> header = List.of(
-                "번호", "굿즈종류", "반려견이름", "사진파일명", "요청사항", "응답ID"
+                "번호", "굿즈이름", "굿즈종류", "반려견이름", "사진파일명", "요청사항", "응답ID"
         );
 
         List<List<String>> rows = productionItems(from, to).stream()
                 .map(item -> List.of(
                         String.valueOf(item.order()),
+                        goodsName(item.goodsType()),
                         item.goodsType(),
                         item.petName(),
                         item.fileNames().stream().collect(Collectors.joining(" | ")),
@@ -206,6 +222,10 @@ public class GoodsSurveyExportService {
         String trimmed = Objects.toString(value, "").trim();
         String cleaned = trimmed.replaceAll("[\\\\/:*?\"<>|\\s]+", "_");
         return cleaned.isEmpty() ? "이름없음" : cleaned;
+    }
+
+    private String goodsName(String goodsType) {
+        return GOODS_NAMES.getOrDefault(goodsType, Objects.toString(goodsType, ""));
     }
 
     private String extensionOf(String contentType) {
