@@ -279,9 +279,10 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void surveyFinishersStillGetThroughEvenIfTheLastSlotWasTakenMeanwhile() {
-        // 마지막 한 자리를 여러 명이 동시에 향할 수 있다.
-        // 다 채우고 나서 돌려보내지 않도록, 설문을 끝낸 사람은 정원을 넘겨도 받는다.
+    void applicationIsRejectedWhenTheLastSlotIsTakenWhileTheFormIsBeingFilled() {
+        // 정원은 제출 시점에 확정한다. 이 확인이 없으면 정원을 넘겨 접수된다.
+        // 다 채우고 나서 거절당하지 않도록, 프런트가 이어서 진행할 때
+        // 캠페인 상태를 먼저 확인해 마감 화면을 앞에서 보여준다.
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -303,12 +304,7 @@ class GoodsSurveyServiceTest {
         when(responseRepository.countSubmittedAllocations(any(), any()))
                 .thenReturn(73L);
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-late", draft.responseId());
-        when(photoRepository.findAllByIdInAndResponseIdAndStatus(
-                any(), any(), any()
-        )).thenReturn(List.of(photo));
-
-        service.submitApplication(
+        assertThatThrownBy(() -> service.submitApplication(
                 draft.responseId(),
                 draft.editToken(),
                 "idempotency-late",
@@ -328,10 +324,10 @@ class GoodsSurveyServiceTest {
                         true,
                         true
                 )
-        );
+        )).hasMessageContaining("선착순 모집이 마감");
 
         assertThat(storedResponse.get().getStatus())
-                .isEqualTo(GoodsSurveyResponseStatus.SUBMITTED);
+                .isEqualTo(GoodsSurveyResponseStatus.RESERVED);
     }
 
     @Test

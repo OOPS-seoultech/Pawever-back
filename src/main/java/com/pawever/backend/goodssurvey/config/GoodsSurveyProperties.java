@@ -21,4 +21,7 @@ public class GoodsSurveyProperties {
     private Set<String> legacyQuestionnaireVersions = Set.of("2026-07-23-v1");
     private String privacyConsentVersion = "2026-07-23";
     private String photoBucket;
+    // 설문 결과 내보내기 토큰. 비어 있으면 내보내기 자체가 막힌다.
+    // 개인정보가 그대로 나가는 통로라 설정되지 않은 상태에서 열려선 안 된다.
+    private String exportToken = "";
 }

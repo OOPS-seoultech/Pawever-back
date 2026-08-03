@@ -348,15 +348,19 @@ public class GoodsSurveyService {
         Instant now = clock.instant();
         requireCompletedSurvey(response);
 
-        // 여기서는 정원을 다시 보지 않는다.
+        // 정원은 여기서 확정한다. 예약이 자리를 잡아두지 않기 때문에
+        // 마지막 한 자리를 여러 명이 동시에 향할 수 있고, 이 확인이 없으면
+        // 정원을 넘겨 접수된다.
         //
-        // 예약이 자리를 잡아두지 않아 마지막 한 자리를 여러 명이 동시에 향할 수 있다.
-        // 이 시점에 막으면 설문 15분에 사연과 개인정보, 사진까지 다 채운 사람을
-        // 맨 마지막에 돌려보내게 된다. 그 대가로 얻는 것은 굿즈 몇 개뿐이다.
-        //
-        // 정원이 차는 순간 새 설문 시작(createDraft)과 설문 완료(completeSurvey)가
-        // 이미 막히므로, 넘칠 수 있는 것은 그때 이미 설문을 끝내고 제출만 남은
-        // 사람들뿐이다. 초과분은 동시 진행 인원만큼으로 자연히 제한된다.
+        // 다 채우고 나서 거절당하는 일이 없도록, 프런트는 이어서 진행할 때
+        // 캠페인 상태를 먼저 확인해 마감 화면을 앞에서 보여준다.
+        GoodsSurveyCampaign campaign = campaignRepository
+                .findByIdForUpdate(response.getCampaignId())
+                .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
+        if (campaign.remaining(countSubmittedAllocations(campaign.getId())) <= 0) {
+            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
+        }
+
         validateIdempotencyKey(idempotencyKey);
         validateGoodsType(request.goodsType(), request.customGoods());
         answerValidator.validateTrackingOnly(request.tracking());
