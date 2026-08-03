@@ -52,6 +52,8 @@ class GoodsSurveyServiceTest {
 
     private GoodsSurveyService service;
     private GoodsSurveyCampaign campaign;
+    // 예약 만료 같은 시간 의존 동작을 재현하려면 시계를 움직일 수 있어야 한다.
+    private Instant currentTime = NOW;
     private final AtomicReference<GoodsSurveyResponse> storedResponse = new AtomicReference<>();
 
     @BeforeEach
@@ -94,7 +96,22 @@ class GoodsSurveyServiceTest {
                 new ObjectMapper(),
                 new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
                 properties,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                new Clock() {
+                    @Override
+                    public java.time.ZoneId getZone() {
+                        return ZoneOffset.UTC;
+                    }
+
+                    @Override
+                    public Clock withZone(java.time.ZoneId zone) {
+                        return this;
+                    }
+
+                    @Override
+                    public Instant instant() {
+                        return currentTime;
+                    }
+                }
         );
     }
 
@@ -310,6 +327,62 @@ class GoodsSurveyServiceTest {
 
         assertThat(storedResponse.get().getStatus())
                 .isEqualTo(GoodsSurveyResponseStatus.RESERVED);
+    }
+
+    @Test
+    void applicationStillGoesThroughAfterTheReservationWindowHasPassed() {
+        // 사연을 쓰고 주소를 찾고 사진을 올리다 보면 15분은 쉽게 넘는다.
+        // 예약은 더 이상 자리를 잡아두지 않으므로 시간이 지났다고 막으면
+        // 설문을 다 끝낸 사람이 마지막 단계에서 통째로 잃는다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-slow");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        // 예약 15분을 훌쩍 넘긴 시점.
+        currentTime = NOW.plusSeconds(90 * 60);
+
+        GoodsSurveyPhoto photo = confirmedPhoto("photo-slow", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(photo));
+
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-slow",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "acrylic",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-slow"),
+                        List.of(),
+                        "conversion-slow",
+                        tracking,
+                        true,
+                        true
+                )
+        );
+
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.SUBMITTED);
     }
 
     @Test
