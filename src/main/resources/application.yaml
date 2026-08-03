@@ -95,3 +95,5 @@ survey:
     reservation-minutes: 15
     upload-url-minutes: 10
     personal-data-retention-days: 90
+    # 결과 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
+    export-token: ${GOODS_SURVEY_EXPORT_TOKEN:}
