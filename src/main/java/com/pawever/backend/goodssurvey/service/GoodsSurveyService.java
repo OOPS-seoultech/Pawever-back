@@ -142,7 +142,9 @@ public class GoodsSurveyService {
         Instant now = clock.instant();
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
 
-        if (response.hasActiveReservation(now)) {
+        // 예약 시간이 지났어도 설문을 끝낸 사실은 그대로다.
+        // 만료를 이유로 튕기면 이미 다 답한 사람이 영영 신청을 못 한다.
+        if (response.getStatus() == GoodsSurveyResponseStatus.RESERVED) {
             GoodsSurveyCampaign campaign = findCampaign();
             int remaining = campaign.remaining(countSubmittedAllocations(campaign.getId()));
             return completion(response, remaining);
@@ -193,7 +195,7 @@ public class GoodsSurveyService {
             SaveGoodsSurveyStoryRequest request
     ) {
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        requireReservedOrSubmitted(response);
+        requireCompletedSurvey(response);
         if (!request.analysisAgreed()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
@@ -227,7 +229,7 @@ public class GoodsSurveyService {
     ) {
         Instant now = clock.instant();
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        requireActiveReservation(response, now);
+        requireCompletedSurvey(response);
         validateClientFileId(request.clientFileId());
         String extension = PHOTO_EXTENSIONS.get(request.contentType());
         if (extension == null) {
@@ -305,7 +307,7 @@ public class GoodsSurveyService {
     ) {
         Instant now = clock.instant();
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        requireActiveReservation(response, now);
+        requireCompletedSurvey(response);
         GoodsSurveyPhoto photo = photoRepository.findByIdAndResponseId(photoId, responseId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_PHOTO_NOT_FOUND));
         if (photo.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED) {
@@ -344,7 +346,7 @@ public class GoodsSurveyService {
         }
 
         Instant now = clock.instant();
-        requireActiveReservation(response, now);
+        requireCompletedSurvey(response);
 
         // 예약이 자리를 잡아두지 않으므로 마감 판정은 이 시점에 해야 한다.
         // 여기서 확인하지 않으면 정원을 넘겨 접수될 수 있다.
@@ -514,20 +516,22 @@ public class GoodsSurveyService {
         );
     }
 
-    private void requireActiveReservation(GoodsSurveyResponse response, Instant now) {
-        if (!response.hasActiveReservation(now)) {
-            if (response.getStatus() == GoodsSurveyResponseStatus.RESERVED) {
-                throw new CustomException(ErrorCode.SURVEY_RESERVATION_EXPIRED);
-            }
-            throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
-        }
-    }
-
-    private void requireReservedOrSubmitted(GoodsSurveyResponse response) {
-        if (response.getStatus() == GoodsSurveyResponseStatus.SUBMITTED) {
+    /**
+     * 설문을 끝낸 사람인지만 확인한다.
+     *
+     * 예약은 더 이상 선착순 자리를 잡아두지 않는다(자리는 제출 시점에 센다).
+     * 그래서 예약 시간이 지났다는 이유로 막으면 보호되는 것 없이 사용자만 잃는다.
+     * 사연을 쓰고 주소를 찾고 사진을 올리다 보면 15분은 쉽게 넘고,
+     * 특히 사진 업로드가 끝난 뒤 확정 단계에서 만료되면 그때까지 쓴 게 다 날아간다.
+     * 정원 확인은 submitApplication이 제출 직전에 따로 한다.
+     */
+    private void requireCompletedSurvey(GoodsSurveyResponse response) {
+        GoodsSurveyResponseStatus status = response.getStatus();
+        if (status == GoodsSurveyResponseStatus.RESERVED
+                || status == GoodsSurveyResponseStatus.SUBMITTED) {
             return;
         }
-        requireActiveReservation(response, clock.instant());
+        throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
     }
 
     private void validateQuestionnaireVersion(String version) {
