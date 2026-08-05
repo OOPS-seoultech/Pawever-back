@@ -224,6 +224,22 @@ public class GoodsSurveyExportService {
         return cleaned.isEmpty() ? "이름없음" : cleaned;
     }
 
+    /**
+     * 광고 소재.
+     *
+     * 인스타 광고는 utm_content에, 쓰레드 링크는 utm_term에 소재를 담아 왔다.
+     * 한쪽만 읽으면 49건이 빈칸이 되므로 있는 쪽을 쓴다.
+     */
+    private String creative(JsonNode touch) {
+        String content = touch.path("utm_content").asString("");
+        return content.isBlank() ? touch.path("utm_term").asString("") : content;
+    }
+
+    private String clickId(JsonNode touch) {
+        String facebook = touch.path("fbclid").asString("");
+        return facebook.isBlank() ? touch.path("gclid").asString("") : facebook;
+    }
+
     private String goodsName(String goodsType) {
         return GOODS_NAMES.getOrDefault(goodsType, Objects.toString(goodsType, ""));
     }
@@ -253,9 +269,18 @@ public class GoodsSurveyExportService {
         List<GoodsSurveyResponse> responses = campaignResponses();
         List<String> questionIds = questionColumns(responses);
 
+        Map<String, GoodsSurveyFulfillment> applied = fulfillmentRepository.findAll().stream()
+                .collect(Collectors.toMap(
+                        GoodsSurveyFulfillment::getResponseId, Function.identity(), (a, b) -> a));
+
         List<String> header = new ArrayList<>(List.of(
-                "응답ID", "상태", "설문완료일시", "선택굿즈", "설문소요밀리초",
-                "유입소스", "유입매체", "캠페인", "소재"
+                "응답ID", "상태",
+                "유입소스", "유입매체", "캠페인", "소재",
+                "첫유입소스", "첫유입매체", "첫유입캠페인", "첫유입소재",
+                "광고클릭ID", "기기",
+                "랜딩진입시각", "설문시작시각", "설문완료일시", "설문소요밀리초",
+                "마지막문항", "문항별시간JSON",
+                "선택굿즈", "신청완료", "최종굿즈", "신청시각"
         ));
         header.addAll(questionIds);
 
@@ -263,18 +288,35 @@ public class GoodsSurveyExportService {
                 .sorted(Comparator.comparing(GoodsSurveyResponse::getId))
                 .map(response -> {
                     JsonNode answers = readJson(response.getAnswersJson());
-                    JsonNode touch = readJson(response.getTrackingJson())
-                            .path("attribution").path("lastTouch");
+                    JsonNode attribution = readJson(response.getTrackingJson()).path("attribution");
+                    JsonNode last = attribution.path("lastTouch");
+                    JsonNode first = attribution.path("firstTouch");
+                    JsonNode device = readJson(response.getTrackingJson()).path("device");
+                    GoodsSurveyFulfillment fulfillment = applied.get(response.getId());
+
                     List<String> values = new ArrayList<>(List.of(
                             response.getId(),
                             response.getStatus().name(),
+                            last.path("utm_source").asString(""),
+                            last.path("utm_medium").asString(""),
+                            last.path("utm_campaign").asString(""),
+                            creative(last),
+                            first.path("utm_source").asString(""),
+                            first.path("utm_medium").asString(""),
+                            first.path("utm_campaign").asString(""),
+                            creative(first),
+                            clickId(last),
+                            device.path("category").asString(""),
+                            attribution.path("startedAt").asString(""),
+                            text(response.getCreatedAt()),
                             text(response.getCompletedAt()),
-                            text(response.getSelectedGoods()),
                             String.valueOf(response.getSurveyActiveMs()),
-                            touch.path("utm_source").asString(""),
-                            touch.path("utm_medium").asString(""),
-                            touch.path("utm_campaign").asString(""),
-                            touch.path("utm_content").asString("")
+                            text(response.getCurrentQuestionId()),
+                            Objects.toString(response.getQuestionTimingsJson(), "{}"),
+                            text(response.getSelectedGoods()),
+                            fulfillment == null ? "N" : "Y",
+                            fulfillment == null ? "" : fulfillment.getGoodsType(),
+                            fulfillment == null ? "" : text(fulfillment.getCreatedAt())
                     ));
                     questionIds.forEach(id -> values.add(answerText(answers.path(id))));
                     return values;

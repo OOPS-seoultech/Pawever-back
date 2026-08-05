@@ -76,6 +76,22 @@ class GoodsSurveyExportServiceTest {
     }
 
     @Test
+    void creativeFallsBackToUtmTermBecauseThreadsPutsItThere() {
+        // 인스타 광고는 utm_content에, 쓰레드 링크는 utm_term에 소재를 담아 왔다.
+        // 한쪽만 읽으면 49건이 빈칸이 된다.
+        lenient().when(responseRepository.findAll()).thenReturn(List.of(
+                tracked("r-content", "{\"utm_source\":\"instagram\",\"utm_content\":\"va\"}"),
+                tracked("r-term", "{\"utm_source\":\"thread\",\"utm_term\":\"bio_link\"}")
+        ));
+        lenient().when(fulfillmentRepository.findAll()).thenReturn(List.of());
+
+        String csv = service.responsesCsv();
+
+        assertThat(csv).contains("instagram,,,va");
+        assertThat(csv).contains("thread,,,bio_link");
+    }
+
+    @Test
     void unknownGoodsTypeFallsBackToTheCodeInsteadOfAnEmptyCell() {
         // 굿즈가 늘었는데 이름을 안 더하면 빈칸이 되어 무엇인지 알 수 없다.
         lenient().when(responseRepository.findAll()).thenReturn(List.of(response("r9")));
@@ -145,6 +161,14 @@ class GoodsSurveyExportServiceTest {
                 photo("p3", "r2", "key-3", "image/jpeg"),
                 photo("p4", "r3", "key-4", "image/jpeg")
         ));
+    }
+
+    private GoodsSurveyResponse tracked(String id, String touchJson) {
+        String tracking = "{\"attribution\":{\"lastTouch\":" + touchJson
+                + ",\"firstTouch\":" + touchJson + "},\"device\":{\"category\":\"mobile\"}}";
+        return GoodsSurveyResponse.draft(
+                id, "goods-2026-07", "2026-07-25-v2", "hash-" + id, "acrylic", tracking
+        );
     }
 
     private GoodsSurveyResponse response(String id) {
