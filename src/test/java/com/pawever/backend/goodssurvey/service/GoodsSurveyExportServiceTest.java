@@ -59,6 +59,18 @@ class GoodsSurveyExportServiceTest {
     }
 
     @Test
+    void applicationListCarriesTheConsentRecordSoItCanBeShownLater() {
+        givenThreeApplications();
+
+        String csv = service.applicationsCsv();
+
+        // 동의 없이는 신청이 성립하지 않지만, 그것만으로는 기록이 아니다.
+        // 언제 어떤 문구에 동의했는지 남아 있어야 나중에 보여줄 수 있다.
+        assertThat(csv).contains("개인정보동의버전,개인정보동의일시");
+        assertThat(csv).contains("2026-07-23,2026-08-02T10:00:00Z");
+    }
+
+    @Test
     void productionListLeavesOutEverythingShippingOnly() {
         givenThreeApplications();
 
