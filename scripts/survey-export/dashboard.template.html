@@ -1,0 +1,1395 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pawever 굿즈 설문 분석</title>
+
+<style>
+  /* 파일 하나로 열리는 문서다. 초기화도 직접 깐다. */
+  *, *::before, *::after { box-sizing: border-box; }
+  h1, h2, h3, p, dl, dd, figure { margin: 0; }
+  button, input { font: inherit; color: inherit; }
+
+  :root {
+    color-scheme: light;
+    --paper:      #F2F2F1;
+    --card:       #FBFBFA;
+    --line:       #DEDEDB;
+    --line-soft:  #E9E9E6;
+    --ink:        #1B1C1E;
+    --ink-2:      #4A4B4D;
+    --mute:       #83847F;
+    --accent:     #4C6B45;
+    --accent-dim: #4C6B4522;
+    --accent-2:   #6E8B5F;
+    --ochre:      #8E6E2C;
+    --ochre-dim:  #8E6E2C1F;
+    --clay:       #9E4F3F;
+    --clay-dim:   #9E4F3F1A;
+    --ghost:      #9C9D98;
+    --shadow:     0 1px 2px #1b1c1e0d, 0 8px 24px -16px #1b1c1e26;
+
+    --mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+            "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --paper:      #141517;
+      --card:       #1C1D20;
+      --line:       #2E3034;
+      --line-soft:  #26282B;
+      --ink:        #ECECEA;
+      --ink-2:      #B6B7B4;
+      --mute:       #85868A;
+      --accent:     #93B37E;
+      --accent-dim: #93B37E26;
+      --accent-2:   #7B9A67;
+      --ochre:      #C8A057;
+      --ochre-dim:  #C8A05722;
+      --clay:       #C97A65;
+      --clay-dim:   #C97A651F;
+      --ghost:      #5A5C60;
+      --shadow:     0 1px 2px #0006, 0 10px 28px -18px #000a;
+    }
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --paper: #F2F2F1; --card: #FBFBFA; --line: #DEDEDB; --line-soft: #E9E9E6;
+    --ink: #1B1C1E; --ink-2: #4A4B4D; --mute: #83847F;
+    --accent: #4C6B45; --accent-dim: #4C6B4522; --accent-2: #6E8B5F;
+    --ochre: #8E6E2C; --ochre-dim: #8E6E2C1F; --clay: #9E4F3F; --clay-dim: #9E4F3F1A;
+    --ghost: #9C9D98; --shadow: 0 1px 2px #1b1c1e0d, 0 8px 24px -16px #1b1c1e26;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #141517; --card: #1C1D20; --line: #2E3034; --line-soft: #26282B;
+    --ink: #ECECEA; --ink-2: #B6B7B4; --mute: #85868A;
+    --accent: #93B37E; --accent-dim: #93B37E26; --accent-2: #7B9A67;
+    --ochre: #C8A057; --ochre-dim: #C8A05722; --clay: #C97A65; --clay-dim: #C97A651F;
+    --ghost: #5A5C60; --shadow: 0 1px 2px #0006, 0 10px 28px -18px #000a;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 22px 96px; }
+
+  /* ---------- 머리말 ---------- */
+
+  .masthead {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .masthead-inner {
+    max-width: 1180px; margin: 0 auto; padding: 16px 22px 0;
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px 34px;
+  }
+
+  .brand { display: flex; flex-direction: column; gap: 3px; margin-right: auto; }
+  .brand h1 {
+    margin: 0; font-size: 17px; font-weight: 640; letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .brand .stamp {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--mute);
+  }
+
+  .tally { display: flex; gap: 26px; }
+  .tally-item { display: flex; flex-direction: column; gap: 1px; }
+  .tally-item dt {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--mute); margin: 0;
+  }
+  .tally-item dd {
+    margin: 0; font-family: var(--mono); font-size: 25px; font-weight: 600;
+    line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .tally-item dd small {
+    font-size: 11.5px; font-weight: 500; color: var(--mute); margin-left: 5px;
+    letter-spacing: 0;
+  }
+  .tally-item.is-lead dd { color: var(--accent); }
+
+  .views { display: flex; gap: 2px; margin-top: 16px; }
+  .views button {
+    appearance: none; border: 0; background: none; cursor: pointer;
+    font-family: var(--sans); font-size: 13.5px; font-weight: 550; color: var(--mute);
+    padding: 9px 15px 11px; border-bottom: 2px solid transparent;
+    transition: color .14s;
+  }
+  .views button:hover { color: var(--ink-2); }
+  .views button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .views button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 3px; }
+
+  /* ---------- 거르개 ---------- */
+
+  .sieve {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+    padding: 15px 0 3px; margin-bottom: 8px;
+  }
+  .sieve-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--mute); margin-right: 3px;
+  }
+  .sieve-label + .sieve-label { margin-left: 12px; }
+
+  .chip {
+    appearance: none; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink-2);
+    border-radius: 100px; padding: 4px 11px;
+    font-family: var(--sans); font-size: 12.5px; font-weight: 500;
+    display: inline-flex; align-items: baseline; gap: 6px;
+    transition: border-color .14s, color .14s, background .14s;
+  }
+  .chip:hover { border-color: var(--ghost); color: var(--ink); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .chip b {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+    color: var(--mute); font-variant-numeric: tabular-nums;
+  }
+  /* 눌린 칩은 강조색 바탕에 종이색 글씨. 두 테마 모두에서 대비가 뒤집히지 않는다. */
+  .chip[aria-pressed="true"] {
+    background: var(--accent); border-color: var(--accent);
+    color: var(--paper); font-weight: 560;
+  }
+  .chip[aria-pressed="true"] b { color: var(--paper); opacity: .72; }
+
+  .chip-clear {
+    border-style: dashed; background: none;
+  }
+
+  .sieve-note {
+    width: 100%; margin: 4px 0 0;
+    font-family: var(--mono); font-size: 11px; color: var(--mute);
+    font-variant-numeric: tabular-nums;
+  }
+  .sieve-note strong { color: var(--accent); font-weight: 600; }
+
+  /* ---------- 공통 판 ---------- */
+
+  .panel {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .panel > h2 {
+    margin: 0 0 3px; font-size: 14px; font-weight: 620; letter-spacing: -0.005em;
+  }
+  .panel > .caption {
+    margin: 0 0 18px; font-size: 12.5px; color: var(--mute); text-wrap: balance;
+  }
+
+  .board { display: grid; gap: 16px; }
+  @media (min-width: 900px) {
+    .board.split { grid-template-columns: 1fr 1fr; }
+  }
+
+  .scroller { overflow-x: auto; }
+
+  /* ---------- 깔때기 ---------- */
+
+  .funnel { display: flex; flex-direction: column; gap: 3px; }
+  .rung {
+    display: grid; grid-template-columns: 84px 1fr 118px; align-items: center;
+    gap: 12px; padding: 3px 0;
+  }
+  .rung-step {
+    font-family: var(--mono); font-size: 11px; color: var(--mute);
+    letter-spacing: 0.05em; font-variant-numeric: tabular-nums;
+  }
+  .rung-step em { font-style: normal; color: var(--ink-2); }
+  .rung-track { height: 21px; background: var(--line-soft); border-radius: 3px; overflow: hidden; }
+  .rung-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    transition: width .32s cubic-bezier(.22,.61,.36,1);
+  }
+  .rung.is-end .rung-fill { background: var(--ochre); }
+  .rung-read {
+    font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums;
+    color: var(--ink-2); text-align: right; white-space: nowrap;
+  }
+  .rung-read .leak { color: var(--clay); margin-left: 8px; }
+  .rung-read .leak.is-quiet { color: var(--mute); }
+
+  /* ---------- 표 ---------- */
+
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 7px 10px; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--mute); font-weight: 500;
+    border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  }
+  tbody tr { border-bottom: 1px solid var(--line-soft); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody td { font-size: 13px; }
+  tbody td:not(:first-child) { font-family: var(--mono); font-size: 12px; }
+  tbody td:first-child { font-weight: 500; }
+  .num-lead { color: var(--accent); font-weight: 600; }
+  .num-dim { color: var(--mute); }
+
+  .meter {
+    display: inline-block; vertical-align: middle;
+    width: 52px; height: 5px; border-radius: 3px;
+    background: var(--line-soft); margin-left: 9px; overflow: hidden;
+  }
+  .meter i { display: block; height: 100%; background: var(--accent-2); border-radius: 3px; }
+
+  /* ---------- 체류 시간 ---------- */
+
+  .dwell { display: flex; flex-direction: column; gap: 2px; }
+  .dwell-row {
+    display: grid; grid-template-columns: 96px 1fr 96px; align-items: center;
+    gap: 12px; padding: 2px 0;
+  }
+  .dwell-name { font-size: 12.5px; color: var(--ink-2); }
+  .dwell-name span { font-family: var(--mono); font-size: 10.5px; color: var(--mute); margin-left: 5px; }
+  .dwell-track { height: 15px; background: var(--line-soft); border-radius: 3px; overflow: hidden; }
+  .dwell-fill { height: 100%; background: var(--ochre); border-radius: 3px; transition: width .32s; }
+  .dwell-read {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .dwell-read span { color: var(--mute); }
+
+  /* ---------- 문항 ---------- */
+
+  .quiz { display: grid; gap: 16px; align-items: start; }
+  @media (min-width: 920px) { .quiz { grid-template-columns: 196px 1fr; } }
+
+  .rail {
+    position: sticky; top: calc(var(--masthead, 132px) + 14px);
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .rail-head {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--mute); padding: 0 0 8px 10px;
+  }
+  .rail a {
+    display: flex; gap: 9px; align-items: baseline;
+    padding: 7px 10px; border-radius: 6px; text-decoration: none;
+    color: var(--ink-2); font-size: 12.5px; line-height: 1.35;
+    border-left: 2px solid transparent; transition: background .14s, color .14s;
+  }
+  .rail a:hover { background: var(--accent-dim); color: var(--ink); }
+  .rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .rail a.is-here { border-left-color: var(--accent); color: var(--ink); font-weight: 560; }
+  .rail a .mark {
+    font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 600;
+  }
+  .rail a .tally-mini {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--mute);
+  }
+
+  .hunt {
+    width: 100%; margin-bottom: 14px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    border-radius: 8px; padding: 9px 13px;
+    font-family: var(--sans); font-size: 13.5px;
+  }
+  .hunt::placeholder { color: var(--mute); }
+  .hunt:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
+  .section-head {
+    margin: 26px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 11px;
+    scroll-margin-top: calc(var(--masthead, 132px) + 16px);
+  }
+  .section-head:first-child { margin-top: 0; }
+  .section-head h2 { margin: 0; font-size: 14.5px; font-weight: 620; letter-spacing: -0.005em; }
+  .section-head .tally-mini {
+    margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--mute);
+  }
+
+  .ask { padding: 15px 0 17px; border-bottom: 1px solid var(--line-soft); }
+  .ask:last-child { border-bottom: 0; }
+  .ask-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px; }
+  .ask-num {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--accent);
+    flex: none; min-width: 42px;
+  }
+  .ask-title { font-size: 13.5px; font-weight: 550; line-height: 1.45; text-wrap: balance; }
+  .ask-flags { margin-left: auto; display: flex; gap: 6px; flex: none; align-items: baseline; }
+  .tag {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .tag.multi { background: var(--ochre-dim); color: var(--ochre); }
+  .tag.varies { background: var(--clay-dim); color: var(--clay); }
+  .tag.count { color: var(--mute); font-variant-numeric: tabular-nums; }
+
+  .options { display: flex; flex-direction: column; gap: 4px; padding-left: 51px; }
+  .opt { display: grid; grid-template-columns: 1fr 96px; gap: 12px; align-items: center; }
+  .opt-body { min-width: 0; }
+  .opt-name {
+    font-size: 12.5px; color: var(--ink-2); margin-bottom: 3px;
+    display: flex; align-items: baseline; gap: 7px;
+  }
+  .opt-name span { flex: 1 1 auto; }
+  .opt-track {
+    position: relative; height: 13px; background: var(--line-soft);
+    border-radius: 3px; overflow: hidden;
+  }
+  .opt-ghost {
+    position: absolute; inset: 0 auto 0 0; height: 100%;
+    border-right: 1px dashed var(--ghost); background: transparent;
+  }
+  .opt-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s; }
+  .opt.is-top .opt-fill { background: var(--accent); }
+  .opt.is-cold .opt-fill { background: var(--ghost); }
+  .opt-read {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .opt-read span { color: var(--mute); margin-left: 6px; }
+  .drift {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+    padding: 1px 5px; border-radius: 4px; flex: none;
+  }
+  .drift.up { background: var(--accent-dim); color: var(--accent); }
+  .drift.down { background: var(--clay-dim); color: var(--clay); }
+
+  .jotted {
+    margin-top: 9px; padding: 9px 12px; background: var(--paper);
+    border-radius: 6px; border: 1px solid var(--line-soft);
+  }
+  .jotted-head {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--mute); margin-bottom: 5px;
+  }
+  .jotted p { margin: 0 0 3px; font-size: 12.5px; color: var(--ink-2); }
+  .jotted p:last-child { margin-bottom: 0; }
+
+  /* ---------- 개별 응답 ---------- */
+
+  .sheet tbody tr { cursor: pointer; }
+  .sheet tbody tr:hover { background: var(--accent-dim); }
+  .sheet tbody tr.is-open { background: var(--accent-dim); }
+  .pill {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em;
+    padding: 2px 7px; border-radius: 100px;
+  }
+  .pill.yes { background: var(--accent-dim); color: var(--accent); }
+  .pill.no { background: var(--line-soft); color: var(--mute); }
+
+  .detail td { padding: 0; }
+  .detail-body {
+    padding: 14px 16px 18px; background: var(--paper);
+    border-radius: 8px; margin: 2px 0 10px;
+    display: grid; gap: 7px;
+  }
+  @media (min-width: 780px) { .detail-body { grid-template-columns: 1fr 1fr; } }
+  .detail-item { font-size: 12.5px; line-height: 1.45; }
+  .detail-item dt {
+    font-family: var(--mono); font-size: 10.5px; color: var(--mute); margin: 0 0 1px;
+  }
+  .detail-item dd { margin: 0; color: var(--ink-2); }
+
+  .void {
+    padding: 44px 0; text-align: center; color: var(--mute); font-size: 13px;
+  }
+
+  .footnote {
+    margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--mute); line-height: 1.65;
+  }
+  .footnote code {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--line-soft); padding: 1px 5px; border-radius: 3px; color: var(--ink-2);
+  }
+
+  /* ---------- 사연 ---------- */
+
+  .told {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 24px 22px; box-shadow: var(--shadow); margin-bottom: 14px;
+  }
+  .told-head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding-bottom: 12px; margin-bottom: 14px; border-bottom: 1px solid var(--line-soft);
+  }
+  .told-who {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2); font-weight: 600;
+  }
+  .told-facts {
+    display: flex; gap: 14px; flex-wrap: wrap; margin-left: auto;
+    font-size: 12px; color: var(--mute);
+  }
+  .told-facts b { color: var(--ink-2); font-weight: 550; }
+
+  .told-body { display: flex; flex-direction: column; gap: 16px; }
+  .told-field { display: flex; flex-direction: column; gap: 5px; }
+  .told-label {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    letter-spacing: -0.003em;
+  }
+  .told-text {
+    font-size: 14px; line-height: 1.78; color: var(--ink);
+    max-width: 66ch; white-space: pre-wrap; overflow-wrap: break-word;
+  }
+  .told-text mark {
+    background: var(--ochre-dim); color: inherit; border-radius: 2px; padding: 0 1px;
+  }
+  .told-basic {
+    display: flex; gap: 10px 20px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--paper);
+    border-radius: 7px; border: 1px solid var(--line-soft);
+  }
+  .told-basic div { font-size: 12.5px; }
+  .told-basic dt { font-family: var(--mono); font-size: 10px; color: var(--mute); }
+  .told-basic dd { color: var(--ink-2); }
+
+  .gauge { display: flex; flex-direction: column; gap: 2px; }
+  .gauge-row {
+    display: grid; grid-template-columns: 1fr 110px 74px; gap: 12px; align-items: center;
+  }
+  .gauge-name { font-size: 12.5px; color: var(--ink-2); }
+  .gauge-track { height: 13px; background: var(--line-soft); border-radius: 3px; overflow: hidden; }
+  .gauge-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .gauge-read {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-2);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .gauge-read span { color: var(--mute); margin-left: 6px; }
+
+  /* ---------- 테마 단추 ---------- */
+
+  .toggle {
+    appearance: none; cursor: pointer; margin-left: 14px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink-2);
+    border-radius: 7px; padding: 6px 10px; font-size: 12px; line-height: 1;
+    transition: border-color .14s, color .14s;
+  }
+  .toggle:hover { border-color: var(--ghost); color: var(--ink); }
+  .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  [hidden] { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
+  @media print {
+    .masthead { position: static; }
+    .views, .sieve, .toggle, .rail, .hunt { display: none !important; }
+    .panel, .told { break-inside: avoid; box-shadow: none; }
+    body { background: #fff; color: #000; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <span class="stamp">Pawever · goods-2026-07</span>
+      <h1>굿즈 설문 응답 분석</h1>
+    </div>
+
+    <dl class="tally" id="tally"></dl>
+  </div>
+
+  <div class="masthead-inner" style="padding-top:0">
+    <div class="views" role="tablist" id="views">
+      <button role="tab" data-view="flow" aria-selected="true">흐름</button>
+      <button role="tab" data-view="quiz" aria-selected="false">문항</button>
+      <button role="tab" data-view="story" aria-selected="false">사연</button>
+      <button role="tab" data-view="sheet" aria-selected="false">개별 응답</button>
+    </div>
+    <button class="toggle" id="toggle" type="button">테마</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="sieve" id="sieve"></div>
+
+  <section id="view-flow" class="board"></section>
+  <section id="view-quiz" class="quiz" hidden></section>
+  <section id="view-story" hidden></section>
+  <section id="view-sheet" hidden></section>
+
+  <p class="footnote" id="footnote"></p>
+</main>
+
+<script>
+/* eslint-disable */
+__DATA__
+
+const $ = (sel, root) => (root || document).querySelector(sel);
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+const pct = (part, whole) => (whole ? (part / whole) * 100 : 0);
+const say = (value, digits) => value.toFixed(digits === undefined ? 0 : digits);
+
+const median = list => {
+  const sorted = list.filter(v => v !== null && v !== undefined).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const TOTAL = DATA.rows.length;
+const LAST_PAGE = DATA.pages[DATA.pages.length - 1];
+
+/* 거르개는 세 축뿐이다. 축이 늘면 조합이 폭발해 아무도 읽지 못한다. */
+const AXES = [
+  { key: 'src', name: '유입', labels: DATA.labels.src },
+  { key: 'dev', name: '기기', labels: DATA.labels.dev },
+];
+/* 상태가 SUBMITTED인 사람과 굿즈를 신청한 사람은 같은 집합이다.
+   설문을 끝내도 신청 양식을 마쳐야 제출로 잡히기 때문이다. 둘 중 하나만 쓴다. */
+const STANCES = [
+  { key: 'reach', name: '끝까지 본 사람', test: row => row.step >= LAST_PAGE },
+  { key: 'app', name: '굿즈 신청자', test: row => row.app === 1 },
+  { key: 'quit', name: '중간 이탈', test: row => row.step < LAST_PAGE },
+];
+
+const state = {
+  view: 'flow', src: null, dev: null, stance: null,
+  hunt: '', storyHunt: '', open: null,
+};
+
+const isSifted = () => state.src !== null || state.dev !== null || state.stance !== null;
+
+function sift() {
+  return DATA.rows.filter(row => {
+    if (state.src !== null && row.src !== state.src) return false;
+    if (state.dev !== null && row.dev !== state.dev) return false;
+    if (state.stance) {
+      const stance = STANCES.find(s => s.key === state.stance);
+      if (stance && !stance.test(row)) return false;
+    }
+    return true;
+  });
+}
+
+/* 문항 하나의 분포. 복수선택은 합이 응답자 수를 넘는다. */
+function spread(rows, index) {
+  const question = DATA.questions[index];
+  const counts = new Array(question.opts.length).fill(0);
+  let answered = 0;
+  for (const row of rows) {
+    const picked = row.a[index];
+    if (!picked) continue;
+    answered++;
+    for (const at of picked) counts[at]++;
+  }
+  return { counts, answered };
+}
+
+const BASELINE = DATA.questions.map((_, index) => spread(DATA.rows, index));
+
+/* ------------------------------------------------------------------ 머리 숫자 */
+
+function drawTally(rows) {
+  const reached = rows.filter(r => r.step >= LAST_PAGE).length;
+  const app = rows.filter(r => r.app).length;
+  const items = [
+    { name: '설문 열람', value: rows.length, note: rows.length === TOTAL ? null : `전체 ${TOTAL}` },
+    { name: '끝까지', value: reached, note: `${say(pct(reached, rows.length))}%` },
+    { name: '굿즈 신청', value: app, note: `${say(pct(app, rows.length))}%`, lead: true },
+  ];
+
+  const list = $('#tally');
+  list.replaceChildren();
+  for (const item of items) {
+    const wrap = el('div', 'tally-item' + (item.lead ? ' is-lead' : ''));
+    wrap.append(el('dt', null, item.name));
+    const value = el('dd', null, String(item.value));
+    if (item.note) value.append(el('small', null, item.note));
+    wrap.append(value);
+    list.append(wrap);
+  }
+}
+
+/* ------------------------------------------------------------------ 거르개 */
+
+function drawSieve() {
+  const sieve = $('#sieve');
+  sieve.replaceChildren();
+
+  for (const axis of AXES) {
+    sieve.append(el('span', 'sieve-label', axis.name));
+    axis.labels.forEach((label, index) => {
+      const held = DATA.rows.filter(r => r[axis.key] === index).length;
+      if (!held) return;
+      const chip = el('button', 'chip');
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', String(state[axis.key] === index));
+      chip.append(document.createTextNode(label), el('b', null, String(held)));
+      chip.addEventListener('click', () => {
+        state[axis.key] = state[axis.key] === index ? null : index;
+        state.open = null;
+        render();
+      });
+      sieve.append(chip);
+    });
+  }
+
+  sieve.append(el('span', 'sieve-label', '범위'));
+  for (const stance of STANCES) {
+    const chip = el('button', 'chip');
+    chip.type = 'button';
+    chip.setAttribute('aria-pressed', String(state.stance === stance.key));
+    chip.append(
+      document.createTextNode(stance.name),
+      el('b', null, String(DATA.rows.filter(stance.test).length))
+    );
+    chip.addEventListener('click', () => {
+      state.stance = state.stance === stance.key ? null : stance.key;
+      state.open = null;
+      render();
+    });
+    sieve.append(chip);
+  }
+
+  if (isSifted()) {
+    const clear = el('button', 'chip chip-clear', '거르개 해제');
+    clear.type = 'button';
+    clear.addEventListener('click', () => {
+      state.src = state.dev = state.stance = null;
+      state.open = null;
+      render();
+    });
+    sieve.append(clear);
+
+    const rows = sift();
+    const note = el('p', 'sieve-note');
+    note.append(
+      document.createTextNode('전체 ' + TOTAL + '건 가운데 '),
+      el('strong', null, rows.length + '건'),
+      document.createTextNode(
+        ' · 문항 막대의 점선은 전체 분포입니다. 옆의 %p는 전체와 벌어진 폭입니다.'
+      )
+    );
+    sieve.append(note);
+  }
+}
+
+/* ------------------------------------------------------------------ 흐름 */
+
+function drawFlow(rows) {
+  const board = $('#view-flow');
+  board.replaceChildren();
+  if (!rows.length) { board.append(el('p', 'void', '조건에 맞는 응답이 없습니다.')); return; }
+
+  board.append(drawFunnel(rows));
+
+  const split = el('div', 'board split');
+  split.append(drawSourceTable(rows), drawDwell(rows));
+  board.append(split);
+
+  board.append(drawTiming(rows));
+}
+
+function drawFunnel(rows) {
+  const panel = el('section', 'panel');
+  panel.append(el('h2', null, '어디까지 갔는가'));
+  panel.append(el('p', 'caption',
+    '한 칸 내려갈 때마다 남은 사람. 오른쪽 붉은 숫자는 그 칸에서 빠져나간 인원입니다.'));
+
+  const started = rows.length;
+
+  /* 마지막 칸은 쪽이 아니라 굿즈 신청 양식이다.
+     설문을 끝낸 사람과 실제로 신청한 사람은 다르고, 그 차이가 이 표의 핵심이다. */
+  const rungs = DATA.pages.map(page => ({
+    name: 'STEP ' + String(page).padStart(2, '0'),
+    here: rows.filter(r => r.step >= page).length,
+  }));
+  rungs.push({ name: '굿즈 신청', here: rows.filter(r => r.app).length, end: true });
+
+  const funnel = el('div', 'funnel');
+  rungs.forEach((rung, index) => {
+    const before = index === 0 ? started : rungs[index - 1].here;
+    rung.lost = before - rung.here;
+
+    const line = el('div', 'rung' + (rung.end ? ' is-end' : ''));
+    const step = el('div', 'rung-step');
+    if (rung.end) step.append(el('em', null, rung.name));
+    else step.append(document.createTextNode('STEP '), el('em', null, rung.name.slice(5)));
+    line.append(step);
+
+    const track = el('div', 'rung-track');
+    const fill = el('div', 'rung-fill');
+    fill.style.width = pct(rung.here, started) + '%';
+    track.append(fill);
+    line.append(track);
+
+    const read = el('div', 'rung-read');
+    read.append(document.createTextNode(rung.here + '명 · ' + say(pct(rung.here, started)) + '%'));
+    if (rung.lost > 0) {
+      read.append(el('span', 'leak' + (rung.lost < started * 0.02 ? ' is-quiet' : ''),
+        '−' + rung.lost));
+    }
+    line.append(read);
+    funnel.append(line);
+  });
+  panel.append(funnel);
+
+  const opened = started - rungs[0].here;
+  const lastPage = rungs[rungs.length - 2].here;
+  const applied = rungs[rungs.length - 1].here;
+
+  const note = el('p', 'caption');
+  note.style.margin = '16px 0 0';
+  note.textContent =
+    `열어만 보고 첫 문항도 답하지 않은 사람이 ${opened}명입니다. ` +
+    `문항을 모두 지난 ${lastPage}명 가운데 실제로 신청한 사람은 ${applied}명으로, ` +
+    `${lastPage - applied}명이 마지막 신청 양식에서 빠져나갔습니다. ` +
+    '설문 자체보다 이름·연락처·주소·사진을 넣는 마지막 단계가 더 크게 걸러냅니다.';
+  panel.append(note);
+  return panel;
+}
+
+function drawSourceTable(rows) {
+  const panel = el('section', 'panel');
+  panel.append(el('h2', null, '어디서 왔는가'));
+  panel.append(el('p', 'caption', '유입 경로별 응답과 완주·신청 비율.'));
+
+  const groups = new Map();
+  for (const row of rows) {
+    const name = DATA.labels.src[row.src] + ' / ' + DATA.labels.cre[row.cre];
+    const seen = groups.get(name) || { name, all: 0, done: 0, app: 0 };
+    seen.all++;
+    seen.done += row.done;
+    seen.app += row.app;
+    groups.set(name, seen);
+  }
+  const ranked = [...groups.values()].sort((a, b) => b.all - a.all);
+  const peak = Math.max(...ranked.map(g => pct(g.app, g.all)), 1);
+
+  const scroller = el('div', 'scroller');
+  const table = el('table');
+  const head = el('thead');
+  const headRow = el('tr');
+  ['유입 / 소재', '응답', '완주', '신청', '신청률'].forEach(name => headRow.append(el('th', null, name)));
+  head.append(headRow);
+  table.append(head);
+
+  const body = el('tbody');
+  for (const group of ranked) {
+    const tr = el('tr');
+    tr.append(el('td', null, group.name));
+    tr.append(el('td', null, String(group.all)));
+    tr.append(el('td', 'num-dim', String(group.done)));
+    tr.append(el('td', group.app ? 'num-lead' : 'num-dim', String(group.app)));
+
+    const rate = el('td');
+    rate.append(document.createTextNode(say(pct(group.app, group.all), 1) + '%'));
+    const meter = el('span', 'meter');
+    const bar = el('i');
+    bar.style.width = pct(pct(group.app, group.all), peak) + '%';
+    meter.append(bar);
+    rate.append(meter);
+    tr.append(rate);
+    body.append(tr);
+  }
+  table.append(body);
+  scroller.append(table);
+  panel.append(scroller);
+  return panel;
+}
+
+function drawDwell(rows) {
+  const panel = el('section', 'panel');
+  panel.append(el('h2', null, '쪽마다 얼마나 머물렀나'));
+  panel.append(el('p', 'caption', '그 쪽을 실제로 본 사람들의 중앙값입니다. 문항이 많은 쪽이 길어집니다.'));
+
+  const perPage = DATA.pages.map((page, index) => {
+    const seen = rows.map(r => r.secs[index]).filter(v => v !== null && v !== undefined && v > 0);
+    return { page, mid: median(seen), seen: seen.length };
+  });
+  const peak = Math.max(...perPage.map(p => p.mid || 0), 1);
+
+  const dwell = el('div', 'dwell');
+  for (const item of perPage) {
+    const row = el('div', 'dwell-row');
+    const name = el('div', 'dwell-name');
+    name.append(document.createTextNode(item.page + '쪽'), el('span', null, item.seen + '명'));
+    row.append(name);
+
+    const track = el('div', 'dwell-track');
+    const fill = el('div', 'dwell-fill');
+    fill.style.width = pct(item.mid || 0, peak) + '%';
+    track.append(fill);
+    row.append(track);
+
+    const read = el('div', 'dwell-read');
+    if (item.mid === null) read.append(el('span', null, '—'));
+    else read.append(document.createTextNode(say(item.mid) + '초'));
+    row.append(read);
+    dwell.append(row);
+  }
+  panel.append(dwell);
+  return panel;
+}
+
+function drawTiming(rows) {
+  const panel = el('section', 'panel');
+  panel.append(el('h2', null, '들어와서 끝내기까지'));
+  panel.append(el('p', 'caption',
+    '광고를 누르고 설문을 시작하기까지, 그리고 설문 안에서 보낸 시간.'));
+
+  const toStart = rows.map(r => r.toStart).filter(v => v !== null && v !== undefined);
+  const wholeMins = rows.filter(r => r.done).map(r => r.mins).filter(v => v !== null && v !== undefined);
+
+  const scroller = el('div', 'scroller');
+  const table = el('table');
+  const head = el('thead');
+  const headRow = el('tr');
+  ['구간', '표본', '중앙값', '하위 25%', '상위 25%'].forEach(n => headRow.append(el('th', null, n)));
+  head.append(headRow);
+  table.append(head);
+
+  const quartile = (list, at) => {
+    const sorted = [...list].sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * at))];
+  };
+
+  const lines = [
+    { name: '랜딩 → 설문 시작', list: toStart, unit: '분' },
+    { name: '설문 시작 → 완주', list: wholeMins, unit: '분' },
+  ];
+
+  const body = el('tbody');
+  for (const line of lines) {
+    const tr = el('tr');
+    tr.append(el('td', null, line.name));
+    tr.append(el('td', 'num-dim', String(line.list.length)));
+    const mid = median(line.list);
+    tr.append(el('td', 'num-lead', mid === null ? '—' : say(mid, 1) + line.unit));
+    tr.append(el('td', 'num-dim', say(quartile(line.list, 0.25) ?? 0, 1) + line.unit));
+    tr.append(el('td', 'num-dim', say(quartile(line.list, 0.75) ?? 0, 1) + line.unit));
+    body.append(tr);
+  }
+  table.append(body);
+  scroller.append(table);
+  panel.append(scroller);
+
+  const caveat = el('p', 'caption');
+  caveat.style.margin = '14px 0 0';
+  caveat.textContent =
+    '랜딩 체류 시간은 인앱 브라우저에서 화면 포커스를 잡지 못해 짧게 기록됩니다.' +
+    ' 이 값은 참고만 하시고, 다음 캠페인 전에 측정 방식을 고쳐야 합니다.';
+  panel.append(caveat);
+  return panel;
+}
+
+/* ------------------------------------------------------------------ 문항 */
+
+/* 검색창은 한 번만 만든다. 글자마다 새로 만들면 한글 조합이 끊긴다. */
+let quizFrame = null;
+
+function buildQuizFrame() {
+  const view = $('#view-quiz');
+  view.replaceChildren();
+
+  const rail = el('nav', 'rail');
+  rail.append(el('div', 'rail-head', '섹션'));
+  const railLinks = DATA.sections.map((section, index) => {
+    const link = el('a');
+    link.href = '#sec-' + index;
+    const [mark, ...rest] = section.split('. ');
+    link.append(el('span', 'mark', mark), el('span', null, rest.join('. ')));
+    link.append(el('span', 'tally-mini', ''));
+    rail.append(link);
+    return link;
+  });
+
+  const column = el('div');
+  const hunt = el('input', 'hunt');
+  hunt.type = 'search';
+  hunt.placeholder = '문항이나 선택지 검색 — 예: 병원비, 가격, Q22';
+  hunt.addEventListener('input', event => {
+    state.hunt = event.target.value;
+    fillQuiz(sift());
+  });
+  const list = el('div');
+  column.append(hunt, list);
+
+  view.append(rail, column);
+  quizFrame = { railLinks, list };
+}
+
+function drawQuiz(rows) {
+  if (!quizFrame) buildQuizFrame();
+  fillQuiz(rows);
+}
+
+function fillQuiz(rows) {
+  const hunted = state.hunt.trim().toLowerCase();
+  const visible = DATA.questions
+    .map((question, index) => ({ question, index }))
+    .filter(({ question }) => {
+      if (!hunted) return true;
+      const hay = (question.num + ' ' + question.title + ' ' + question.opts.join(' ')).toLowerCase();
+      return hay.includes(hunted);
+    });
+
+  /* 왼쪽 기둥은 섹션이 실제 순서를 갖기 때문에 쓴다. A에서 F로 흐르는 이야기다. */
+  quizFrame.railLinks.forEach((link, index) => {
+    const held = visible.filter(v => v.question.sec === index).length;
+    link.lastChild.textContent = String(held);
+    link.style.opacity = held ? '' : '.4';
+  });
+
+  const list = quizFrame.list;
+  list.replaceChildren();
+
+  if (!visible.length) {
+    list.append(el('p', 'void', '검색어에 맞는 문항이 없습니다.'));
+    return;
+  }
+
+  let openSection = -1;
+  let panel = null;
+  for (const { question, index } of visible) {
+    if (question.sec !== openSection) {
+      openSection = question.sec;
+      const head = el('div', 'section-head');
+      head.id = 'sec-' + openSection;
+      head.append(el('h2', null, DATA.sections[openSection]));
+      head.append(el('span', 'tally-mini',
+        visible.filter(v => v.question.sec === openSection).length + '문항'));
+      list.append(head);
+      panel = el('div');
+      list.append(panel);
+    }
+    panel.append(drawAsk(question, index, rows));
+  }
+}
+
+function drawAsk(question, index, rows) {
+  const now = spread(rows, index);
+  const base = BASELINE[index];
+  const sifted = isSifted();
+
+  const ask = el('article', 'ask');
+  const head = el('div', 'ask-head');
+  head.append(el('span', 'ask-num', question.num));
+  /* 매트릭스 문항은 다섯 줄이 제목을 공유한다. 줄 이름을 보여야 어느 줄인지 안다. */
+  head.append(el('span', 'ask-title', question.row
+    ? question.title + ' — ' + question.row
+    : question.title));
+
+  const flags = el('div', 'ask-flags');
+  if (question.multi) flags.append(el('span', 'tag multi', '복수'));
+  if (question.varies) flags.append(el('span', 'tag varies', '분기'));
+  flags.append(el('span', 'tag count', now.answered + '명'));
+  head.append(flags);
+  ask.append(head);
+
+  if (!now.answered) {
+    const empty = el('p', 'caption');
+    empty.style.cssText = 'margin:0 0 0 51px';
+    empty.textContent = '이 조건에서는 아무도 답하지 않았습니다.';
+    ask.append(empty);
+    return ask;
+  }
+
+  const peak = Math.max(...now.counts, 1);
+  const options = el('div', 'options');
+
+  question.opts.forEach((label, at) => {
+    const count = now.counts[at];
+    const share = pct(count, now.answered);
+    const baseShare = pct(base.counts[at], base.answered);
+
+    const opt = el('div', 'opt' + (count === 0 ? ' is-cold' : count === peak ? ' is-top' : ''));
+    const bodyWrap = el('div', 'opt-body');
+
+    const name = el('div', 'opt-name');
+    name.append(el('span', null, label));
+    if (sifted && Math.abs(share - baseShare) >= 5 && base.answered) {
+      const gap = share - baseShare;
+      name.append(el('span', 'drift ' + (gap > 0 ? 'up' : 'down'),
+        (gap > 0 ? '+' : '−') + say(Math.abs(gap)) + '%p'));
+    }
+    bodyWrap.append(name);
+
+    const track = el('div', 'opt-track');
+    if (sifted && base.answered) {
+      /* 막대는 최다 선택지를 100%로 잡는다. 유령 막대도 같은 자로 재야 겹쳐 읽힌다. */
+      const ghost = el('div', 'opt-ghost');
+      ghost.style.width = Math.min(100, (baseShare * now.answered) / peak) + '%';
+      track.append(ghost);
+    }
+    const fill = el('div', 'opt-fill');
+    fill.style.width = pct(count, peak) + '%';
+    track.append(fill);
+    bodyWrap.append(track);
+    opt.append(bodyWrap);
+
+    const read = el('div', 'opt-read');
+    read.append(document.createTextNode(say(share) + '%'), el('span', null, String(count)));
+    opt.append(read);
+
+    options.append(opt);
+  });
+  ask.append(options);
+
+  if (question.text) {
+    const notes = rows.map(r => r.t[index]).filter(Boolean);
+    if (notes.length) {
+      const jotted = el('div', 'jotted');
+      jotted.style.marginLeft = '51px';
+      jotted.append(el('div', 'jotted-head', '직접 입력 ' + notes.length + '건'));
+      notes.slice(0, 8).forEach(note => jotted.append(el('p', null, '“' + note + '”')));
+      if (notes.length > 8) jotted.append(el('p', null, '외 ' + (notes.length - 8) + '건'));
+      ask.append(jotted);
+    }
+  }
+  return ask;
+}
+
+/* ------------------------------------------------------------------ 사연 */
+
+let storyFrame = null;
+const ESSAYS = DATA.story.filter(f => f.essay);
+const BASICS = DATA.story.filter(f => !f.essay);
+const HAS_STORY = DATA.rows.some(r => r.s);
+
+function buildStoryFrame() {
+  const view = $('#view-story');
+  view.replaceChildren();
+
+  const summary = el('section', 'panel');
+  const hunt = el('input', 'hunt');
+  hunt.type = 'search';
+  hunt.placeholder = '사연 본문 검색 — 예: 산책, 병원, 사진';
+  hunt.addEventListener('input', event => {
+    state.storyHunt = event.target.value;
+    fillStory(sift());
+  });
+  const list = el('div');
+
+  view.append(summary, hunt, list);
+  storyFrame = { summary, list };
+}
+
+function drawStory(rows) {
+  if (!HAS_STORY) {
+    const view = $('#view-story');
+    view.replaceChildren();
+    const panel = el('section', 'panel');
+    panel.append(el('h2', null, '사연을 아직 내려받지 않았습니다'));
+    panel.append(el('p', 'caption',
+      '설문 문항과 달리 사연은 별도 표에 있습니다. 사연.csv를 같은 폴더에 두고 ' +
+      '대시보드를 다시 만들면 이 화면이 채워집니다.'));
+    view.append(panel);
+    return;
+  }
+  if (!storyFrame) buildStoryFrame();
+  fillStory(rows);
+}
+
+/* 검색어가 든 문단만 골라 보여준다. 긴 글에서 한 줄을 찾을 때 쓴다. */
+function highlight(text, needle) {
+  const box = el('div', 'told-text');
+  if (!needle) { box.textContent = text; return box; }
+  const lower = text.toLowerCase();
+  let at = 0;
+  let found = lower.indexOf(needle);
+  while (found !== -1) {
+    if (found > at) box.append(document.createTextNode(text.slice(at, found)));
+    box.append(el('mark', null, text.slice(found, found + needle.length)));
+    at = found + needle.length;
+    found = lower.indexOf(needle, at);
+  }
+  box.append(document.createTextNode(text.slice(at)));
+  return box;
+}
+
+function fillStory(rows) {
+  const needle = state.storyHunt.trim().toLowerCase();
+  const all = rows.filter(r => r.s);
+  const told = needle
+    ? all.filter(r => ESSAYS.some(f => (r.s[f.id] || '').toLowerCase().includes(needle)))
+    : all;
+
+  /* --- 개요 --- */
+  const summary = storyFrame.summary;
+  summary.replaceChildren();
+  summary.append(el('h2', null, '누가 얼마나 썼는가'));
+  summary.append(el('p', 'caption',
+    '분석 동의는 필수라 아래 전부를 분석에 쓸 수 있습니다. ' +
+    '밖으로 인용하려면 공유 동의를 받은 사연만 써야 합니다.'));
+
+  const shared = all.filter(r => r.shared).length;
+  const letters = all.reduce((sum, r) =>
+    sum + ESSAYS.reduce((n, f) => n + (r.s[f.id] || '').length, 0), 0);
+
+  const facts = el('div', 'told-facts');
+  facts.style.cssText = 'margin:0 0 18px;gap:22px';
+  [
+    ['사연을 남긴 사람', all.length + '명'],
+    ['공유 동의', shared + '명'],
+    ['전체 분량', letters.toLocaleString() + '자'],
+  ].forEach(([name, value]) => {
+    const cell = el('span');
+    cell.append(document.createTextNode(name + ' '), el('b', null, value));
+    facts.append(cell);
+  });
+  summary.append(facts);
+
+  const gauge = el('div', 'gauge');
+  for (const field of ESSAYS) {
+    const written = all.map(r => r.s[field.id]).filter(Boolean);
+    const row = el('div', 'gauge-row');
+    row.append(el('div', 'gauge-name', field.label));
+
+    const track = el('div', 'gauge-track');
+    const fill = el('div', 'gauge-fill');
+    fill.style.width = pct(written.length, all.length || 1) + '%';
+    track.append(fill);
+    row.append(track);
+
+    const mean = written.length
+      ? written.reduce((n, w) => n + w.length, 0) / written.length : 0;
+    const read = el('div', 'gauge-read');
+    read.append(document.createTextNode(written.length + '명'),
+      el('span', null, say(mean) + '자'));
+    row.append(read);
+    gauge.append(row);
+  }
+  summary.append(gauge);
+
+  /* --- 사연 --- */
+  const list = storyFrame.list;
+  list.replaceChildren();
+
+  if (!told.length) {
+    list.append(el('p', 'void',
+      needle ? '검색어가 든 사연이 없습니다.' : '조건에 맞는 사연이 없습니다.'));
+    return;
+  }
+  if (needle) {
+    const note = el('p', 'sieve-note');
+    note.style.margin = '0 0 12px';
+    note.textContent = `"${state.storyHunt.trim()}"가 든 사연 ${told.length}건`;
+    list.append(note);
+  }
+
+  for (const row of told) {
+    const card = el('article', 'told');
+
+    const head = el('div', 'told-head');
+    head.append(el('span', 'told-who', row.id));
+    head.append(el('span', 'pill ' + (row.shared ? 'yes' : 'no'),
+      row.shared ? '공유 동의' : '분석만'));
+
+    const facts = el('div', 'told-facts');
+    const size = ESSAYS.reduce((n, f) => n + (row.s[f.id] || '').length, 0);
+    const cell = el('span');
+    cell.append(document.createTextNode('분량 '), el('b', null, size.toLocaleString() + '자'));
+    facts.append(cell);
+    if (row.app) {
+      const goods = el('span');
+      goods.append(document.createTextNode('신청 '),
+        el('b', null, DATA.labels.goods[row.goods]));
+      facts.append(goods);
+    }
+    head.append(facts);
+    card.append(head);
+
+    const body = el('div', 'told-body');
+
+    const basics = BASICS.filter(f => row.s[f.id]);
+    if (basics.length) {
+      const strip = el('dl', 'told-basic');
+      for (const field of basics) {
+        const cellWrap = el('div');
+        cellWrap.append(el('dt', null, field.label), el('dd', null, row.s[field.id]));
+        strip.append(cellWrap);
+      }
+      body.append(strip);
+    }
+
+    for (const field of ESSAYS) {
+      const text = row.s[field.id];
+      if (!text) continue;
+      const block = el('div', 'told-field');
+      block.append(el('div', 'told-label', field.label));
+      block.append(highlight(text, needle));
+      body.append(block);
+    }
+
+    card.append(body);
+    list.append(card);
+  }
+}
+
+/* ------------------------------------------------------------------ 개별 응답 */
+
+function drawSheet(rows) {
+  const view = $('#view-sheet');
+  view.replaceChildren();
+
+  const panel = el('section', 'panel');
+  panel.append(el('h2', null, '응답 하나씩 보기'));
+  panel.append(el('p', 'caption',
+    '줄을 누르면 그 사람이 답한 내용이 전부 펼쳐집니다. 중복 제출이나 이상한 응답을 짚을 때 씁니다.'));
+
+  if (!rows.length) {
+    panel.append(el('p', 'void', '조건에 맞는 응답이 없습니다.'));
+    view.append(panel);
+    return;
+  }
+
+  const scroller = el('div', 'scroller');
+  const table = el('table', 'sheet');
+  const head = el('thead');
+  const headRow = el('tr');
+  ['응답', '유입', '소재', '기기', '도달', '신청', '굿즈', '소요'].forEach(
+    name => headRow.append(el('th', null, name))
+  );
+  head.append(headRow);
+  table.append(head);
+
+  const body = el('tbody');
+  const ordered = [...rows].sort((a, b) => b.step - a.step || b.done - a.done);
+
+  for (const row of ordered) {
+    const tr = el('tr');
+    if (state.open === row.id) tr.classList.add('is-open');
+    tr.append(el('td', null, row.id));
+    tr.append(el('td', null, DATA.labels.src[row.src]));
+    tr.append(el('td', null, DATA.labels.cre[row.cre]));
+    tr.append(el('td', null, DATA.labels.dev[row.dev]));
+    tr.append(el('td', null, row.step ? 'STEP ' + row.step : '—'));
+
+    const app = el('td');
+    app.append(el('span', 'pill ' + (row.app ? 'yes' : 'no'), row.app ? '신청' : '—'));
+    tr.append(app);
+
+    tr.append(el('td', null, row.app ? DATA.labels.goods[row.goods] : '—'));
+    tr.append(el('td', 'num-dim', row.mins === null ? '—' : say(row.mins, 1) + '분'));
+
+    tr.addEventListener('click', () => {
+      state.open = state.open === row.id ? null : row.id;
+      drawSheet(sift());
+    });
+    body.append(tr);
+
+    if (state.open === row.id) body.append(drawDetail(row));
+  }
+  table.append(body);
+  scroller.append(table);
+  panel.append(scroller);
+  view.append(panel);
+}
+
+function drawDetail(row) {
+  const tr = el('tr', 'detail');
+  const td = el('td');
+  td.colSpan = 8;
+
+  const answered = DATA.questions
+    .map((question, index) => ({ question, picked: row.a[index], note: row.t[index] }))
+    .filter(item => item.picked);
+
+  const body = el('dl', 'detail-body');
+  if (!answered.length) {
+    body.append(el('p', 'caption', '답한 문항이 없습니다.'));
+  }
+  for (const item of answered) {
+    const cell = el('div', 'detail-item');
+    cell.append(el('dt', null, item.question.num + '. ' + item.question.title));
+    const value = item.picked.map(at => item.question.opts[at]).join(' · ');
+    cell.append(el('dd', null, value + (item.note ? ' — “' + item.note + '”' : '')));
+    body.append(cell);
+  }
+  td.append(body);
+  tr.append(td);
+  return tr;
+}
+
+/* ------------------------------------------------------------------ 조립 */
+
+function render() {
+  const rows = sift();
+  drawTally(rows);
+  drawSieve();
+
+  $('#view-flow').hidden = state.view !== 'flow';
+  $('#view-quiz').hidden = state.view !== 'quiz';
+  $('#view-story').hidden = state.view !== 'story';
+  $('#view-sheet').hidden = state.view !== 'sheet';
+
+  if (state.view === 'flow') drawFlow(rows);
+  if (state.view === 'quiz') drawQuiz(rows);
+  if (state.view === 'story') drawStory(rows);
+  if (state.view === 'sheet') drawSheet(rows);
+
+  for (const button of $('#views').children) {
+    button.setAttribute('aria-selected', String(button.dataset.view === state.view));
+  }
+}
+
+$('#views').addEventListener('click', event => {
+  const button = event.target.closest('button[data-view]');
+  if (!button) return;
+  state.view = button.dataset.view;
+  render();
+});
+
+/* 머리말은 거르개 칩 줄 수에 따라 키가 변한다. 고정 숫자로 박아두면 제목이 가린다. */
+const masthead = $('.masthead');
+const trackMasthead = () => {
+  document.documentElement.style.setProperty('--masthead', masthead.offsetHeight + 'px');
+};
+if (window.ResizeObserver) new ResizeObserver(trackMasthead).observe(masthead);
+window.addEventListener('resize', trackMasthead);
+trackMasthead();
+
+/* 테마는 운영체제 설정을 따르되, 눌러서 뒤집을 수 있게 둔다. */
+const themeButton = $('#toggle');
+const savedTheme = (() => {
+  try { return localStorage.getItem('pawever-theme'); } catch { return null; }
+})();
+const applyTheme = theme => {
+  if (theme) document.documentElement.setAttribute('data-theme', theme);
+  else document.documentElement.removeAttribute('data-theme');
+  themeButton.textContent = theme === 'dark' ? '밝게' : theme === 'light' ? '어둡게' : '테마';
+};
+applyTheme(savedTheme);
+themeButton.addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    || (!document.documentElement.getAttribute('data-theme')
+        && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const next = dark ? 'light' : 'dark';
+  applyTheme(next);
+  try { localStorage.setItem('pawever-theme', next); } catch { /* 파일로 열면 막힐 수 있다 */ }
+});
+
+$('#footnote').textContent =
+  `응답 ${TOTAL}건 · 문항 ${DATA.questions.length}개 · ${DATA.pages.length}쪽` +
+  (HAS_STORY ? ` · 사연 ${DATA.rows.filter(r => r.s).length}건` : '') + '. ' +
+  '캠페인 전 테스트 응답 2건은 빼고 만들었습니다. ' +
+  '이름·연락처·주소·광고클릭ID는 실려 있지 않습니다. ' +
+  '원본 CSV와 이 파일은 응답ID로 서로 이어집니다.';
+
+render();
+</script>
+</body>
+</html>
