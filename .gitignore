@@ -48,3 +48,11 @@ logs/
 
 ### DB 백업 / 로컬 보관 (커밋 금지) ###
 /pawever_backup_*.sql
+
+### Python (scripts/) ###
+__pycache__/
+*.pyc
+
+### 설문 원본·산출물 (개인정보 포함, 커밋 금지) ###
+/scripts/**/*.csv
+!/scripts/**/excluded.txt
