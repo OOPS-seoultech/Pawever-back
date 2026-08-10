@@ -17,6 +17,8 @@ public class GoodsSurveyProperties {
     private int reservationMinutes = 15;
     private int uploadUrlMinutes = 10;
     private int personalDataRetentionDays = 90;
+    // 2차 안내용 이메일 보유 기간. 화면에 "1년"으로 고지하고 받는다.
+    private int noticeRetentionDays = 365;
     private String questionnaireVersion = "2026-07-25-v2";
     private Set<String> legacyQuestionnaireVersions = Set.of("2026-07-23-v1");
     private String privacyConsentVersion = "2026-07-23";

@@ -11,6 +11,7 @@ import com.pawever.backend.goodssurvey.dto.GoodsSurveyPhotoUploadResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
+import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.service.GoodsSurveyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -71,6 +72,16 @@ public class GoodsSurveyController {
             @Valid @RequestBody SaveGoodsSurveyStoryRequest request
     ) {
         service.saveStory(responseId, editToken, request);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/responses/{responseId}/notice-subscription")
+    public ApiResponse<Void> subscribeNotice(
+            @PathVariable String responseId,
+            @RequestHeader(EDIT_TOKEN_HEADER) String editToken,
+            @Valid @RequestBody SubscribeGoodsSurveyNoticeRequest request
+    ) {
+        service.subscribeNotice(responseId, editToken, request);
         return ApiResponse.ok();
     }
 
