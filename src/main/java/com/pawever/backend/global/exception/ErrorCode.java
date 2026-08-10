@@ -71,8 +71,10 @@ public enum ErrorCode {
 
     // Goods survey
     SURVEY_CAMPAIGN_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 캠페인을 찾을 수 없습니다."),
-    SURVEY_CAMPAIGN_CLOSED(HttpStatus.GONE, "굿즈 신청 기간이 종료되었습니다."),
-    SURVEY_CAMPAIGN_FULL(HttpStatus.CONFLICT, "무료 굿즈 선착순 모집이 마감되었습니다."),
+    // 설문과 굿즈는 각각의 스위치로 열고 닫는다. 두 마감을 한 문구로 묶으면
+    // 설문이 닫힌 것인지 굿즈가 닫힌 것인지 화면에서 구분할 수 없다.
+    SURVEY_CAMPAIGN_CLOSED(HttpStatus.GONE, "설문 접수가 종료되었습니다."),
+    SURVEY_CAMPAIGN_FULL(HttpStatus.CONFLICT, "굿즈 신청이 마감되었습니다."),
     SURVEY_RESPONSE_NOT_FOUND(HttpStatus.NOT_FOUND, "설문 응답을 찾을 수 없습니다."),
     SURVEY_EDIT_TOKEN_INVALID(HttpStatus.FORBIDDEN, "설문 편집 권한이 없습니다."),
     SURVEY_INVALID_ANSWERS(HttpStatus.BAD_REQUEST, "설문 응답 형식 또는 분기가 올바르지 않습니다."),

@@ -2,17 +2,23 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyPhotoUploadRequest;
 import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyRequest;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyCompletionResponse;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyDraftResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
+import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
+import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
+import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyCampaignRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
+import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyStoryRepository;
@@ -27,15 +33,19 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +58,7 @@ class GoodsSurveyServiceTest {
     @Mock private GoodsSurveyStoryRepository storyRepository;
     @Mock private GoodsSurveyFulfillmentRepository fulfillmentRepository;
     @Mock private GoodsSurveyPhotoRepository photoRepository;
+    @Mock private GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
 
     private GoodsSurveyService service;
@@ -62,27 +73,18 @@ class GoodsSurveyServiceTest {
         properties.setCampaignId("goods-2026-07");
         properties.setReservationMinutes(15);
 
-        campaign = GoodsSurveyCampaign.create(
-                "goods-2026-07",
-                100,
-                27,
-                Instant.parse("2026-07-23T00:00:00Z"),
-                Instant.parse("2026-08-05T14:59:59Z")
-        );
-
-        when(campaignRepository.findById("goods-2026-07"))
-                .thenReturn(Optional.of(campaign));
-        lenient().when(campaignRepository.findByIdForUpdate("goods-2026-07"))
-                .thenReturn(Optional.of(campaign));
-        when(responseRepository.save(any(GoodsSurveyResponse.class)))
+        useCampaign(true, true);
+        // 설문이 닫힌 경우처럼 응답을 만들기도 전에 끝나는 테스트가 있어서
+        // 응답 저장·조회 스텁은 쓰이지 않을 수 있다.
+        lenient().when(responseRepository.save(any(GoodsSurveyResponse.class)))
                 .thenAnswer(invocation -> {
                     GoodsSurveyResponse response = invocation.getArgument(0);
                     storedResponse.set(response);
                     return response;
                 });
-        when(responseRepository.findById(any()))
+        lenient().when(responseRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(storedResponse.get()));
-        when(responseRepository.countSubmittedAllocations(any(), any()))
+        lenient().when(responseRepository.countSubmittedAllocations(any(), any()))
                 .thenReturn(0L);
 
         service = new GoodsSurveyService(
@@ -91,6 +93,7 @@ class GoodsSurveyServiceTest {
                 storyRepository,
                 fulfillmentRepository,
                 photoRepository,
+                noticeSubscriptionRepository,
                 photoStorage,
                 new GoodsSurveyAnswerValidator(new ObjectMapper()),
                 new ObjectMapper(),
@@ -113,6 +116,351 @@ class GoodsSurveyServiceTest {
                     }
                 }
         );
+    }
+
+    /**
+     * 설문·굿즈 스위치를 바꿔 끼운다.
+     *
+     * 서비스가 호출할 때마다 캠페인을 새로 읽으므로, 테스트 중간에 갈아 끼우면
+     * 양식을 작성하는 사이에 굿즈가 닫히는 상황도 그대로 재현된다.
+     */
+    private void useCampaign(boolean surveyOpen, boolean goodsOpen) {
+        campaign = GoodsSurveyCampaign.create(
+                "goods-2026-07",
+                100,
+                27,
+                Instant.parse("2026-07-23T00:00:00Z"),
+                Instant.parse("2026-08-05T14:59:59Z"),
+                surveyOpen,
+                goodsOpen
+        );
+        lenient().when(campaignRepository.findById("goods-2026-07"))
+                .thenReturn(Optional.of(campaign));
+        lenient().when(campaignRepository.findByIdForUpdate("goods-2026-07"))
+                .thenReturn(Optional.of(campaign));
+    }
+
+    @Test
+    void surveyKeepsAcceptingAnswersAfterTheGoodsCampaignIsClosed() {
+        // 1차 무료 제작이 끝난 상태. 정원이 남아 있어도 굿즈는 열리지 않아야 하고,
+        // 설문은 그와 무관하게 계속 받아야 한다.
+        useCampaign(true, false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-goods-closed");
+
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+
+        GoodsSurveyCompletionResponse result = service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        assertThat(result.status()).isEqualTo("COMPLETED_NO_SLOT");
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.COMPLETED_NO_SLOT);
+        assertThat(storedResponse.get().getAnswersJson()).contains("\"q1\":\"current_only\"");
+        // 자리는 73이 남아 있다. 그런데도 굿즈가 닫힌 이유는 스위치이지 정원이 아니다.
+        assertThat(result.remaining()).isEqualTo(73);
+    }
+
+    @Test
+    void storyIsAcceptedFromSomeoneWhoFinishedTheSurveyWithoutAGoodsSlot() {
+        // 굿즈가 닫혀도 설문을 계속 받는 이유가 사연이다. 자리를 못 받았다고
+        // 사연까지 막으면 설문을 열어 둔 의미가 없다.
+        useCampaign(true, false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-story-no-slot");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.COMPLETED_NO_SLOT);
+        when(storyRepository.findByResponseId(draft.responseId()))
+                .thenReturn(Optional.empty());
+        AtomicReference<GoodsSurveyStory> savedStory = new AtomicReference<>();
+        when(storyRepository.save(any(GoodsSurveyStory.class)))
+                .thenAnswer(invocation -> {
+                    savedStory.set(invocation.getArgument(0));
+                    return invocation.getArgument(0);
+                });
+
+        service.saveStory(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyStoryRequest(
+                        "함께 살고 있다",
+                        "9~11세",
+                        "작은 노화나 이상 변화",
+                        "산책길에서 문득 걸음이 느려진 걸 알았다.",
+                        "", "", "", "", "", "", "", "",
+                        true,
+                        false
+                )
+        );
+
+        assertThat(savedStory.get()).isNotNull();
+        assertThat(savedStory.get().getStoryJson()).contains("걸음이 느려진");
+    }
+
+    @Test
+    void photoUploadIsRefusedWithoutAGoodsSlot() {
+        // 사진은 굿즈 제작에만 쓴다고 고지하고 받는다. 만들지 않을 사진을
+        // 미리 받아 두면 목적 없이 보관하는 개인정보가 된다.
+        useCampaign(true, false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo-no-slot");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        assertThatThrownBy(() -> service.createPhotoUpload(
+                draft.responseId(),
+                draft.editToken(),
+                new CreateGoodsSurveyPhotoUploadRequest(
+                        UUID.randomUUID().toString(),
+                        "image/jpeg",
+                        1_024L
+                )
+        )).hasMessageContaining("현재 설문 상태");
+    }
+
+    @Test
+    void noticeEmailIsStoredWithoutLinkingItToTheSurveyAnswers() {
+        // 설문은 신원 정보를 받지 않고 익명으로 분석한다고 고지하고 받았다.
+        // 어떤 응답을 한 사람의 주소인지 남으면 그 고지가 거짓이 된다.
+        useCampaign(true, false);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+        when(noticeSubscriptionRepository.existsByEmailHash(any())).thenReturn(false);
+        AtomicReference<GoodsSurveyNoticeSubscription> saved = new AtomicReference<>();
+        when(noticeSubscriptionRepository.save(any(GoodsSurveyNoticeSubscription.class)))
+                .thenAnswer(invocation -> {
+                    saved.set(invocation.getArgument(0));
+                    return invocation.getArgument(0);
+                });
+
+        service.subscribeNotice(
+                draft.responseId(),
+                draft.editToken(),
+                new SubscribeGoodsSurveyNoticeRequest("  Boho@Example.COM ", true)
+        );
+
+        // 대소문자와 공백만 다른 주소가 두 번 쌓이지 않도록 맞춰 저장한다.
+        assertThat(saved.get().getEmail()).isEqualTo("boho@example.com");
+        assertThat(saved.get().getCampaignId()).isEqualTo("goods-2026-07");
+        assertThat(saved.get().getUnsubscribedAt()).isNull();
+        assertThat(saved.get().getDeleteAfter()).isEqualTo(NOW.plus(365, ChronoUnit.DAYS));
+    }
+
+    @Test
+    void repeatedNoticeEmailIsAcceptedQuietlyWithoutASecondRow() {
+        // 이미 신청됐다고 알려주면 남의 주소가 등록돼 있는지 확인하는 통로가 된다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-dup");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+        when(noticeSubscriptionRepository.existsByEmailHash(any())).thenReturn(true);
+
+        service.subscribeNotice(
+                draft.responseId(),
+                draft.editToken(),
+                new SubscribeGoodsSurveyNoticeRequest("boho@example.com", true)
+        );
+
+        verify(noticeSubscriptionRepository, never())
+                .save(any(GoodsSurveyNoticeSubscription.class));
+    }
+
+    @Test
+    void noticeEmailIsRefusedBeforeTheSurveyIsFinished() {
+        // 설문을 마치기 전에는 받지 않는다. 완료 화면에서만 여는 항목이다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-early");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+
+        assertThatThrownBy(() -> service.subscribeNotice(
+                draft.responseId(),
+                draft.editToken(),
+                new SubscribeGoodsSurveyNoticeRequest("boho@example.com", true)
+        )).hasMessageContaining("현재 설문 상태");
+    }
+
+    @Test
+    void surveyStartsWithoutPickingAGoodsType() {
+        // 랜딩에서 굿즈를 고르지 않고 바로 설문에 들어올 수 있다.
+        // 예전처럼 아크릴을 자동으로 붙이면 실제 선호가 아닌 값이 집계에 섞인다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected");
+
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+        );
+
+        assertThat(draft.responseId()).isNotBlank();
+        assertThat(storedResponse.get().getSelectedGoods()).isEqualTo("unselected");
+    }
+
+    @Test
+    void applicationCannotBeSubmittedWithoutPickingAGoodsType() {
+        // 관심 굿즈를 고르지 않은 것과 만들 물건을 정하지 않은 것은 다르다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected-apply");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-unselected",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "unselected",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-unselected"),
+                        List.of(),
+                        "conversion-unselected",
+                        tracking,
+                        true,
+                        true
+                )
+        )).hasMessageContaining("입력");
+    }
+
+    @Test
+    void closedSurveySwitchStopsNewResponses() {
+        useCampaign(false, false);
+
+        assertThatThrownBy(() -> service.createDraft(
+                new CreateGoodsSurveyRequest(
+                        "2026-07-25-v2",
+                        "acrylic",
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed")
+                )
+        )).hasMessageContaining("설문 접수가 종료");
+    }
+
+    @Test
+    void applicationIsRejectedWhenTheGoodsSwitchGoesDownWhileTheFormIsBeingFilled() {
+        // 스위치를 내려도 이미 예약을 받아 둔 사람이 남아 있다.
+        // 정원만 확인하면 자리가 남아 있는 한 그 사람들이 그대로 통과한다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-switch-off");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+        assertThat(storedResponse.get().getStatus())
+                .isEqualTo(GoodsSurveyResponseStatus.RESERVED);
+
+        useCampaign(true, false);
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-switch-off",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "acrylic",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-switch-off"),
+                        List.of(),
+                        "conversion-switch-off",
+                        tracking,
+                        true,
+                        true
+                )
+        )).hasMessageContaining("굿즈 신청이 마감");
     }
 
     @Test
@@ -324,7 +672,7 @@ class GoodsSurveyServiceTest {
                         true,
                         true
                 )
-        )).hasMessageContaining("선착순 모집이 마감");
+        )).hasMessageContaining("굿즈 신청이 마감");
 
         assertThat(storedResponse.get().getStatus())
                 .isEqualTo(GoodsSurveyResponseStatus.RESERVED);

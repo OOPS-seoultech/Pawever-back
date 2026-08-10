@@ -47,7 +47,9 @@ class GoodsSurveyControllerIntegrationTest {
                         100,
                         27,
                         now.minusSeconds(3600),
-                        now.plusSeconds(3600)
+                        now.plusSeconds(3600),
+                        true,
+                        true
                 )
         );
     }

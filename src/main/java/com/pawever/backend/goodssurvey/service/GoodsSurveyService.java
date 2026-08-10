@@ -14,15 +14,18 @@ import com.pawever.backend.goodssurvey.dto.GoodsSurveyPhotoUploadResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
+import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhotoStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyCampaignRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
+import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyStoryRepository;
@@ -53,6 +56,14 @@ public class GoodsSurveyService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Set<String> GOODS_TYPES =
             Set.of("acrylic", "face", "backplate", "figure", "custom");
+    /**
+     * 랜딩에서 굿즈를 고르지 않고 설문에 들어온 경우.
+     *
+     * 예전에는 아무것도 고르지 않아도 아크릴이 자동으로 붙어, 실제 선호가 아닌
+     * 기본값이 선호도 집계에 섞였다. 고르지 않았다는 사실도 데이터라서 그대로 남긴다.
+     * 굿즈 신청(제작할 물건을 확정하는 단계)에는 쓸 수 없는 값이다.
+     */
+    private static final String GOODS_UNSELECTED = "unselected";
     private static final Map<String, String> PHOTO_EXTENSIONS = Map.of(
             "image/jpeg", "jpg",
             "image/png", "png",
@@ -65,6 +76,7 @@ public class GoodsSurveyService {
     private final GoodsSurveyStoryRepository storyRepository;
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
+    private final GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsSurveyAnswerValidator answerValidator;
     private final ObjectMapper objectMapper;
@@ -74,9 +86,9 @@ public class GoodsSurveyService {
 
     @Transactional(readOnly = true)
     public GoodsSurveyCampaignResponse getCampaign() {
-        Instant now = clock.instant();
         GoodsSurveyCampaign campaign = findCampaign();
         long active = countSubmittedAllocations(campaign.getId());
+        boolean goodsOpen = campaign.isGoodsAvailable(active);
         return new GoodsSurveyCampaignResponse(
                 campaign.getId(),
                 campaign.getCapacity(),
@@ -84,23 +96,22 @@ public class GoodsSurveyService {
                 campaign.remaining(active),
                 campaign.getStartsAt(),
                 campaign.getEndsAt(),
-                campaign.isOpenAt(now) && campaign.remaining(active) > 0
+                goodsOpen,
+                campaign.isSurveyOpen(),
+                goodsOpen
         );
     }
 
     @Transactional
     public GoodsSurveyDraftResponse createDraft(CreateGoodsSurveyRequest request) {
         validateQuestionnaireVersion(request.questionnaireVersion());
-        validateGoodsTypeId(request.selectedGoods());
+        validateSelectedGoods(request.selectedGoods());
         GoodsSurveyCampaign campaign = findCampaign();
-        Instant now = clock.instant();
-        if (!campaign.isOpenAt(now)) {
+        // 굿즈 정원은 보지 않는다. 굿즈가 마감돼도 설문은 계속 받는다.
+        if (!campaign.isSurveyOpen()) {
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_CLOSED);
         }
         long active = countSubmittedAllocations(campaign.getId());
-        if (campaign.remaining(active) <= 0) {
-            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
-        }
 
         String editToken = createEditToken();
         GoodsSurveyResponse response = GoodsSurveyResponse.draft(
@@ -168,15 +179,14 @@ public class GoodsSurveyService {
         GoodsSurveyCampaign campaign = campaignRepository
                 .findByIdForUpdate(properties.getCampaignId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
-        if (!campaign.isOpenAt(now)) {
-            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_CLOSED);
-        }
 
         long activeBeforeReservation = countSubmittedAllocations(campaign.getId());
         int remainingBeforeReservation = campaign.remaining(activeBeforeReservation);
-        if (remainingBeforeReservation <= 0) {
+        // 굿즈가 닫혀 있어도 설문 응답은 그대로 저장한다. 줄 자리가 없을 뿐이라
+        // 여기서 예외를 던지면 끝까지 답한 사람이 마지막 한 번에 통째로 잃는다.
+        if (!campaign.isGoodsAvailable(activeBeforeReservation)) {
             response.completeWithoutSlot(now);
-            return completion(response, 0);
+            return completion(response, remainingBeforeReservation);
         }
 
         // 예약은 제출 자격을 확인하는 표시일 뿐 자리를 잡아두지 않는다.
@@ -221,6 +231,42 @@ public class GoodsSurveyService {
         storyRepository.save(story);
     }
 
+    /**
+     * 2차 제작 안내를 받을 이메일을 남긴다.
+     *
+     * 설문을 마친 사람인지는 요청 시점에만 확인하고 저장하지 않는다. 어떤 응답을 한
+     * 사람의 주소인지 남기면 익명으로 분석한다는 고지가 거짓이 되기 때문이다.
+     */
+    @Transactional
+    public void subscribeNotice(
+            String responseId,
+            String editToken,
+            SubscribeGoodsSurveyNoticeRequest request
+    ) {
+        GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
+        requireCompletedSurvey(response);
+        if (!request.noticeAgreed()) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+
+        String email = normalizeEmail(request.email());
+        String emailHash = hmacHasher.hash("notice:" + email);
+        // 이미 신청한 주소라고 알려주면 남의 주소가 신청돼 있는지 확인하는 통로가 된다.
+        // 두 번 눌러도 같은 결과로 보이게 두는 편이 안전하고, 사용자에게도 자연스럽다.
+        if (noticeSubscriptionRepository.existsByEmailHash(emailHash)) {
+            return;
+        }
+
+        noticeSubscriptionRepository.save(GoodsSurveyNoticeSubscription.create(
+                response.getCampaignId(),
+                email,
+                emailHash,
+                properties.getPrivacyConsentVersion(),
+                clock.instant(),
+                properties.getNoticeRetentionDays()
+        ));
+    }
+
     @Transactional
     public GoodsSurveyPhotoUploadResponse createPhotoUpload(
             String responseId,
@@ -229,7 +275,7 @@ public class GoodsSurveyService {
     ) {
         Instant now = clock.instant();
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        requireCompletedSurvey(response);
+        requireGoodsSlot(response);
         validateClientFileId(request.clientFileId());
         String extension = PHOTO_EXTENSIONS.get(request.contentType());
         if (extension == null) {
@@ -307,7 +353,7 @@ public class GoodsSurveyService {
     ) {
         Instant now = clock.instant();
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        requireCompletedSurvey(response);
+        requireGoodsSlot(response);
         GoodsSurveyPhoto photo = photoRepository.findByIdAndResponseId(photoId, responseId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_PHOTO_NOT_FOUND));
         if (photo.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED) {
@@ -346,18 +392,18 @@ public class GoodsSurveyService {
         }
 
         Instant now = clock.instant();
-        requireCompletedSurvey(response);
+        requireGoodsSlot(response);
 
-        // 정원은 여기서 확정한다. 예약이 자리를 잡아두지 않기 때문에
-        // 마지막 한 자리를 여러 명이 동시에 향할 수 있고, 이 확인이 없으면
-        // 정원을 넘겨 접수된다.
+        // 굿즈 접수 여부는 여기서 확정한다. 예약이 자리를 잡아두지 않기 때문에
+        // 마지막 한 자리를 여러 명이 동시에 향할 수 있고, 스위치를 내린 뒤에도
+        // 이미 예약을 받아 둔 사람이 남아 있다. 이 확인이 없으면 둘 다 통과한다.
         //
         // 다 채우고 나서 거절당하는 일이 없도록, 프런트는 이어서 진행할 때
         // 캠페인 상태를 먼저 확인해 마감 화면을 앞에서 보여준다.
         GoodsSurveyCampaign campaign = campaignRepository
                 .findByIdForUpdate(response.getCampaignId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
-        if (campaign.remaining(countSubmittedAllocations(campaign.getId())) <= 0) {
+        if (!campaign.isGoodsAvailable(countSubmittedAllocations(campaign.getId()))) {
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
         }
 
@@ -521,15 +567,35 @@ public class GoodsSurveyService {
     }
 
     /**
-     * 설문을 끝낸 사람인지만 확인한다.
+     * 설문을 끝낸 사람인지 확인한다.
      *
-     * 예약은 더 이상 선착순 자리를 잡아두지 않는다(자리는 제출 시점에 센다).
-     * 그래서 예약 시간이 지났다는 이유로 막으면 보호되는 것 없이 사용자만 잃는다.
-     * 사연을 쓰고 주소를 찾고 사진을 올리다 보면 15분은 쉽게 넘고,
-     * 특히 사진 업로드가 끝난 뒤 확정 단계에서 만료되면 그때까지 쓴 게 다 날아간다.
-     * 정원 확인은 submitApplication이 제출 직전에 따로 한다.
+     * 굿즈 자리를 받았는지는 보지 않는다. 굿즈가 마감돼도 사연은 계속 받아야 하고,
+     * 사연은 굿즈와 달리 자리 수와 상관없이 남길 수 있기 때문이다.
+     * 굿즈를 전제로 하는 요청은 {@link #requireGoodsSlot(GoodsSurveyResponse)}를 쓴다.
      */
     private void requireCompletedSurvey(GoodsSurveyResponse response) {
+        GoodsSurveyResponseStatus status = response.getStatus();
+        if (status == GoodsSurveyResponseStatus.RESERVED
+                || status == GoodsSurveyResponseStatus.SUBMITTED
+                || status == GoodsSurveyResponseStatus.COMPLETED_NO_SLOT) {
+            return;
+        }
+        throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
+    }
+
+    /**
+     * 굿즈 자리를 받은 사람인지 확인한다.
+     *
+     * 사진은 굿즈 제작에만 쓴다고 고지하고 받는다. 자리가 없는 사람의 사진을
+     * 받아 두면 만들지도 않을 반려견 사진을 목적 없이 보관하게 되므로,
+     * 사연과 달리 자리를 받은 사람만 통과시킨다.
+     *
+     * 예약 만료는 보지 않는다. 예약은 더 이상 선착순 자리를 잡아두지 않고
+     * (자리는 제출 시점에 센다), 사연을 쓰고 주소를 찾고 사진을 올리다 보면
+     * 15분은 쉽게 넘는다. 특히 사진 업로드가 끝난 뒤 확정 단계에서 만료되면
+     * 그때까지 쓴 게 다 날아간다. 정원 확인은 submitApplication이 제출 직전에 따로 한다.
+     */
+    private void requireGoodsSlot(GoodsSurveyResponse response) {
         GoodsSurveyResponseStatus status = response.getStatus();
         if (status == GoodsSurveyResponseStatus.RESERVED
                 || status == GoodsSurveyResponseStatus.SUBMITTED) {
@@ -559,6 +625,14 @@ public class GoodsSurveyService {
         }
     }
 
+    /** 설문 시작 시점의 관심 굿즈. 아직 고르지 않았을 수 있다. */
+    private void validateSelectedGoods(String selectedGoods) {
+        if (GOODS_UNSELECTED.equals(selectedGoods)) {
+            return;
+        }
+        validateGoodsTypeId(selectedGoods);
+    }
+
     private void validateClientFileId(String clientFileId) {
         try {
             UUID.fromString(clientFileId);
@@ -573,6 +647,15 @@ public class GoodsSurveyService {
                 || idempotencyKey.length() > 80) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
+    }
+
+    /** 같은 주소가 대소문자만 달라 두 번 들어오지 않도록 맞춰 둔다. */
+    private String normalizeEmail(String email) {
+        String normalized = email.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]{2,}$")) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        return normalized;
     }
 
     private String normalizePhone(String phone) {
