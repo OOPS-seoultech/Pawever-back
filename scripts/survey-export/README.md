@@ -57,6 +57,13 @@ python -X utf8 build-dashboard.py   "$raw\schema.json"   "$raw\responses.csv" $o
 python -X utf8 build-applications.py "$raw\applications.csv" "$raw\stories.csv" $out
 ```
 
+광고 문구로 쓸 숫자를 원본에서 확인한다. 랜딩·릴스에 넣을 수치는 여기서 나온
+값만 쓴다.
+
+```powershell
+python -X utf8 check-claims.py "$raw\responses.csv"
+```
+
 검산한다. 둘 다 통과해야 넘긴다.
 
 ```powershell
