@@ -37,6 +37,8 @@ public class SecurityConfig {
                         // 내보내기는 로그인 대신 전용 토큰으로 막는다.
                         // 토큰이 설정되지 않으면 컨트롤러가 무조건 거부한다.
                         .requestMatchers("/api/internal/goods-survey/export/**").permitAll()
+                        // 앱 통계도 같은 방식. 전용 토큰이 없으면 컨트롤러가 거부한다.
+                        .requestMatchers("/api/internal/stats/export/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated()
