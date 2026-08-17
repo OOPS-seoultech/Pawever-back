@@ -1,7 +1,12 @@
 # DB 백업 (오브젝트 스토리지) (참고)
 
-> 백업 저장소는 앱 이미지 스토리지(`cloud.ncp.*`)와 **동일한 버킷·자격증명**을 재사용한다.
+> 백업은 앱 이미지 스토리지와 **버킷을 분리한다**. 자격증명·리전만 재사용한다.
 > 현재 운영값은 **AWS S3(리전 `ap-northeast-2`, `NCP_S3_ENDPOINT` 미설정)**. `NCP_S3_ENDPOINT` 를 지정하면 NCP 등 S3 호환 스토리지로 전환된다.
+>
+> **이미지 버킷(`NCP_BUCKET`)에 덤프를 두면 안 된다.** 그 버킷에는 이미지 서빙을 위해
+> 버킷 전체에 공개 읽기 정책이 걸려 있어, 키를 아는 사람은 누구나 회원 정보를 통째로
+> 내려받을 수 있다. 2026-08 에 실제로 36일간 노출된 적이 있어 스크립트에 같은 버킷이면
+> 실행을 멈추는 가드를 넣어 두었다.
 
 ## 정책 (스크립트 기본값)
 
@@ -12,7 +17,9 @@
 ## 준비
 
 - 서버: **AWS CLI v2**, **Docker Compose v2**, **gzip**, **jq**(정리 스크립트용), **GNU date**
-- `.env`: `DB_*`, `NCP_ACCESS_KEY`, `NCP_SECRET_KEY`, `NCP_BUCKET` (`env.example` 참고) — 앱 스토리지와 동일 키
+- `.env`: `DB_*`, `NCP_ACCESS_KEY`, `NCP_SECRET_KEY`, `BACKUP_S3_BUCKET` (`env.example` 참고)
+  — 자격증명은 앱 스토리지와 같은 키를 쓰되, 버킷은 백업 전용 **비공개** 버킷을 지정한다
+- 백업 버킷: 퍼블릭 액세스 차단 4개 항목을 모두 켜 둔다
 - 자격증명: 해당 버킷 **업로드·목록·삭제**(오래된 백업 정리) 권한
 - 리전/엔드포인트: 미설정 시 AWS S3 `ap-northeast-2`. NCP면 `NCP_S3_ENDPOINT`(예: `https://kr.object.ncloudstorage.com`)·`NCP_REGION` 지정
 
@@ -26,8 +33,8 @@
 
 ## 객체 경로
 
-- 일별: `s3://$NCP_BUCKET/backups/pawever-db/daily/YYYY/MM/DD/pawever-HHMM.sql.gz`
-- 주간: `s3://$NCP_BUCKET/backups/pawever-db/weekly/YYYY-Www/pawever-HHMM.sql.gz` (일요일에만 추가)
+- 일별: `s3://$BACKUP_S3_BUCKET/backups/pawever-db/daily/YYYY/MM/DD/pawever-HHMM.sql.gz`
+- 주간: `s3://$BACKUP_S3_BUCKET/backups/pawever-db/weekly/YYYY-Www/pawever-HHMM.sql.gz` (일요일에만 추가)
 
 접두사·보관 일수는 스크립트 상단 주석·`env.example` 참고.
 

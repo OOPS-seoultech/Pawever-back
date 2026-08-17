@@ -25,6 +25,10 @@ fi
 #   - NCP_S3_ENDPOINT 가 비어 있으면 AWS S3 기본 엔드포인트 사용(현재 운영값).
 #   - NCP_S3_ENDPOINT 를 지정하면 NCP 등 S3 호환 스토리지로 override.
 : "${NCP_S3_ENDPOINT:=}"
+# 덤프는 앱 이미지 버킷(NCP_BUCKET)이 아니라 백업 전용 비공개 버킷에 올린다.
+# 이미지 버킷에는 공개 읽기 정책이 버킷 전체에 걸려 있어, 같은 곳에 덤프를 두면
+# 키를 아는 사람은 누구나 인터넷에서 회원 정보를 통째로 받아갈 수 있다.
+: "${BACKUP_S3_BUCKET:=}"
 : "${BACKUP_S3_PREFIX:=backups/pawever-db}"
 : "${BACKUP_RETAIN_DAILY_DAYS:=14}"
 : "${BACKUP_RETAIN_WEEKLY_DAYS:=56}"
@@ -49,12 +53,19 @@ require_nonempty() {
   fi
 }
 
-require_nonempty "NCP_BUCKET" "${NCP_BUCKET:-}"
+require_nonempty "BACKUP_S3_BUCKET" "${BACKUP_S3_BUCKET:-}"
 require_nonempty "NCP_ACCESS_KEY" "${NCP_ACCESS_KEY:-}"
 require_nonempty "NCP_SECRET_KEY" "${NCP_SECRET_KEY:-}"
 require_nonempty "DB_NAME" "${DB_NAME:-}"
 require_nonempty "DB_USER" "${DB_USER:-}"
 require_nonempty "DB_PASSWORD" "${DB_PASSWORD:-}"
+
+# 값을 잘못 넣어 공개 버킷으로 되돌아가는 것을 막는다.
+if [[ -n "${NCP_BUCKET:-}" && "$BACKUP_S3_BUCKET" == "$NCP_BUCKET" ]]; then
+  echo "error: BACKUP_S3_BUCKET 이 앱 이미지 버킷(${NCP_BUCKET})과 같습니다." >&2
+  echo "       이미지 버킷은 공개 읽기라 덤프를 두면 그대로 노출됩니다." >&2
+  exit 1
+fi
 
 log() {
   echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"
@@ -99,7 +110,7 @@ log "dump 완료 (압축 크기 ${size} bytes)"
 ymd="$(date -u '+%Y/%m/%d')"
 hm="$(date -u '+%H%M')"
 daily_key="${BACKUP_S3_PREFIX}/daily/${ymd}/pawever-${hm}.sql.gz"
-daily_uri="s3://${NCP_BUCKET}/${daily_key}"
+daily_uri="s3://${BACKUP_S3_BUCKET}/${daily_key}"
 
 log "업로드 (일별): ${daily_uri}"
 aws s3 cp "$tmp_gz" "$daily_uri" \
@@ -111,7 +122,7 @@ dow="$(date -u '+%u')"
 if [[ "$dow" == "7" ]]; then
   week="$(date -u '+%G-W%V')"
   weekly_key="${BACKUP_S3_PREFIX}/weekly/${week}/pawever-${hm}.sql.gz"
-  weekly_uri="s3://${NCP_BUCKET}/${weekly_key}"
+  weekly_uri="s3://${BACKUP_S3_BUCKET}/${weekly_key}"
   log "업로드 (주간): ${weekly_uri}"
   aws s3 cp "$tmp_gz" "$weekly_uri" \
     "${S3_ENDPOINT_ARGS[@]}" \
@@ -132,7 +143,7 @@ prune_if_jq() {
 
   local json
   json="$(aws s3api list-objects-v2 \
-    --bucket "$NCP_BUCKET" \
+    --bucket "$BACKUP_S3_BUCKET" \
     --prefix "$prefix_rel" \
     "${S3_ENDPOINT_ARGS[@]}" \
     --region "$AWS_DEFAULT_REGION" \
@@ -150,7 +161,7 @@ prune_if_jq() {
   for k in "${keys[@]}"; do
     [[ -z "$k" ]] && continue
     aws s3api delete-object \
-      --bucket "$NCP_BUCKET" \
+      --bucket "$BACKUP_S3_BUCKET" \
       --key "$k" \
       "${S3_ENDPOINT_ARGS[@]}" \
       --region "$AWS_DEFAULT_REGION" >/dev/null
