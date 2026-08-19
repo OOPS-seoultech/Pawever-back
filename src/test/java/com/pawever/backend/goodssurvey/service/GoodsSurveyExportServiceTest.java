@@ -211,7 +211,10 @@ class GoodsSurveyExportServiceTest {
                 "서울시 노원구",
                 "",
                 "2026-07-23",
-                Instant.parse("2026-08-02T10:00:00Z")
+                Instant.parse("2026-08-02T10:00:00Z"),
+                true,
+                23_900,
+                1825
         );
         set(fulfillment, "id", id);
         set(fulfillment, "createdAt", createdAt);

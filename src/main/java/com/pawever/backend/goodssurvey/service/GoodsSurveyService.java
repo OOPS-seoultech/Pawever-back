@@ -198,6 +198,36 @@ public class GoodsSurveyService {
         return completion(response, remainingBeforeReservation);
     }
 
+    /**
+     * 설문을 건너뛰고 바로 신청하러 간다.
+     *
+     * 굿즈가 열려 있는지는 여기서 본다. 닫혀 있는데 통과시키면 제작 정보를 다
+     * 채운 뒤 마지막에 거절당한다. 설문은 답을 남기는 것 자체에 뜻이 있어
+     * 닫혀도 끝까지 받지만, 직행은 신청 말고 남는 것이 없다.
+     */
+    @Transactional
+    public GoodsSurveyCompletionResponse startDirectPurchase(String responseId, String editToken) {
+        GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
+        GoodsSurveyCampaign campaign = findCampaign();
+        long allocations = countSubmittedAllocations(campaign.getId());
+
+        // 이미 직행으로 들어왔거나 제출까지 끝냈으면 그대로 둔다.
+        // 두 번 눌러도 같은 결과로 보이게 한다.
+        if (response.getStatus() == GoodsSurveyResponseStatus.DIRECT
+                || response.getStatus() == GoodsSurveyResponseStatus.SUBMITTED) {
+            return completion(response, campaign.remaining(allocations));
+        }
+        if (response.getStatus() != GoodsSurveyResponseStatus.DRAFT) {
+            throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
+        }
+        if (!campaign.isGoodsAvailable(allocations)) {
+            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
+        }
+
+        response.startDirectPurchase(clock.instant());
+        return completion(response, campaign.remaining(allocations));
+    }
+
     @Transactional
     public void saveStory(
             String responseId,
@@ -464,7 +494,14 @@ public class GoodsSurveyService {
                 request.address().trim(),
                 trimToNull(request.addressDetail()),
                 properties.getPrivacyConsentVersion(),
-                now
+                now,
+                // 제출하면 둘 다 SUBMITTED 가 되어 나중에는 구분할 수 없다.
+                // 얼마를 청구할지가 여기서 갈리므로 지금 확정해 남긴다.
+                response.isSurveyParticipant(),
+                response.isSurveyParticipant()
+                        ? properties.getMemberPriceKrw()
+                        : properties.getDirectPriceKrw(),
+                properties.getContractRetentionDays()
         );
         fulfillmentRepository.save(fulfillment);
         response.submit();
@@ -514,7 +551,9 @@ public class GoodsSurveyService {
                 response.getId(),
                 fulfillment.getId(),
                 GoodsSurveyResponseStatus.SUBMITTED.name(),
-                remaining
+                remaining,
+                fulfillment.isSurveyParticipant(),
+                fulfillment.getAppliedPriceKrw()
         );
     }
 
@@ -598,6 +637,7 @@ public class GoodsSurveyService {
     private void requireGoodsSlot(GoodsSurveyResponse response) {
         GoodsSurveyResponseStatus status = response.getStatus();
         if (status == GoodsSurveyResponseStatus.RESERVED
+                || status == GoodsSurveyResponseStatus.DIRECT
                 || status == GoodsSurveyResponseStatus.SUBMITTED) {
             return;
         }

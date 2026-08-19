@@ -97,6 +97,13 @@ survey:
     personal-data-retention-days: 90
     # 설문 응답·사연은 "수집 후 2년"으로 고지한다.
     survey-retention-days: 730
+    # 유료 판매의 계약·결제·공급 기록. 전자상거래법이 5년을 요구한다.
+    contract-retention-days: 1825
+    # 설문을 끝내고 신청하면 적용되는 값.
+    member-price-krw: ${GOODS_MEMBER_PRICE_KRW:23900}
+    # 설문을 건너뛰고 바로 신청하면 적용되는 값. 정가인지 사전판매가인지
+    # 아직 정해지지 않아 환경변수로 바꿀 수 있게 둔다.
+    direct-price-krw: ${GOODS_DIRECT_PRICE_KRW:34900}
     # 보유 기간이 지난 개인정보를 지우는 작업. 한국 시각 기준 새벽 4시 15분.
     purge-cron: ${GOODS_SURVEY_PURGE_CRON:0 15 4 * * *}
     # 결과 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
