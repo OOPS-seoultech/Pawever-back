@@ -95,6 +95,10 @@ survey:
     reservation-minutes: 15
     upload-url-minutes: 10
     personal-data-retention-days: 90
+    # 설문 응답·사연은 "수집 후 2년"으로 고지한다.
+    survey-retention-days: 730
+    # 보유 기간이 지난 개인정보를 지우는 작업. 한국 시각 기준 새벽 4시 15분.
+    purge-cron: ${GOODS_SURVEY_PURGE_CRON:0 15 4 * * *}
     # 결과 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
     export-token: ${GOODS_SURVEY_EXPORT_TOKEN:}
 

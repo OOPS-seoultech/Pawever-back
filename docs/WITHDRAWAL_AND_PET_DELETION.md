@@ -15,6 +15,10 @@
 | 2 | 각 Pet에 대해 **UserPet 삭제** → **Pet 삭제** (단일 Pet 삭제 API와 동일한 연쇄 규칙) |
 | 3 | 유저 **soft delete** (`deletedAt` 설정) |
 
+2번에서 미션 행을 지우기 전에 **미션 사진과 음성 녹음 파일을 스토리지에서 먼저 지운다.**
+행이 사라지면 어떤 파일이 누구 것이었는지 찾을 길이 없다. 보유 기간 전반은
+[DATA_RETENTION.md](DATA_RETENTION.md) 참고.
+
 다른 유저의 `selectedPetId`는 **탈퇴 처리 시 자동으로 null이 되지 않는다**. 이후 `GET /api/pets/selected`에서 Pet 부재를 감지하면 **410 SELECTED_PET_DELETED**로 처리한다.
 
 ### 시나리오 예시

@@ -6,8 +6,10 @@ import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -100,6 +102,20 @@ public class S3GoodsSurveyPhotoStorage implements GoodsSurveyPhotoStorage {
             throw exception;
         } catch (Exception exception) {
             throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        }
+    }
+
+    @Override
+    public void delete(String objectKey) {
+        try {
+            s3Client.deleteObject(
+                    DeleteObjectRequest.builder()
+                            .bucket(privateBucket())
+                            .key(objectKey)
+                            .build()
+            );
+        } catch (NoSuchKeyException exception) {
+            // 이미 없으면 목적을 달성한 것이다.
         }
     }
 

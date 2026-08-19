@@ -6,6 +6,7 @@ import com.pawever.backend.global.common.StorageService;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.memorial.repository.EmergencyProgressRepository;
+import com.pawever.backend.mission.entity.PetMission;
 import com.pawever.backend.mission.repository.MissionRepository;
 import com.pawever.backend.mission.repository.PetMissionRepository;
 import com.pawever.backend.pet.dto.PetCreateRequest;
@@ -80,6 +81,29 @@ class PetServiceTest {
 
         verify(storageService).delete("https://cdn.example.com/pets/10/profile/y.jpg");
         assertNull(pet.getProfileImageUrl()); // 참조도 제거되어 dangling URL 없음
+    }
+
+    @Test
+    void deletePetCascade_deletesMissionRecordingAndPhotoFromStorage() {
+        // 미션 행만 지우면 목소리가 담긴 녹음 파일이 스토리지에 그대로 남는다.
+        // 행이 사라지면 누구 것이었는지 찾을 수 없어 여기가 마지막 기회다.
+        Pet pet = Pet.builder().id(10L).name("멍이").build();
+        UserPet ownerUp = UserPet.builder().user(User.builder().id(1L).build()).pet(pet).isOwner(true).build();
+        PetMission petMission = PetMission.builder()
+                .pet(pet)
+                .imageUrl("https://cdn.example.com/pets/10/missions/1/photo.jpg")
+                .mediaUrl("https://cdn.example.com/pets/10/missions/1/recordings/voice.m4a")
+                .build();
+
+        when(petRepository.findById(10L)).thenReturn(Optional.of(pet));
+        when(userPetRepository.findByPetId(10L)).thenReturn(List.of(ownerUp));
+        when(petMissionRepository.findByPetId(10L)).thenReturn(List.of(petMission));
+
+        petService.deletePetCascade(10L);
+
+        verify(storageService).delete("https://cdn.example.com/pets/10/missions/1/recordings/voice.m4a");
+        verify(storageService).delete("https://cdn.example.com/pets/10/missions/1/photo.jpg");
+        verify(petMissionRepository).deleteByPetId(10L);
     }
 
     @Test

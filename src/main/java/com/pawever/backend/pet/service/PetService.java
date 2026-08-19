@@ -304,6 +304,27 @@ public class PetService {
         userPetRepository.deleteAll(allUserPets);
     }
 
+    /**
+     * 미션에 올린 사진과 음성 녹음을 스토리지에서 파기한다.
+     *
+     * 미션 행만 지우면 파일이 그대로 남는다. 행이 사라지면 어떤 파일이 누구
+     * 것이었는지 찾을 길이 없어, 지울 수 있는 마지막 시점이 여기다.
+     * 목소리가 담긴 파일이라 프로필 사진보다 오래 남아서는 안 된다.
+     */
+    private void deleteMissionMedia(Long petId) {
+        for (PetMission petMission : petMissionRepository.findByPetId(petId)) {
+            deleteIfPresent(petMission.getImageUrl());
+            deleteIfPresent(petMission.getMediaUrl());
+        }
+    }
+
+    private void deleteIfPresent(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) {
+            return;
+        }
+        storageService.delete(fileUrl);
+    }
+
     // 펫 프로필 이미지를 오브젝트 스토리지에서 파기하고 참조를 제거한다 (탈퇴/삭제 시 개인정보 잔존 방지).
     private void deletePetProfileImage(Pet pet) {
         if (pet.getProfileImageUrl() == null) {
@@ -323,6 +344,7 @@ public class PetService {
     }
 
     private void clearPetScopedState(Long petId) {
+        deleteMissionMedia(petId);
         petMissionRepository.deleteByPetId(petId);
         farewellPreviewProgressRepository.deleteByPetId(petId);
         emergencyProgressRepository.deleteByPetId(petId);
