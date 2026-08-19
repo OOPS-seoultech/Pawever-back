@@ -79,4 +79,17 @@ public class GoodsSurveyNoticeSubscription extends BaseTimeEntity {
         subscription.deleteAfter = consentedAt.plus(retentionDays, ChronoUnit.DAYS);
         return subscription;
     }
+
+    /**
+     * 수신거부를 접수한다.
+     *
+     * 표시만 남기고 주소는 그대로 둔다. 다음 파기 작업이 돌 때 지워지므로,
+     * 그 사이에 발송을 준비하는 쪽에서 거부한 주소를 걸러낼 수 있다.
+     */
+    public void unsubscribe(Instant unsubscribedAt) {
+        if (this.unsubscribedAt != null) {
+            return;
+        }
+        this.unsubscribedAt = unsubscribedAt;
+    }
 }

@@ -41,4 +41,14 @@ public interface GoodsSurveyPhotoRepository extends JpaRepository<GoodsSurveyPho
             String responseId,
             GoodsSurveyPhotoStatus status
     );
+
+    List<GoodsSurveyPhoto> findByResponseId(String responseId);
+
+    /**
+     * 배송이 끝나 지울 제작용 사진.
+     *
+     * 공개에 동의한 사진은 빼고 고른다. 그쪽은 제작이 아니라 공개가 목적이라
+     * 설문과 같은 기간을 따르며, 그때 함께 지운다.
+     */
+    List<GoodsSurveyPhoto> findByResponseIdAndPublicationAgreedFalse(String responseId);
 }

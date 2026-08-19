@@ -1,9 +1,7 @@
 package com.pawever.backend.goodssurvey.controller;
 
-import com.pawever.backend.global.exception.CustomException;
-import com.pawever.backend.global.exception.ErrorCode;
-import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.service.GoodsSurveyExportService;
+import com.pawever.backend.goodssurvey.service.GoodsSurveyInternalToken;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -16,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 
 /**
  * 설문 결과 내보내기.
@@ -30,10 +27,10 @@ import java.security.MessageDigest;
 @RequiredArgsConstructor
 public class GoodsSurveyExportController {
 
-    private static final String TOKEN_HEADER = "X-Survey-Export-Token";
+    private static final String TOKEN_HEADER = GoodsSurveyInternalToken.HEADER;
 
     private final GoodsSurveyExportService exportService;
-    private final GoodsSurveyProperties properties;
+    private final GoodsSurveyInternalToken internalToken;
 
     @GetMapping("/applications")
     public ResponseEntity<byte[]> applications(
@@ -98,17 +95,7 @@ public class GoodsSurveyExportController {
     }
 
     private void requireToken(String token) {
-        String expected = properties.getExportToken();
-        if (expected == null || expected.isBlank() || token == null) {
-            throw new CustomException(ErrorCode.FORBIDDEN);
-        }
-        boolean matches = MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8),
-                token.getBytes(StandardCharsets.UTF_8)
-        );
-        if (!matches) {
-            throw new CustomException(ErrorCode.FORBIDDEN);
-        }
+        internalToken.require(token);
     }
 
     private ResponseEntity<byte[]> csv(String fileName, String body) {
