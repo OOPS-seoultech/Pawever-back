@@ -4,6 +4,7 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
@@ -28,6 +29,7 @@ public class GoodsSurveyFulfillmentOpsService {
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     private final GoodsSurveyProperties properties;
+    private final GoodsOrderService orderService;
     private final HmacHasher hmacHasher;
     private final Clock goodsSurveyClock;
 
@@ -54,17 +56,27 @@ public class GoodsSurveyFulfillmentOpsService {
     }
 
     /**
-     * 입금을 확인했다고 표시한다.
+     * 결제를 사람이 확인했다고 표시한다.
      *
-     * 계좌 이체를 사람이 눈으로 확인하고 찍는다. 표시가 없으면 누가 냈는지
-     * 스프레드시트로 따로 관리하게 되고, 그 스프레드시트가 또 하나의
-     * 개인정보 보관처가 된다.
+     * 평상시 결제는 대행사 승인으로 자동 처리된다. 이 통로는 대행사 쪽에서
+     * 승인이 났는데 웹훅이 오지 않는 것처럼, 자동으로 풀리지 않는 건을 손으로
+     * 맞추기 위한 것이다. 이미 확인된 건은 아무것도 바꾸지 않는다.
      */
     @Transactional
     public Instant markPaid(String responseId) {
         GoodsSurveyFulfillment fulfillment = fulfillmentRepository.findByResponseId(responseId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND));
-        fulfillment.markPaid(goodsSurveyClock.instant());
+
+        GoodsOrderStatus before = fulfillment.getStatus();
+        boolean changed = fulfillment.markPaid(goodsSurveyClock.instant(), null, "MANUAL");
+        if (changed) {
+            orderService.recordSystemChange(
+                    responseId,
+                    before,
+                    fulfillment.getStatus(),
+                    "결제 수동 확인"
+            );
+        }
         return fulfillment.getPaidAt();
     }
 

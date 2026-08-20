@@ -1,10 +1,12 @@
 package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
+import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
@@ -54,7 +56,9 @@ public class GoodsSurveyRetentionService {
     private final GoodsSurveyStoryRepository storyRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
+    private final GoodsOrderStatusChangeRepository statusChangeRepository;
     private final GoodsSurveyProperties properties;
+    private final GoodsOrderService orderService;
 
     /**
      * 배송이 끝나고 보유 기간이 지난 제작용 사진과 상세주소.
@@ -79,6 +83,35 @@ public class GoodsSurveyRetentionService {
         return targets.size();
     }
 
+    /**
+     * 결제를 기다리다 시간이 지난 주문.
+     *
+     * 계약이 성립하지 않았으므로 보관할 근거가 없다. 사진까지 그 자리에서
+     * 지운다. 다시 사려면 새 주문으로 처음부터 신청한다.
+     */
+    @Transactional
+    public int expireUnpaidOrders(Instant now) {
+        List<GoodsSurveyFulfillment> targets =
+                fulfillmentRepository.findByStatusAndPaymentExpiresAtLessThanEqual(
+                        GoodsOrderStatus.PAYMENT_PENDING,
+                        now,
+                        Limit.of(BATCH_LIMIT)
+                );
+
+        for (GoodsSurveyFulfillment fulfillment : targets) {
+            deletePhotos(photoRepository.findByResponseId(fulfillment.getResponseId()));
+            fulfillment.changeStatus(GoodsOrderStatus.PAYMENT_EXPIRED);
+            fulfillment.stripDeliveryDetails();
+            orderService.recordSystemChange(
+                    fulfillment.getResponseId(),
+                    GoodsOrderStatus.PAYMENT_PENDING,
+                    GoodsOrderStatus.PAYMENT_EXPIRED,
+                    "결제 대기 시간 경과"
+            );
+        }
+        return targets.size();
+    }
+
     /** 법정 보존 기간까지 지난 계약 기록. */
     @Transactional
     public int purgeExpiredContracts(Instant now) {
@@ -97,6 +130,7 @@ public class GoodsSurveyRetentionService {
             // 계약 기록 때문에 남겨 뒀던 응답과 사연도 이제 지운다.
             // 설문 보유 기간(2년)은 이 시점이면 이미 한참 지났다.
             storyRepository.findByResponseId(responseId).ifPresent(storyRepository::delete);
+            statusChangeRepository.deleteByResponseId(responseId);
             responseRepository.findById(responseId).ifPresent(responseRepository::delete);
         }
         return targets.size();

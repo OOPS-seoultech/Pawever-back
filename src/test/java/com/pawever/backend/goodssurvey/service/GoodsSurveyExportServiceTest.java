@@ -1,6 +1,7 @@
 package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhotoStatus;
@@ -213,7 +214,11 @@ class GoodsSurveyExportServiceTest {
                 "2026-07-23",
                 Instant.parse("2026-08-02T10:00:00Z"),
                 true,
-                23_900,
+                "PE-2026-000001",
+                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인"),
+                false,
+                "marketing-v1",
+                30,
                 1825
         );
         set(fulfillment, "id", id);
