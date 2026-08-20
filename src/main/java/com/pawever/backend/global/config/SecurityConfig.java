@@ -74,19 +74,46 @@ public class SecurityConfig {
 
     @Bean
     public UrlBasedCorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/public/goods-survey/**", publicSurveyCors());
+        source.registerCorsConfiguration("/api/admin/**", adminCors());
+        return source;
+    }
+
+    /** 굿즈 설문은 로그인 없이 부른다. 로그인 토큰을 받을 이유가 없다. */
+    private CorsConfiguration publicSurveyCors() {
+        CorsConfiguration configuration = baseCors();
         configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "OPTIONS"));
         configuration.setAllowedHeaders(List.of(
                 "Content-Type",
                 "X-Survey-Edit-Token",
                 "Idempotency-Key"
         ));
+        return configuration;
+    }
+
+    /**
+     * 관리자 화면은 랜딩 도메인에서 이 API 도메인을 부른다.
+     *
+     * 인가 설정이 맞아도 CORS 가 없으면 브라우저가 요청을 보내지 않는다. 서버에는
+     * 아무 기록도 남지 않고 화면만 비어 있어서 권한 문제로 오해하기 쉽다.
+     *
+     * 담당자 비활성화가 DELETE 라 설문 쪽과 허용 메서드가 다르다. 설정을 하나로
+     * 합치면 필요 없는 쪽까지 같이 넓어진다.
+     */
+    private CorsConfiguration adminCors() {
+        CorsConfiguration configuration = baseCors();
+        configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+        return configuration;
+    }
+
+    private CorsConfiguration baseCors() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        // 토큰을 헤더로 보내므로 쿠키를 실을 이유가 없다.
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/public/goods-survey/**", configuration);
-        return source;
+        return configuration;
     }
 }
