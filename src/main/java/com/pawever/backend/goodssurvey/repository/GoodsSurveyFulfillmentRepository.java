@@ -6,6 +6,7 @@ import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +41,16 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     );
 
     Optional<GoodsSurveyFulfillment> findByOrderNumber(String orderNumber);
+
+    /**
+     * 관리자 목록에 쓸 주문.
+     *
+     * 이름과 연락처는 암호화해 저장해 데이터베이스에서 찾을 수 없다. 상태로
+     * 좁힌 뒤 검색어는 꺼내서 맞춰 본다.
+     */
+    List<GoodsSurveyFulfillment> findByStatusInOrderByCreatedAtDesc(
+            Collection<GoodsOrderStatus> statuses
+    );
 
     /** 결제를 기다리다 시간이 지난 주문. */
     List<GoodsSurveyFulfillment> findByStatusAndPaymentExpiresAtLessThanEqual(
