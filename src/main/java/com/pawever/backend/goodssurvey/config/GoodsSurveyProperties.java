@@ -10,7 +10,12 @@ import java.util.Set;
 @Getter
 @Setter
 @Component
-@ConfigurationProperties(prefix = "survey.goods")
+/*
+ * ignoreUnknownFields = false: yaml 에 붙지 않는 키가 있으면 기동을 멈춘다.
+ * 키 이름을 잘못 적어도 스프링은 조용히 기본값을 쓰고 앱은 그대로 뜬다.
+ * 관리자 서명 키가 그렇게 비어 있는 채로 배포된 적이 있다.
+ */
+@ConfigurationProperties(prefix = "survey.goods", ignoreUnknownFields = false)
 public class GoodsSurveyProperties {
 
     private String campaignId = "goods-2026-07";
