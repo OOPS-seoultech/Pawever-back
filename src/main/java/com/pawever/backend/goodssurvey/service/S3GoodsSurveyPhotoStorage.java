@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
 
@@ -98,6 +99,26 @@ public class S3GoodsSurveyPhotoStorage implements GoodsSurveyPhotoStorage {
                             .build(),
                     ResponseTransformer.toBytes()
             ).asByteArray();
+        } catch (CustomException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        }
+    }
+
+    @Override
+    public PresignedDownload presignDownload(String objectKey, Duration duration, Instant expiresAt) {
+        try {
+            var presigned = s3Presigner.presignGetObject(
+                    GetObjectPresignRequest.builder()
+                            .signatureDuration(duration)
+                            .getObjectRequest(GetObjectRequest.builder()
+                                    .bucket(privateBucket())
+                                    .key(objectKey)
+                                    .build())
+                            .build()
+            );
+            return new PresignedDownload(presigned.url().toString(), expiresAt);
         } catch (CustomException exception) {
             throw exception;
         } catch (Exception exception) {

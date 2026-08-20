@@ -20,6 +20,15 @@ public interface GoodsSurveyPhotoStorage {
     byte[] download(String objectKey);
 
     /**
+     * 담당자에게 내려줄 짧은 만료 링크를 만든다.
+     *
+     * 사진은 비공개 저장소에 있어 주소만으로는 열리지 않는다. 인증을 거친
+     * 담당자에게만, 그것도 잠깐 동안만 열리는 주소를 준다. 만료가 길면
+     * 링크가 메신저를 타고 돌아다니는 순간 인증을 거친 뜻이 없어진다.
+     */
+    PresignedDownload presignDownload(String objectKey, Duration duration, Instant expiresAt);
+
+    /**
      * 보유 기간이 지난 사진을 지운다.
      *
      * 이미 없는 키는 지운 것으로 본다. 파기는 매일 도는 작업이라, 한 건이
@@ -30,6 +39,12 @@ public interface GoodsSurveyPhotoStorage {
     record PresignedUpload(
             String url,
             Map<String, String> headers,
+            Instant expiresAt
+    ) {
+    }
+
+    record PresignedDownload(
+            String url,
             Instant expiresAt
     ) {
     }
