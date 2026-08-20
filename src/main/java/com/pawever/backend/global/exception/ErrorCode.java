@@ -86,7 +86,13 @@ public enum ErrorCode {
     SURVEY_PHOTO_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "사진은 최대 5장까지 업로드할 수 있습니다."),
     SURVEY_PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드할 사진 정보를 찾을 수 없습니다."),
     SURVEY_PHOTO_NOT_READY(HttpStatus.BAD_REQUEST, "사진 업로드가 완료되지 않았습니다."),
-    SURVEY_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장소가 아직 설정되지 않았습니다.");
+    SURVEY_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장소가 아직 설정되지 않았습니다."),
+
+    ADMIN_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "관리자 계정을 찾을 수 없습니다."),
+    // 관리자 로그인이 열려 있지 않다는 사실 자체는 알려도 된다. 열려 있는데
+    // 자격이 안 맞는 것과는 다른 상황이라 응답을 나눈다.
+    ADMIN_SIGN_IN_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "관리자 로그인이 설정되지 않았습니다."),
+    ADMIN_PASSWORD_TOO_SHORT(HttpStatus.BAD_REQUEST, "비밀번호는 12자 이상이어야 합니다.");
 
     private final HttpStatus httpStatus;
     private final String message;
