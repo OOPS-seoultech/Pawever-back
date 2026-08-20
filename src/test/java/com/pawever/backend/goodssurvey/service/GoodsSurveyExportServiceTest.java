@@ -137,7 +137,7 @@ class GoodsSurveyExportServiceTest {
                 "01_face_몽이_1.png",
                 "02_figure_루이_1.jpg",
                 "02_figure_루이_2.jpg",
-                "03_acrylic_제_나_1.jpg"
+                "03_figure_제_나_1.jpg"
         );
     }
 
@@ -162,7 +162,7 @@ class GoodsSurveyExportServiceTest {
 
         // 신청 순서가 뒤섞여 들어와도 들어온 시각대로 번호를 매겨야 한다.
         lenient().when(fulfillmentRepository.findAll()).thenReturn(List.of(
-                fulfillment(3L, "r3", "acrylic", "제 나", LocalDateTime.parse("2026-08-02T10:37:44")),
+                fulfillment(3L, "r3", "figure", "제 나", LocalDateTime.parse("2026-08-02T10:37:44")),
                 fulfillment(1L, "r1", "face", "몽이", LocalDateTime.parse("2026-07-26T07:01:43")),
                 fulfillment(2L, "r2", "figure", "루이", LocalDateTime.parse("2026-08-02T10:35:23"))
         ));
@@ -179,13 +179,13 @@ class GoodsSurveyExportServiceTest {
         String tracking = "{\"attribution\":{\"lastTouch\":" + touchJson
                 + ",\"firstTouch\":" + touchJson + "},\"device\":{\"category\":\"mobile\"}}";
         return GoodsSurveyResponse.draft(
-                id, "goods-2026-07", "2026-07-25-v2", "hash-" + id, "acrylic", tracking
+                id, "goods-2026-07", "2026-07-25-v2", "hash-" + id, "figure", tracking
         );
     }
 
     private GoodsSurveyResponse response(String id) {
         return GoodsSurveyResponse.draft(
-                id, "goods-2026-07", "2026-07-25-v2", "hash-" + id, "acrylic", "{}"
+                id, "goods-2026-07", "2026-07-25-v2", "hash-" + id, "figure", "{}"
         );
     }
 
