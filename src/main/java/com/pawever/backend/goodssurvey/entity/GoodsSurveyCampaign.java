@@ -80,15 +80,30 @@ public class GoodsSurveyCampaign extends BaseTimeEntity {
      * 남았든 열리지 않는다. 마감을 정원 같은 계산값에 맡기면 신청 기록이
      * 하나만 정리돼도 마감된 모집이 다시 열린다.
      */
-    public boolean isGoodsAvailable(long activeAllocations) {
-        return goodsOpen && remaining(activeAllocations) > 0;
+    /**
+     * 정원을 두지 않는 모집인지.
+     *
+     * 1차는 무료 체험단이라 100자리로 끊었지만, 유료로 전환한 뒤에는 수량을
+     * 막을 이유가 없다. capacity 를 0 이하로 두면 선착순 계산을 건너뛴다.
+     */
+    public boolean isUnlimited() {
+        return capacity <= 0;
     }
 
+    public boolean isGoodsAvailable(long activeAllocations) {
+        return goodsOpen && (isUnlimited() || remaining(activeAllocations) > 0);
+    }
+
+    /** 정원이 없으면 남은 자리를 셀 수 없다. 화면에서 표시를 감추도록 -1을 준다. */
     public int remaining(long activeAllocations) {
+        if (isUnlimited()) {
+            return -1;
+        }
         return Math.max(0, capacity - historicalAllocated - Math.toIntExact(activeAllocations));
     }
 
     public int allocated(long activeAllocations) {
-        return Math.min(capacity, historicalAllocated + Math.toIntExact(activeAllocations));
+        int total = historicalAllocated + Math.toIntExact(activeAllocations);
+        return isUnlimited() ? total : Math.min(capacity, total);
     }
 }

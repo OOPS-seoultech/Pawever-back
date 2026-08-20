@@ -23,6 +23,14 @@ public class GoodsSurveyProperties {
     // 공개 동의를 받은 사진도 이 기간을 따른다. 제작용 사진은 배송 뒤
     // personalDataRetentionDays 로 훨씬 먼저 지운다.
     private int surveyRetentionDays = 730;
+    // 유료 판매의 계약·결제·공급 기록 보존 기간. 전자상거래법이 5년을 요구한다.
+    // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionDays 로 먼저 지운다.
+    private int contractRetentionDays = 1825;
+    // 설문을 끝내고 신청하면 적용되는 값.
+    private int memberPriceKrw = 23_900;
+    // 설문을 건너뛰고 바로 신청하면 적용되는 값.
+    // 정가로 갈지 사전판매가로 갈지 아직 정해지지 않아 설정으로 빼 둔다.
+    private int directPriceKrw = 34_900;
     // 파기 작업이 도는 시각. 접속이 가장 적은 새벽에 한 번 돈다.
     private String purgeCron = "0 15 4 * * *";
     private String questionnaireVersion = "2026-07-25-v2";

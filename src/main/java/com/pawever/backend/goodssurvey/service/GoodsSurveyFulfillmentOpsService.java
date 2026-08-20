@@ -54,6 +54,21 @@ public class GoodsSurveyFulfillmentOpsService {
     }
 
     /**
+     * 입금을 확인했다고 표시한다.
+     *
+     * 계좌 이체를 사람이 눈으로 확인하고 찍는다. 표시가 없으면 누가 냈는지
+     * 스프레드시트로 따로 관리하게 되고, 그 스프레드시트가 또 하나의
+     * 개인정보 보관처가 된다.
+     */
+    @Transactional
+    public Instant markPaid(String responseId) {
+        GoodsSurveyFulfillment fulfillment = fulfillmentRepository.findByResponseId(responseId)
+                .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND));
+        fulfillment.markPaid(goodsSurveyClock.instant());
+        return fulfillment.getPaidAt();
+    }
+
+    /**
      * 안내 이메일 수신거부를 접수한다.
      *
      * 표시만 남기고, 주소는 다음 파기 작업이 돌 때 지워진다. 없는 주소를

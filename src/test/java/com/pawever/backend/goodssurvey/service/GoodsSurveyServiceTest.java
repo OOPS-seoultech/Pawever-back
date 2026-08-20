@@ -25,6 +25,8 @@ import com.pawever.backend.goodssurvey.repository.GoodsSurveyStoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.JsonNode;
@@ -792,6 +794,98 @@ class GoodsSurveyServiceTest {
                 "q4", mapper.getNodeFactory().arrayNode().add("healthy"),
                 "q5", mapper.getNodeFactory().textNode("2"),
                 "q6", mapper.getNodeFactory().textNode("1")
+        );
+    }
+
+    @Test
+    void 설문을_건너뛰고_신청하면_정가가_적용된다() {
+        // 설문에 답하는 대신 값을 더 내는 길이다. 여기서 할인가가 적용되면
+        // 설문을 끝까지 답할 이유가 사라진다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+
+        GoodsSurveyPhoto photo = confirmedPhoto("photo-direct", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(List.of(photo));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-direct",
+                directApplication(tracking, "conversion-direct", "photo-direct")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().isSurveyParticipant()).isFalse();
+        assertThat(saved.getValue().getAppliedPriceKrw())
+                .isEqualTo(new GoodsSurveyProperties().getDirectPriceKrw());
+    }
+
+    @Test
+    void 설문을_마치고_신청하면_할인가가_적용된다() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-member");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        GoodsSurveyPhoto photo = confirmedPhoto("photo-member", draft.responseId());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(List.of(photo));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-member",
+                directApplication(tracking, "conversion-member", "photo-member")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().isSurveyParticipant()).isTrue();
+        assertThat(saved.getValue().getAppliedPriceKrw())
+                .isEqualTo(new GoodsSurveyProperties().getMemberPriceKrw());
+    }
+
+    private SubmitGoodsSurveyApplicationRequest directApplication(
+            JsonNode tracking,
+            String conversionEventId,
+            String photoId
+    ) {
+        return new SubmitGoodsSurveyApplicationRequest(
+                "acrylic",
+                "",
+                "몽이",
+                "보호자",
+                "01012345678",
+                "01234",
+                "서울시 노원구",
+                "",
+                List.of(photoId),
+                List.of(),
+                conversionEventId,
+                tracking,
+                true,
+                true
         );
     }
 

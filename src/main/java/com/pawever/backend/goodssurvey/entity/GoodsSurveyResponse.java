@@ -123,6 +123,23 @@ public class GoodsSurveyResponse extends BaseTimeEntity {
         this.reservationExpiresAt = null;
     }
 
+    /**
+     * 설문을 건너뛰고 바로 신청하러 간다.
+     *
+     * 예약 만료를 두지 않는다. 설문 예약은 선착순 자리를 다투던 때의 장치인데,
+     * 직행에는 답할 문항이 없어 시간을 잴 것이 없다.
+     */
+    public void startDirectPurchase(Instant startedAt) {
+        this.status = GoodsSurveyResponseStatus.DIRECT;
+        this.completedAt = startedAt;
+        this.reservationExpiresAt = null;
+    }
+
+    /** 설문에 답하고 온 신청인지. 적용가가 갈리는 기준이다. */
+    public boolean isSurveyParticipant() {
+        return status != GoodsSurveyResponseStatus.DIRECT;
+    }
+
     public void submit() {
         this.status = GoodsSurveyResponseStatus.SUBMITTED;
         this.reservationExpiresAt = null;

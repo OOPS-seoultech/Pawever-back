@@ -65,6 +65,15 @@ public class GoodsSurveyController {
         return ApiResponse.ok(service.completeSurvey(responseId, editToken, request));
     }
 
+    /** 설문을 건너뛰고 바로 굿즈 신청으로 간다. 적용가는 정가다. */
+    @PostMapping("/responses/{responseId}/direct-purchase")
+    public ApiResponse<GoodsSurveyCompletionResponse> startDirectPurchase(
+            @PathVariable String responseId,
+            @RequestHeader(EDIT_TOKEN_HEADER) String editToken
+    ) {
+        return ApiResponse.ok(service.startDirectPurchase(responseId, editToken));
+    }
+
     @PutMapping("/responses/{responseId}/story")
     public ApiResponse<Void> saveStory(
             @PathVariable String responseId,

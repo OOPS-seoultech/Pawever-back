@@ -66,7 +66,9 @@ class GoodsSurveyRetentionServiceTest {
     }
 
     @Test
-    void 배송이_끝나_기간이_지난_신청정보는_사진까지_지운다() {
+    void 배송이_끝나면_사진과_상세주소를_지우고_계약_기록은_남긴다() {
+        // 유료 판매는 주문·결제·공급 기록을 5년 보존해야 한다. 90일에 행을
+        // 통째로 지우면 법정 보존 기록까지 사라진다.
         GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
         GoodsSurveyPhoto photo = photo("photo-1", "resp-1", "goods/resp-1/1.jpg");
 
@@ -80,7 +82,10 @@ class GoodsSurveyRetentionServiceTest {
         assertThat(purged).isEqualTo(1);
         verify(photoStorage).delete("goods/resp-1/1.jpg");
         verify(photoRepository).delete(photo);
-        verify(fulfillmentRepository).delete(fulfillment);
+        verify(fulfillmentRepository, never()).delete(any());
+        assertThat(fulfillment.getAddressDetail()).isNull();
+        // 어디로 보냈는지는 공급 기록이라 남긴다.
+        assertThat(fulfillment.getAddress()).isNotNull();
     }
 
     @Test
@@ -97,7 +102,25 @@ class GoodsSurveyRetentionServiceTest {
         retentionService.purgeDeliveredFulfillments(NOW);
 
         verify(photoStorage, never()).delete(any());
+    }
+
+    @Test
+    void 법정_보존_기간이_지나면_계약_기록과_응답을_함께_지운다() {
+        GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
+        GoodsSurveyResponse response = response("resp-1");
+
+        when(fulfillmentRepository
+                .findByContractDeleteAfterNotNullAndContractDeleteAfterLessThanEqual(eq(NOW), any(Limit.class)))
+                .thenReturn(List.of(fulfillment));
+        when(photoRepository.findByResponseId("resp-1")).thenReturn(List.of());
+        when(storyRepository.findByResponseId("resp-1")).thenReturn(Optional.empty());
+        when(responseRepository.findById("resp-1")).thenReturn(Optional.of(response));
+
+        int purged = retentionService.purgeExpiredContracts(NOW);
+
+        assertThat(purged).isEqualTo(1);
         verify(fulfillmentRepository).delete(fulfillment);
+        verify(responseRepository).delete(response);
     }
 
     @Test
@@ -173,21 +196,38 @@ class GoodsSurveyRetentionServiceTest {
     }
 
     @Test
-    void 배송을_표시하지_않은_신청정보도_2년이_지나면_함께_지운다() {
-        // 발송 표시를 놓쳐 deleteAfter 가 비어 있으면 앞 단계에서 걸리지 않는다.
-        // 고지한 기간 중 가장 긴 것이 설문의 2년이라, 그보다 오래 남아선 안 된다.
+    void 설문_2년이_지나도_법정_보존_기간이_남은_계약_기록은_건드리지_않는다() {
+        // 설문은 2년, 계약 기록은 5년이다. 짧은 쪽 기준으로 지우면 법정
+        // 보존 기록이 3년 일찍 사라진다. 응답도 함께 남겨야 그 기록이 어느
+        // 주문의 것인지 알 수 있다.
         GoodsSurveyResponse response = response("resp-1");
         GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
 
         when(responseRepository.findByCreatedAtLessThanEqual(any(LocalDateTime.class), any(Limit.class)))
                 .thenReturn(List.of(response));
-        when(photoRepository.findByResponseId("resp-1")).thenReturn(List.of());
-        when(storyRepository.findByResponseId("resp-1")).thenReturn(Optional.empty());
         when(fulfillmentRepository.findByResponseId("resp-1")).thenReturn(Optional.of(fulfillment));
 
-        retentionService.purgeExpiredSurveys(NOW);
+        int purged = retentionService.purgeExpiredSurveys(NOW);
 
-        verify(fulfillmentRepository).delete(fulfillment);
+        assertThat(purged).isZero();
+        verify(fulfillmentRepository, never()).delete(any());
+        verify(responseRepository, never()).delete(any());
+    }
+
+    @Test
+    void 신청_기록이_없는_설문은_2년이_지나면_그대로_지운다() {
+        GoodsSurveyResponse response = response("resp-1");
+
+        when(responseRepository.findByCreatedAtLessThanEqual(any(LocalDateTime.class), any(Limit.class)))
+                .thenReturn(List.of(response));
+        when(fulfillmentRepository.findByResponseId("resp-1")).thenReturn(Optional.empty());
+        when(photoRepository.findByResponseId("resp-1")).thenReturn(List.of());
+        when(storyRepository.findByResponseId("resp-1")).thenReturn(Optional.empty());
+
+        int purged = retentionService.purgeExpiredSurveys(NOW);
+
+        assertThat(purged).isEqualTo(1);
+        verify(responseRepository).delete(response);
     }
 
     private GoodsSurveyFulfillment fulfillment(String responseId) {
@@ -206,7 +246,10 @@ class GoodsSurveyRetentionServiceTest {
                 "서울시 어딘가",
                 "101호",
                 "2026-07-23",
-                NOW.minusSeconds(200 * 86_400L)
+                NOW.minusSeconds(200 * 86_400L),
+                true,
+                23_900,
+                1825
         );
     }
 

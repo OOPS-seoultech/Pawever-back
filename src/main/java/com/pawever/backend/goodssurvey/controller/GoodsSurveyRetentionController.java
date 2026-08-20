@@ -48,6 +48,20 @@ public class GoodsSurveyRetentionController {
         ));
     }
 
+    /** 계좌 입금을 확인했다고 표시한다. */
+    @PostMapping("/fulfillments/{responseId}/paid")
+    public ResponseEntity<Map<String, Object>> markPaid(
+            @RequestHeader(value = GoodsSurveyInternalToken.HEADER, required = false) String token,
+            @PathVariable String responseId
+    ) {
+        internalToken.require(token);
+        Instant paidAt = opsService.markPaid(responseId);
+        return ResponseEntity.ok(Map.of(
+                "responseId", responseId,
+                "paidAt", paidAt.toString()
+        ));
+    }
+
     /** 안내 이메일 수신거부를 접수한다. 등록되지 않은 주소도 같은 응답을 준다. */
     @PostMapping("/notice-subscriptions/unsubscribe")
     public ResponseEntity<Void> unsubscribeNotice(
@@ -73,7 +87,8 @@ public class GoodsSurveyRetentionController {
         return ResponseEntity.ok(Map.of(
                 "fulfillments", retentionService.purgeDeliveredFulfillments(now),
                 "noticeSubscriptions", retentionService.purgeNoticeSubscriptions(now),
-                "surveys", retentionService.purgeExpiredSurveys(now)
+                "surveys", retentionService.purgeExpiredSurveys(now),
+                "contracts", retentionService.purgeExpiredContracts(now)
         ));
     }
 }
