@@ -7,7 +7,11 @@ public record GoodsSurveyApplicationResponse(
         int remaining,
         /** 설문에 답하고 온 신청인지. 화면이 어떤 값을 보여줄지 가른다. */
         boolean surveyParticipant,
-        /** 청구할 금액. 문자로 안내할 계좌 입금액과 같은 값이다. */
-        int appliedPriceKrw
+        /** 실제 청구할 금액. 결제 화면이 이 값을 그대로 쓴다. */
+        int paymentAmountKrw,
+        /** 고객에게 읽어 줄 주문번호. */
+        String orderNumber,
+        int listPriceKrw,
+        int discountAmountKrw
 ) {
 }

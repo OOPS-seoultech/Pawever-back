@@ -5,6 +5,8 @@ import com.pawever.backend.global.common.EncryptedStringConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -88,12 +90,76 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean surveyParticipant;
 
-    /** 청구할 금액. 문자로 계좌를 보낼 때 이 값을 그대로 쓴다. */
-    @Column(nullable = false)
-    private int appliedPriceKrw;
+    /**
+     * 주문번호. PE-2026-000001 처럼 연도 안에서 센다.
+     *
+     * 응답 식별자(UUID)는 고객에게 읽어 주기 어렵다. 문의를 받거나 입금을 대조할
+     * 때 부를 이름이 따로 필요하다.
+     */
+    @Column(nullable = false, unique = true, length = 20)
+    private String orderNumber;
 
-    /** 입금을 확인한 시각. 수동 확인이라 사람이 찍는다. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private GoodsOrderStatus status;
+
+    /** 정상가. */
+    @Column(nullable = false)
+    private int listPriceKrw;
+
+    /** 할인액. 없으면 0. */
+    @Column(nullable = false)
+    private int discountAmountKrw;
+
+    /** 적용한 프로모션 이름. 없으면 비어 있다. */
+    @Column(length = 100)
+    private String promotionName;
+
+    /**
+     * 실제 청구할 금액.
+     *
+     * 주문을 만든 시점의 값이다. 이후 가격이나 프로모션이 바뀌어도 이 값은 그대로
+     * 둔다. 결제한 금액과 청구한 금액이 달라지면 대조할 근거가 사라진다.
+     */
+    @Column(nullable = false)
+    private int paymentAmountKrw;
+
+    /** 결제 대행사가 준 결제 식별값. */
+    @Column(length = 200)
+    private String paymentKey;
+
+    @Column(length = 30)
+    private String paymentMethod;
+
+    /** 이때까지 결제되지 않으면 만료된다. */
+    private Instant paymentExpiresAt;
+
+    /** 결제가 확인된 시각. */
     private Instant paidAt;
+
+    /** 관리자가 취소하며 남긴 사유. */
+    @Column(length = 300)
+    private String cancelReason;
+
+    @Column(length = 50)
+    private String trackingCompany;
+
+    @Column(length = 50)
+    private String trackingNumber;
+
+    /**
+     * 광고성 정보 수신 동의.
+     *
+     * 개인정보 수집·이용 동의와 나눠 받는다. 광고성 정보는 별도로 동의를 받아야
+     * 하고, 굿즈를 사는 데 필요한 동의와 묶으면 사실상 강제가 된다.
+     */
+    @Column(nullable = false)
+    private boolean marketingConsent;
+
+    private Instant marketingConsentedAt;
+
+    @Column(length = 30)
+    private String marketingConsentVersion;
 
     private Instant deliveryCompletedAt;
 
@@ -125,7 +191,11 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
             String privacyConsentVersion,
             Instant privacyConsentedAt,
             boolean surveyParticipant,
-            int appliedPriceKrw,
+            String orderNumber,
+            GoodsOrderPricing pricing,
+            boolean marketingConsent,
+            String marketingConsentVersion,
+            int paymentWindowMinutes,
             int contractRetentionDays
     ) {
         GoodsSurveyFulfillment fulfillment = new GoodsSurveyFulfillment();
@@ -145,19 +215,67 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         fulfillment.privacyConsentVersion = privacyConsentVersion;
         fulfillment.privacyConsentedAt = privacyConsentedAt;
         fulfillment.surveyParticipant = surveyParticipant;
-        fulfillment.appliedPriceKrw = appliedPriceKrw;
+        fulfillment.orderNumber = orderNumber;
+        fulfillment.status = GoodsOrderStatus.PAYMENT_PENDING;
+        fulfillment.listPriceKrw = pricing.listPriceKrw();
+        fulfillment.discountAmountKrw = pricing.discountAmountKrw();
+        fulfillment.promotionName = pricing.promotionName();
+        fulfillment.paymentAmountKrw = pricing.paymentAmountKrw();
+        fulfillment.paymentExpiresAt =
+                privacyConsentedAt.plus(paymentWindowMinutes, ChronoUnit.MINUTES);
+        fulfillment.marketingConsent = marketingConsent;
+        if (marketingConsent) {
+            fulfillment.marketingConsentedAt = privacyConsentedAt;
+            fulfillment.marketingConsentVersion = marketingConsentVersion;
+        }
         // 보존 기간은 주문 시점부터 센다. 배송 표시를 놓친 건도 법정 기간만큼
         // 남아야 하고, 전자상거래법도 거래 시점을 기준으로 삼는다.
         fulfillment.contractDeleteAfter = privacyConsentedAt.plus(contractRetentionDays, ChronoUnit.DAYS);
         return fulfillment;
     }
 
-    /** 입금을 확인했다고 표시한다. 이미 확인한 건은 시각을 바꾸지 않는다. */
-    public void markPaid(Instant paidAt) {
+    /**
+     * 결제가 확인됐다고 표시한다.
+     *
+     * 이미 확인한 건은 아무것도 바꾸지 않는다. 결제 대행사 웹훅은 같은 건을 여러 번
+     * 보낼 수 있고, 그때마다 알림이 나가거나 시각이 덮이면 안 된다.
+     * 바뀌었는지를 돌려주어 부른 쪽이 알림을 한 번만 보내게 한다.
+     */
+    public boolean markPaid(Instant paidAt, String paymentKey, String paymentMethod) {
         if (this.paidAt != null) {
-            return;
+            return false;
         }
         this.paidAt = paidAt;
+        this.paymentKey = paymentKey;
+        this.paymentMethod = paymentMethod;
+        this.status = GoodsOrderStatus.PAYMENT_COMPLETED;
+        return true;
+    }
+
+    /** 결제 대기 시간이 지났는지. */
+    public boolean isPaymentExpired(Instant now) {
+        return status == GoodsOrderStatus.PAYMENT_PENDING
+                && paymentExpiresAt != null
+                && !paymentExpiresAt.isAfter(now);
+    }
+
+    /**
+     * 상태를 옮긴다.
+     *
+     * 이력은 부른 쪽이 남긴다. 여기서 함께 만들면 엔티티가 저장소를 알아야 한다.
+     */
+    public void changeStatus(GoodsOrderStatus next) {
+        this.status = next;
+    }
+
+    public void cancel(GoodsOrderStatus next, String reason) {
+        this.status = next;
+        this.cancelReason = reason;
+    }
+
+    public void registerTracking(String company, String number) {
+        this.trackingCompany = company;
+        this.trackingNumber = number;
     }
 
     public void markDeliveryCompleted(Instant completedAt, int retentionDays) {

@@ -16,6 +16,9 @@ import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderSequence;
+import com.pawever.backend.goodssurvey.repository.GoodsOrderSequenceRepository;
+import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyCampaignRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
@@ -45,6 +48,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +66,8 @@ class GoodsSurveyServiceTest {
     @Mock private GoodsSurveyPhotoRepository photoRepository;
     @Mock private GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
+    @Mock private GoodsOrderSequenceRepository sequenceRepository;
+    @Mock private GoodsOrderStatusChangeRepository statusChangeRepository;
 
     private GoodsSurveyService service;
     private GoodsSurveyCampaign campaign;
@@ -89,6 +95,36 @@ class GoodsSurveyServiceTest {
         lenient().when(responseRepository.countSubmittedAllocations(any(), any()))
                 .thenReturn(0L);
 
+        Clock testClock = new Clock() {
+            @Override
+            public java.time.ZoneId getZone() {
+                return ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return currentTime;
+            }
+        };
+
+        // 채번기는 한 덩어리를 돌려준다. 번호가 실제로 하나씩 올라가야
+        // 같은 테스트에서 두 번 신청했을 때 겹치지 않는 것을 볼 수 있다.
+        GoodsOrderSequence sequence = GoodsOrderSequence.startOf(2026);
+        lenient().when(sequenceRepository.findByYearForUpdate(anyInt()))
+                .thenReturn(Optional.of(sequence));
+
+        GoodsOrderService orderService = new GoodsOrderService(
+                sequenceRepository,
+                statusChangeRepository,
+                properties,
+                testClock
+        );
+
         service = new GoodsSurveyService(
                 campaignRepository,
                 responseRepository,
@@ -101,22 +137,8 @@ class GoodsSurveyServiceTest {
                 new ObjectMapper(),
                 new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
                 properties,
-                new Clock() {
-                    @Override
-                    public java.time.ZoneId getZone() {
-                        return ZoneOffset.UTC;
-                    }
-
-                    @Override
-                    public Clock withZone(java.time.ZoneId zone) {
-                        return this;
-                    }
-
-                    @Override
-                    public Instant instant() {
-                        return currentTime;
-                    }
-                }
+                orderService,
+                testClock
         );
     }
 
@@ -399,7 +421,8 @@ class GoodsSurveyServiceTest {
                         "conversion-unselected",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         )).hasMessageContaining("입력");
     }
@@ -460,7 +483,8 @@ class GoodsSurveyServiceTest {
                         "conversion-switch-off",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         )).hasMessageContaining("굿즈 신청이 마감");
     }
@@ -620,7 +644,8 @@ class GoodsSurveyServiceTest {
                         "conversion-photo-consent",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         );
 
@@ -672,7 +697,8 @@ class GoodsSurveyServiceTest {
                         "conversion-late",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         )).hasMessageContaining("굿즈 신청이 마감");
 
@@ -728,7 +754,8 @@ class GoodsSurveyServiceTest {
                         "conversion-slow",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         );
 
@@ -778,7 +805,8 @@ class GoodsSurveyServiceTest {
                         "conversion-legacy-photo",
                         tracking,
                         true,
-                        true
+                        true,
+                        false
                 )
         );
 
@@ -824,8 +852,10 @@ class GoodsSurveyServiceTest {
 
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isFalse();
-        assertThat(saved.getValue().getAppliedPriceKrw())
-                .isEqualTo(new GoodsSurveyProperties().getDirectPriceKrw());
+        // 정상가 그대로. 깎아 줄 근거가 없다.
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(29_900);
+        assertThat(saved.getValue().getDiscountAmountKrw()).isZero();
+        assertThat(saved.getValue().getPromotionName()).isNull();
     }
 
     @Test
@@ -862,8 +892,9 @@ class GoodsSurveyServiceTest {
 
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isTrue();
-        assertThat(saved.getValue().getAppliedPriceKrw())
-                .isEqualTo(new GoodsSurveyProperties().getMemberPriceKrw());
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(24_900);
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(5_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("설문 참여 할인");
     }
 
     private SubmitGoodsSurveyApplicationRequest directApplication(
@@ -885,7 +916,8 @@ class GoodsSurveyServiceTest {
                 conversionEventId,
                 tracking,
                 true,
-                true
+                true,
+                false
         );
     }
 

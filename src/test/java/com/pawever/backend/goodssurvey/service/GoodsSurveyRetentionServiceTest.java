@@ -1,11 +1,14 @@
 package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
+import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyNoticeSubscriptionRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
@@ -48,6 +51,8 @@ class GoodsSurveyRetentionServiceTest {
     @Mock private GoodsSurveyStoryRepository storyRepository;
     @Mock private GoodsSurveyPhotoRepository photoRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
+    @Mock private GoodsOrderStatusChangeRepository statusChangeRepository;
+    @Mock private GoodsOrderService orderService;
 
     private GoodsSurveyRetentionService retentionService;
 
@@ -61,7 +66,9 @@ class GoodsSurveyRetentionServiceTest {
                 storyRepository,
                 photoRepository,
                 photoStorage,
-                properties
+                statusChangeRepository,
+                properties,
+                orderService
         );
     }
 
@@ -230,6 +237,35 @@ class GoodsSurveyRetentionServiceTest {
         verify(responseRepository).delete(response);
     }
 
+    @Test
+    void 결제하지_않은_주문은_30분이_지나면_사진까지_지운다() {
+        // 계약이 성립하지 않았으니 반려견 사진을 들고 있을 근거가 없다.
+        // 공개 동의 여부와 무관하게 전부 지운다 — 공개 동의는 굿즈를 만드는
+        // 것을 전제로 받은 것이고, 만들지 않기로 된 주문이다.
+        GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
+        GoodsSurveyPhoto photo = photo("photo-1", "resp-1", "goods/resp-1/1.jpg");
+
+        when(fulfillmentRepository.findByStatusAndPaymentExpiresAtLessThanEqual(
+                eq(GoodsOrderStatus.PAYMENT_PENDING), eq(NOW), any(Limit.class)))
+                .thenReturn(List.of(fulfillment));
+        when(photoRepository.findByResponseId("resp-1")).thenReturn(List.of(photo));
+
+        int expired = retentionService.expireUnpaidOrders(NOW);
+
+        assertThat(expired).isEqualTo(1);
+        verify(photoStorage).delete("goods/resp-1/1.jpg");
+        assertThat(fulfillment.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_EXPIRED);
+        assertThat(fulfillment.getAddressDetail()).isNull();
+        // 행은 남긴다. 무엇이 왜 만료됐는지 관리자가 볼 수 있어야 한다.
+        verify(fulfillmentRepository, never()).delete(any());
+        verify(orderService).recordSystemChange(
+                eq("resp-1"),
+                eq(GoodsOrderStatus.PAYMENT_PENDING),
+                eq(GoodsOrderStatus.PAYMENT_EXPIRED),
+                any()
+        );
+    }
+
     private GoodsSurveyFulfillment fulfillment(String responseId) {
         return GoodsSurveyFulfillment.create(
                 responseId,
@@ -248,7 +284,11 @@ class GoodsSurveyRetentionServiceTest {
                 "2026-07-23",
                 NOW.minusSeconds(200 * 86_400L),
                 true,
-                23_900,
+                "PE-2026-000001",
+                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인"),
+                false,
+                "marketing-v1",
+                30,
                 1825
         );
     }

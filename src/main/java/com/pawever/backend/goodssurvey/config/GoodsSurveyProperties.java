@@ -26,11 +26,16 @@ public class GoodsSurveyProperties {
     // 유료 판매의 계약·결제·공급 기록 보존 기간. 전자상거래법이 5년을 요구한다.
     // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionDays 로 먼저 지운다.
     private int contractRetentionDays = 1825;
-    // 설문을 끝내고 신청하면 적용되는 값.
-    private int memberPriceKrw = 23_900;
-    // 설문을 건너뛰고 바로 신청하면 적용되는 값.
-    // 정가로 갈지 사전판매가로 갈지 아직 정해지지 않아 설정으로 빼 둔다.
-    private int directPriceKrw = 34_900;
+    // 굿즈 정상가. 2차 주력은 3D 전신 피규어 한 종이라 값이 하나다.
+    private int listPriceKrw = 29_900;
+    // 설문에 답하고 온 사람에게 깎아 주는 금액.
+    private int surveyDiscountKrw = 5_000;
+    // 그 할인의 이름. 관리자 화면과 주문 기록에 그대로 남는다.
+    private String surveyPromotionName = "설문 참여 할인";
+    // 주문을 만든 뒤 결제를 기다리는 시간.
+    private int paymentWindowMinutes = 30;
+    // 광고성 정보 수신 동의 문구의 판. 문구를 고치면 이 값도 올린다.
+    private String marketingConsentVersion = "marketing-v1";
     // 파기 작업이 도는 시각. 접속이 가장 적은 새벽에 한 번 돈다.
     private String purgeCron = "0 15 4 * * *";
     private String questionnaireVersion = "2026-07-25-v2";

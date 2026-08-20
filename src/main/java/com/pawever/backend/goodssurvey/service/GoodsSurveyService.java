@@ -88,6 +88,7 @@ public class GoodsSurveyService {
     private final ObjectMapper objectMapper;
     private final HmacHasher hmacHasher;
     private final GoodsSurveyProperties properties;
+    private final GoodsOrderService orderService;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -504,12 +505,15 @@ public class GoodsSurveyService {
                 // 제출하면 둘 다 SUBMITTED 가 되어 나중에는 구분할 수 없다.
                 // 얼마를 청구할지가 여기서 갈리므로 지금 확정해 남긴다.
                 response.isSurveyParticipant(),
-                response.isSurveyParticipant()
-                        ? properties.getMemberPriceKrw()
-                        : properties.getDirectPriceKrw(),
+                orderService.issueOrderNumber(),
+                orderService.priceFor(response.isSurveyParticipant()),
+                request.marketingAgreed(),
+                properties.getMarketingConsentVersion(),
+                properties.getPaymentWindowMinutes(),
                 properties.getContractRetentionDays()
         );
         fulfillmentRepository.save(fulfillment);
+        orderService.recordCreated(fulfillment);
         response.submit();
         return applicationResponse(response, fulfillment);
     }
@@ -559,7 +563,10 @@ public class GoodsSurveyService {
                 GoodsSurveyResponseStatus.SUBMITTED.name(),
                 remaining,
                 fulfillment.isSurveyParticipant(),
-                fulfillment.getAppliedPriceKrw()
+                fulfillment.getPaymentAmountKrw(),
+                fulfillment.getOrderNumber(),
+                fulfillment.getListPriceKrw(),
+                fulfillment.getDiscountAmountKrw()
         );
     }
 

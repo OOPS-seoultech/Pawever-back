@@ -27,14 +27,17 @@ public class GoodsSurveyRetentionScheduler {
     public void purge() {
         Instant now = goodsSurveyClock.instant();
 
+        int expired = run("결제 만료", () -> retentionService.expireUnpaidOrders(now));
         int fulfillments = run("사진·상세주소", () -> retentionService.purgeDeliveredFulfillments(now));
         int subscriptions = run("안내 이메일", () -> retentionService.purgeNoticeSubscriptions(now));
         int surveys = run("설문 응답", () -> retentionService.purgeExpiredSurveys(now));
         int contracts = run("계약 기록", () -> retentionService.purgeExpiredContracts(now));
 
-        if (fulfillments + subscriptions + surveys + contracts > 0) {
+        if (expired + fulfillments + subscriptions + surveys + contracts > 0) {
             log.info(
-                    "보유 기간 파기 완료: 사진·상세주소 {}건, 안내 이메일 {}건, 설문 응답 {}건, 계약 기록 {}건",
+                    "보유 기간 파기 완료: 결제 만료 {}건, 사진·상세주소 {}건, 안내 이메일 {}건,"
+                            + " 설문 응답 {}건, 계약 기록 {}건",
+                    expired,
                     fulfillments,
                     subscriptions,
                     surveys,

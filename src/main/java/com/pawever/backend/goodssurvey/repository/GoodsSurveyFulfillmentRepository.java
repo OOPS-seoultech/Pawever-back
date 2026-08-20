@@ -1,5 +1,6 @@
 package com.pawever.backend.goodssurvey.repository;
 
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -34,6 +35,15 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
      * 이쪽은 전자상거래법이 요구하는 5년이다.
      */
     List<GoodsSurveyFulfillment> findByContractDeleteAfterNotNullAndContractDeleteAfterLessThanEqual(
+            Instant now,
+            Limit limit
+    );
+
+    Optional<GoodsSurveyFulfillment> findByOrderNumber(String orderNumber);
+
+    /** 결제를 기다리다 시간이 지난 주문. */
+    List<GoodsSurveyFulfillment> findByStatusAndPaymentExpiresAtLessThanEqual(
+            GoodsOrderStatus status,
             Instant now,
             Limit limit
     );
