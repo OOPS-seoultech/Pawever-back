@@ -59,7 +59,7 @@ class GoodsSurveyControllerIntegrationTest {
         String createBody = """
                 {
                   "questionnaireVersion": "2026-07-25-v2",
-                  "selectedGoods": "acrylic",
+                  "selectedGoods": "figure",
                   "tracking": {
                     "visitId": "visit-integration",
                     "device": {"category": "mobile"}

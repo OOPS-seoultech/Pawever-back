@@ -151,7 +151,7 @@ class GoodsSurveyServiceTest {
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-goods-closed");
 
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -182,7 +182,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-story-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -232,7 +232,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -305,7 +305,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-dup");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -336,7 +336,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-early");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
 
         assertThatThrownBy(() -> service.subscribeNotice(
@@ -411,7 +411,7 @@ class GoodsSurveyServiceTest {
         assertThatThrownBy(() -> service.createDraft(
                 new CreateGoodsSurveyRequest(
                         "2026-07-25-v2",
-                        "acrylic",
+                        "figure",
                         new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed")
                 )
         )).hasMessageContaining("설문 접수가 종료");
@@ -424,7 +424,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-switch-off");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -447,7 +447,7 @@ class GoodsSurveyServiceTest {
                 draft.editToken(),
                 "idempotency-switch-off",
                 new SubmitGoodsSurveyApplicationRequest(
-                        "acrylic",
+                        "figure",
                         "",
                         "몽이",
                         "보호자",
@@ -472,7 +472,7 @@ class GoodsSurveyServiceTest {
                 "device", Map.of("category", "mobile")
         ));
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -501,7 +501,7 @@ class GoodsSurveyServiceTest {
         GoodsSurveyDraftResponse draft = service.createDraft(
                 new CreateGoodsSurveyRequest(
                         "2026-07-23-v1",
-                        "face",
+                        "figure",
                         new ObjectMapper().createObjectNode().put("visitId", "visit-2")
                 )
         );
@@ -558,7 +558,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-thin");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
 
         assertThatThrownBy(() -> service.completeSurvey(
@@ -582,7 +582,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -607,7 +607,7 @@ class GoodsSurveyServiceTest {
                 draft.editToken(),
                 "idempotency-photo-consent",
                 new SubmitGoodsSurveyApplicationRequest(
-                        "acrylic",
+                        "figure",
                         "",
                         "몽이",
                         "보호자",
@@ -636,7 +636,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -659,7 +659,7 @@ class GoodsSurveyServiceTest {
                 draft.editToken(),
                 "idempotency-late",
                 new SubmitGoodsSurveyApplicationRequest(
-                        "acrylic",
+                        "figure",
                         "",
                         "몽이",
                         "보호자",
@@ -688,7 +688,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-slow");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -715,7 +715,7 @@ class GoodsSurveyServiceTest {
                 draft.editToken(),
                 "idempotency-slow",
                 new SubmitGoodsSurveyApplicationRequest(
-                        "acrylic",
+                        "figure",
                         "",
                         "몽이",
                         "보호자",
@@ -741,7 +741,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-legacy-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-23-v1", "face", tracking)
+                new CreateGoodsSurveyRequest("2026-07-23-v1", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -765,7 +765,7 @@ class GoodsSurveyServiceTest {
                 draft.editToken(),
                 "idempotency-legacy-photo",
                 new SubmitGoodsSurveyApplicationRequest(
-                        "face",
+                        "figure",
                         "",
                         "몽이",
                         "보호자",
@@ -804,7 +804,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
 
         service.startDirectPurchase(draft.responseId(), draft.editToken());
@@ -833,7 +833,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-member");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "acrylic", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -872,7 +872,7 @@ class GoodsSurveyServiceTest {
             String photoId
     ) {
         return new SubmitGoodsSurveyApplicationRequest(
-                "acrylic",
+                "figure",
                 "",
                 "몽이",
                 "보호자",

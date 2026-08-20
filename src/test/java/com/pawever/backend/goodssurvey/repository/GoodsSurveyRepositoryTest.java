@@ -66,7 +66,7 @@ class GoodsSurveyRepositoryTest {
                 campaignId,
                 "2026-07-25-v2",
                 "token-hash-" + suffix,
-                "acrylic",
+                "figure",
                 "{}"
         );
     }

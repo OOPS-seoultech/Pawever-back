@@ -54,8 +54,14 @@ import java.util.UUID;
 public class GoodsSurveyService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final Set<String> GOODS_TYPES =
-            Set.of("acrylic", "face", "backplate", "figure", "custom");
+    /**
+     * 신청받는 굿즈 종류.
+     *
+     * 회의록 2번이 2차 주력을 3D 전신 피규어 한 종으로 좁혔다. 좁힌 뒤에도 여기가
+     * 다섯 종을 받고 있어, 팔지 않기로 한 상품이 주문될 수 있었다.
+     * 1차 신청 기록에는 다른 값이 남아 있다. 그때 실제로 신청한 것이라 고치지 않는다.
+     */
+    private static final Set<String> GOODS_TYPES = Set.of("figure");
     /**
      * 랜딩에서 굿즈를 고르지 않고 설문에 들어온 경우.
      *
