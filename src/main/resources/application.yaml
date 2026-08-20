@@ -109,6 +109,17 @@ survey:
     # 결과 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
     export-token: ${GOODS_SURVEY_EXPORT_TOKEN:}
 
+admin:
+  jwt:
+    # 앱 회원 토큰과 서명 키를 나눈다. 같은 키를 쓰면 앱 토큰 하나로 관리자
+    # 요청을 통과시킬 수 있는지가 claim 검사 하나에만 달린다.
+    # 기본값을 두지 않는다. 비어 있으면 관리자 로그인이 열리지 않는다.
+    secret: ${ADMIN_JWT_SECRET:}
+    # 고객 주소와 연락처를 다루는 화면이라 짧게 둔다.
+    expiration-millis: 28800000  # 8 hours
+  # 첫 관리자를 세울 때만 쓴다. 관리자가 하나라도 생기면 통로가 스스로 닫힌다.
+  bootstrap-token: ${ADMIN_BOOTSTRAP_TOKEN:}
+
 stats:
   # 앱 통계 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
   # 설문 토큰과 나눠 둔다. 통계는 집계값뿐이라 팀 안에서 넓게 공유되는데,
