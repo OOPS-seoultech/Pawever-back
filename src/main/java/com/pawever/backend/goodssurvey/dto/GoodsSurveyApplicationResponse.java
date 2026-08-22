@@ -12,6 +12,8 @@ public record GoodsSurveyApplicationResponse(
         /** 고객에게 읽어 줄 주문번호. */
         String orderNumber,
         int listPriceKrw,
-        int discountAmountKrw
+        int discountAmountKrw,
+        /** 배송비. 화면은 따로 보여 주고 청구는 위 금액에 합쳐져 있다. */
+        int shippingFeeKrw
 ) {
 }

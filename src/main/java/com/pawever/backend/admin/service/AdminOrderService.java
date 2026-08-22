@@ -133,6 +133,7 @@ public class AdminOrderService {
                         fulfillment.getListPriceKrw(),
                         fulfillment.getDiscountAmountKrw(),
                         fulfillment.getPromotionName(),
+                        fulfillment.getShippingFeeKrw(),
                         fulfillment.getPaymentAmountKrw()
                 ),
                 canSeeShipping

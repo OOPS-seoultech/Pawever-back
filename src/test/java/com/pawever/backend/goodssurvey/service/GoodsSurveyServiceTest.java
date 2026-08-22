@@ -853,7 +853,9 @@ class GoodsSurveyServiceTest {
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isFalse();
         // 정상가 그대로. 깎아 줄 근거가 없다.
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(29_900);
+        // 제작비 29,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(32_900);
+        assertThat(saved.getValue().getShippingFeeKrw()).isEqualTo(3_000);
         assertThat(saved.getValue().getDiscountAmountKrw()).isZero();
         assertThat(saved.getValue().getPromotionName()).isNull();
     }
@@ -892,8 +894,10 @@ class GoodsSurveyServiceTest {
 
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isTrue();
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(24_900);
-        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(5_000);
+        // 제작비 23,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(26_900);
+        assertThat(saved.getValue().getShippingFeeKrw()).isEqualTo(3_000);
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(6_000);
         assertThat(saved.getValue().getPromotionName()).isEqualTo("설문 참여 할인");
     }
 

@@ -56,12 +56,14 @@ public class GoodsOrderService {
      */
     public GoodsOrderPricing priceFor(boolean surveyParticipant) {
         if (!surveyParticipant) {
-            return GoodsOrderPricing.listPrice(properties.getListPriceKrw());
+            return GoodsOrderPricing.listPrice(
+                    properties.getListPriceKrw(), properties.getShippingFeeKrw());
         }
         return GoodsOrderPricing.discounted(
                 properties.getListPriceKrw(),
                 properties.getSurveyDiscountKrw(),
-                properties.getSurveyPromotionName()
+                properties.getSurveyPromotionName(),
+                properties.getShippingFeeKrw()
         );
     }
 

@@ -31,10 +31,23 @@ public class GoodsSurveyProperties {
     // 유료 판매의 계약·결제·공급 기록 보존 기간. 전자상거래법이 5년을 요구한다.
     // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionDays 로 먼저 지운다.
     private int contractRetentionDays = 1825;
-    // 굿즈 정상가. 2차 주력은 3D 전신 피규어 한 종이라 값이 하나다.
+    /*
+     * 11차 회의록에서 정한 2차 가격.
+     *   설문을 거치지 않고 바로 신청 = 29,900 (2차 공개 사전판매가)
+     *   설문 참여자                  = 23,900
+     * 여기 기본값은 yaml 기본값과 같아야 한다. 다르면 시험은 통과하는데
+     * 실제로는 다른 금액이 청구된다.
+     */
     private int listPriceKrw = 29_900;
-    // 설문에 답하고 온 사람에게 깎아 주는 금액.
-    private int surveyDiscountKrw = 5_000;
+    private int surveyDiscountKrw = 6_000;
+
+    /**
+     * 배송비.
+     *
+     * 주문을 만들 때 한 번 읽어 주문에 적는다. 나중에 값이 바뀌어도 이미 받은
+     * 주문의 금액은 그대로여야 한다.
+     */
+    private int shippingFeeKrw = 3_000;
     // 그 할인의 이름. 관리자 화면과 주문 기록에 그대로 남는다.
     private String surveyPromotionName = "설문 참여 할인";
     // 주문을 만든 뒤 결제를 기다리는 시간.

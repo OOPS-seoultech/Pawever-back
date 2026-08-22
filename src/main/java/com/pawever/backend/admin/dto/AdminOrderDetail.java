@@ -33,6 +33,7 @@ public record AdminOrderDetail(
             int listPriceKrw,
             int discountAmountKrw,
             String promotionName,
+            int shippingFeeKrw,
             int paymentAmountKrw
     ) {
     }
