@@ -16,6 +16,17 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * 장례업체 조회.
+ *
+ * 목록 조회가 GET 과 POST 두 벌이다. 위치를 주소에 실으면 URL 안에 좌표가
+ * 들어가고, URL 은 남기기 쉬운 자리다 — 중간 프록시와 오류 추적 도구가
+ * 기본으로 주소 전체를 적는다. 그래서 본문으로 받는 통로를 새로 뒀다.
+ *
+ * 그런데 이미 배포된 앱이 GET 을 부르고 있다. 지우면 업데이트하지 않은
+ * 사용자가 장례업체를 찾지 못한다. 앱이 POST 로 넘어오고 옛 버전이 빠지면
+ * GET 세 개와 FuneralControllerLocationTest 의 예외 목록을 함께 지운다.
+ */
 @Tag(name = "Funeral", description = "장례업체 관련 API")
 @RestController
 @RequestMapping("/api/funeral-companies")
@@ -25,6 +36,7 @@ public class FuneralController {
     private final FuneralService funeralService;
 
     @Operation(summary = "장례업체 목록 조회", description = "반려동물 기준으로 장례업체 전체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @Deprecated
     @GetMapping
     public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getFuneralCompanyList(
             @RequestParam Long petId,
@@ -35,6 +47,7 @@ public class FuneralController {
     }
 
     @Operation(summary = "저장한 장례업체 조회", description = "반려동물 기준으로 저장한 장례업체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @Deprecated
     @GetMapping("/saved")
     public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getSavedFuneralCompanies(
             @RequestParam Long petId,
@@ -47,6 +60,7 @@ public class FuneralController {
     }
 
     @Operation(summary = "피하는 장례업체 조회", description = "반려동물 기준으로 피하기 등록한 장례업체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @Deprecated
     @GetMapping("/blocked")
     public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> getBlockedFuneralCompanies(
             @RequestParam Long petId,
@@ -56,6 +70,35 @@ public class FuneralController {
         return ResponseEntity.ok(ApiResponse.ok(
                 funeralService.getRegisteredFuneralCompanyList(userId, petId, RegistrationType.BLOCKED, latitude, longitude)
         ));
+    }
+
+    @Operation(summary = "장례업체 목록 조회 (위치 본문)", description = "반려동물 기준으로 장례업체 전체 목록을 거리순으로 조회합니다. 위치 미제공 시 서울역 기준으로 정렬됩니다.")
+    @PostMapping("/search")
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> searchFuneralCompanies(
+            @Valid @RequestBody FuneralCompanySearchRequest request) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(funeralService.getFuneralCompanyList(
+                userId, request.getPetId(), request.getLatitude(), request.getLongitude())));
+    }
+
+    @Operation(summary = "저장한 장례업체 조회 (위치 본문)", description = "반려동물 기준으로 저장한 장례업체 목록을 거리순으로 조회합니다.")
+    @PostMapping("/saved/search")
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> searchSavedFuneralCompanies(
+            @Valid @RequestBody FuneralCompanySearchRequest request) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(funeralService.getRegisteredFuneralCompanyList(
+                userId, request.getPetId(), RegistrationType.SAVED,
+                request.getLatitude(), request.getLongitude())));
+    }
+
+    @Operation(summary = "피하는 장례업체 조회 (위치 본문)", description = "반려동물 기준으로 피하기 등록한 장례업체 목록을 거리순으로 조회합니다.")
+    @PostMapping("/blocked/search")
+    public ResponseEntity<ApiResponse<List<FuneralCompanyListResponse>>> searchBlockedFuneralCompanies(
+            @Valid @RequestBody FuneralCompanySearchRequest request) {
+        Long userId = UserPrincipal.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.ok(funeralService.getRegisteredFuneralCompanyList(
+                userId, request.getPetId(), RegistrationType.BLOCKED,
+                request.getLatitude(), request.getLongitude())));
     }
 
     @Operation(summary = "장례업체 상세 조회", description = "반려동물 기준으로 특정 장례업체의 상세 정보를 조회합니다.")
