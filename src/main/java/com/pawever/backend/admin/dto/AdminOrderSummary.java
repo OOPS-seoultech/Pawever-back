@@ -16,6 +16,8 @@ public record AdminOrderSummary(
         String orderNumber,
         Instant submittedAt,
         String goodsType,
+        /** 사람이 읽는 굿즈 이름. 코드값만 보면 무엇인지 알 수 없다. */
+        String goodsTypeLabel,
         String petName,
         String guardianNameMasked,
         String phoneMasked,

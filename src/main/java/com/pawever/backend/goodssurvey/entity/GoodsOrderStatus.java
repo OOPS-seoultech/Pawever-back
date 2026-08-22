@@ -38,8 +38,11 @@ public enum GoodsOrderStatus {
      * 결제라는 것이 없던 때의 신청이라 위 흐름 어디에도 맞지 않는다. 결제 완료로
      * 두면 받지도 않은 돈을 받은 것으로 세고, 대기로 두면 만료 대상이 된다.
      * 관리자 목록에서 따로 걸러 보도록 이름을 나눠 둔다.
+     *
+     * 제작팀에게는 보인다. 돈은 받지 않았지만 만들어 보내야 하는 물건이다.
+     * 안 보이게 두면 100건을 제작 화면에서 찾을 방법이 없다.
      */
-    LEGACY_FREE("1차 체험단", false);
+    LEGACY_FREE("1차 체험단", true);
 
     private static final Set<GoodsOrderStatus> CANCELABLE =
             Set.of(PAYMENT_COMPLETED, IN_PRODUCTION);
