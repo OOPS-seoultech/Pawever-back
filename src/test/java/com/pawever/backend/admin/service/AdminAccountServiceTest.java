@@ -46,6 +46,8 @@ class AdminAccountServiceTest {
     private AdminProperties properties;
     private HmacHasher hmacHasher;
     private BCryptPasswordEncoder passwordEncoder;
+    private final java.util.concurrent.atomic.AtomicInteger matchCalls =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     @BeforeEach
     void setUp() {
@@ -55,7 +57,18 @@ class AdminAccountServiceTest {
         properties.setBootstrapToken("bootstrap-secret");
 
         hmacHasher = new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
-        passwordEncoder = new BCryptPasswordEncoder();
+        // 대조가 실제로 불렸는지 세어 둔다. 시간을 재는 것은 흔들려서 못 쓰고,
+        // 스파이를 씌우면 when(...) 안에서 인코더를 부르는 다른 시험이 깨진다.
+        matchCalls.set(0);
+        passwordEncoder = new BCryptPasswordEncoder() {
+            // matches 는 final 이다. 실제 대조까지 내려온 것만 센다 —
+            // 해시가 비어 있으면 여기까지 오지 않고 곧바로 false 다.
+            @Override
+            protected boolean matchesNonNull(String rawPassword, String encodedPassword) {
+                matchCalls.incrementAndGet();
+                return super.matchesNonNull(rawPassword, encodedPassword);
+            }
+        };
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 
         service = new AdminAccountService(
@@ -156,6 +169,36 @@ class AdminAccountServiceTest {
         assertThat(wrongPassword).isInstanceOf(CustomException.class);
         assertThat(noAccount).isInstanceOf(CustomException.class);
         assertThat(wrongPassword.getMessage()).isEqualTo(noAccount.getMessage());
+    }
+
+    @Test
+    void 없는_계정으로_로그인해도_비밀번호_대조를_거친다() {
+        // 문구만 같게 해서는 부족하다. 계정이 없다고 곧바로 돌려보내면 응답이
+        // 눈에 띄게 빨라서, 시간을 재는 것만으로 어떤 주소가 등록돼 있는지 알 수
+        // 있다. 시간을 재는 시험은 흔들리므로 대조를 거쳤는지로 본다.
+        when(accountRepository.findByEmail("none@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.signIn("none@example.com", "아무-비밀번호입니다"))
+                .isInstanceOf(CustomException.class);
+
+        assertThat(matchCalls.get())
+                .as("대조를 건너뛰면 응답이 빨라져 등록된 주소가 드러난다")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void 비밀번호를_정하지_않은_계정도_대조를_거친다() {
+        // 초대만 받고 아직 비밀번호가 없는 계정이다. 여기서 곧바로 돌려보내면
+        // 등록은 됐지만 아직 안 쓰는 주소가 어느 것인지 갈린다.
+        AdminAccount invited = invitedAccount("invite-token", NOW.plusSeconds(3600));
+        when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.of(invited));
+
+        assertThatThrownBy(() -> service.signIn("a@example.com", "아무-비밀번호입니다"))
+                .isInstanceOf(CustomException.class);
+
+        assertThat(matchCalls.get())
+                .as("대조를 건너뛰면 응답이 빨라져 등록된 주소가 드러난다")
+                .isEqualTo(1);
     }
 
     @Test

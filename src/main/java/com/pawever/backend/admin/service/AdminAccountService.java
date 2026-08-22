@@ -8,6 +8,7 @@ import com.pawever.backend.admin.security.AdminTokenProvider;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,34 @@ public class AdminAccountService {
     private final HmacHasher hmacHasher;
     private final AdminProperties properties;
     private final Clock clock;
+
+    /**
+     * 없는 계정으로 로그인을 시도했을 때 대신 맞춰 보는 값.
+     *
+     * 아무도 모르는 값이라 어떤 비밀번호도 맞지 않는다. 맞추려고 두는 것이
+     * 아니라 같은 시간을 쓰려고 둔다.
+     *
+     * 기동할 때 미리 만든다. 처음 요청에서 만들면 그 요청만 두 배로 걸린다.
+     * 다만 비어 있으면 대조가 곧바로 false 를 돌려주고 시간이 다시 갈리므로,
+     * 읽는 쪽에서 한 번 더 확인한다.
+     */
+    private volatile String absentAccountHash;
+
+    @PostConstruct
+    void prepareAbsentAccountHash() {
+        absentAccountHash();
+    }
+
+    private String absentAccountHash() {
+        String prepared = absentAccountHash;
+        if (prepared == null) {
+            byte[] noise = new byte[32];
+            RANDOM.nextBytes(noise);
+            prepared = passwordEncoder.encode(Base64.getEncoder().encodeToString(noise));
+            absentAccountHash = prepared;
+        }
+        return prepared;
+    }
 
     /**
      * 첫 관리자를 세운다.
@@ -114,9 +143,15 @@ public class AdminAccountService {
         }
         AdminAccount account = accountRepository.findByEmail(normalizeEmail(email))
                 .orElse(null);
-        if (account == null
-                || !account.canSignIn()
-                || !passwordEncoder.matches(password, account.getPasswordHash())) {
+        boolean usable = account != null && account.canSignIn();
+
+        // 계정이 없어도 대조를 거친다. 없다고 곧바로 돌려보내면 응답이 눈에 띄게
+        // 빨라서, 오류 문구가 같아도 어떤 주소가 등록돼 있는지 시간으로 알 수 있다.
+        // 비밀번호를 아직 정하지 않은 계정도 같다.
+        String hash = usable ? account.getPasswordHash() : absentAccountHash();
+        boolean matched = passwordEncoder.matches(password, hash);
+
+        if (!usable || !matched) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         account.recordLogin(clock.instant());
