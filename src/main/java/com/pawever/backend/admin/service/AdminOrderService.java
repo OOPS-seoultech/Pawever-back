@@ -23,9 +23,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,6 +37,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 관리자 화면이 부르는 주문 조회와 수정.
@@ -77,6 +83,7 @@ public class AdminOrderService {
             AdminPrincipal principal,
             Set<GoodsOrderStatus> requestedStatuses,
             String query,
+            OrderFilter filter,
             int page,
             int size
     ) {
@@ -89,6 +96,7 @@ public class AdminOrderService {
                 fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(visible);
         List<GoodsSurveyFulfillment> matched = found.stream()
                 .filter(fulfillment -> matches(fulfillment, query, principal.role()))
+                .filter(fulfillment -> filter == null || filter.accepts(this, fulfillment))
                 .toList();
 
         int from = Math.min(page * size, matched.size());
@@ -187,6 +195,66 @@ public class AdminOrderService {
                 now
         ));
         return new AdminPhotoDownloadResponse(items);
+    }
+
+    /**
+     * 사진을 한 번에 내려받는다.
+     *
+     * 다섯 장을 한 장씩 누르면 다섯 번 눌러야 하고, 그때마다 만료 5분짜리
+     * 링크를 새로 받아야 한다. 제작에 넘길 때는 통째로 받는 편이 낫다.
+     *
+     * 링크를 내주는 것과 같은 이력을 남긴다. 파일이 실제로 나가는 것은
+     * 이쪽이므로 여기서 빠뜨리면 이력이 반쪽이 된다.
+     */
+    @Transactional
+    public PhotoArchive photoArchive(AdminPrincipal principal, String orderNumber) {
+        GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
+        List<GoodsSurveyPhoto> photos =
+                photoRepository.findByResponseId(fulfillment.getResponseId());
+        if (photos.isEmpty()) {
+            throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
+        }
+
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(buffer, StandardCharsets.UTF_8)) {
+            for (int index = 0; index < photos.size(); index++) {
+                GoodsSurveyPhoto photo = photos.get(index);
+                // 자리 번호를 파일 이름에 넣는다. 압축을 풀면 순서가 섞이는데,
+                // 제작 화면에서 부르는 번호와 맞아야 어느 사진인지 알 수 있다.
+                zip.putNextEntry(new ZipEntry(
+                        orderNumber + "_" + (index + 1) + extensionOf(photo.getContentType())));
+                zip.write(photoStorage.download(photo.getObjectKey()));
+                zip.closeEntry();
+            }
+        } catch (IOException exception) {
+            throw new CustomException(ErrorCode.INTERNAL_ERROR);
+        }
+
+        accessLogRepository.save(AdminAccessLog.of(
+                principal.accountId(),
+                "PHOTO_DOWNLOAD",
+                orderNumber,
+                clock.instant()
+        ));
+        return new PhotoArchive(orderNumber + "_photos.zip", buffer.toByteArray());
+    }
+
+    /** 압축 파일 하나. */
+    public record PhotoArchive(String fileName, byte[] bytes) {
+    }
+
+    private String extensionOf(String contentType) {
+        if (contentType == null) {
+            return "";
+        }
+        return switch (contentType.toLowerCase(Locale.ROOT)) {
+            case "image/jpeg", "image/jpg" -> ".jpg";
+            case "image/png" -> ".png";
+            case "image/webp" -> ".webp";
+            case "image/heic" -> ".heic";
+            // 모르는 형식은 확장자 없이 둔다. 잘못 붙이면 열리지 않는다.
+            default -> "";
+        };
     }
 
     @Transactional
@@ -335,6 +403,59 @@ public class AdminOrderService {
      *
      * 주문번호와 반려동물 이름은 제작에 필요한 값이라 그대로 둔다.
      */
+    /**
+     * 목록을 좁히는 조건.
+     *
+     * 굿즈 종류·제출일·사진 수. 요구서 4-1 이 요구하는 값이다. 상태 필터와
+     * 검색어와는 별개로 겹쳐 쓸 수 있다.
+     *
+     * 날짜는 한국 날짜로 받는다. 담당자가 화면에서 고르는 것은 UTC 자정이
+     * 아니라 한국 자정이다.
+     *
+     * @param submittedFrom 이 날짜부터(포함). 없으면 제한 없음
+     * @param submittedTo   이 날짜까지(포함). 없으면 제한 없음
+     * @param minPhotoCount 이 장수 이상. 사진이 덜 온 주문을 찾을 때 쓴다
+     */
+    public record OrderFilter(
+            String goodsType,
+            LocalDate submittedFrom,
+            LocalDate submittedTo,
+            Integer minPhotoCount
+    ) {
+
+        boolean isEmpty() {
+            return goodsType == null && submittedFrom == null
+                    && submittedTo == null && minPhotoCount == null;
+        }
+
+        boolean accepts(AdminOrderService service, GoodsSurveyFulfillment fulfillment) {
+            if (isEmpty()) {
+                return true;
+            }
+            if (goodsType != null && !goodsType.isBlank()
+                    && !goodsType.equalsIgnoreCase(fulfillment.getGoodsType())) {
+                return false;
+            }
+            if (submittedFrom != null || submittedTo != null) {
+                LocalDate submitted =
+                        service.submittedAt(fulfillment).atZone(KST).toLocalDate();
+                if (submittedFrom != null && submitted.isBefore(submittedFrom)) {
+                    return false;
+                }
+                if (submittedTo != null && submitted.isAfter(submittedTo)) {
+                    return false;
+                }
+            }
+            if (minPhotoCount != null) {
+                // 사진 수는 마지막에 본다. 여기서만 사진 표를 한 번 더 읽는다.
+                int count = service.photoRepository
+                        .findByResponseId(fulfillment.getResponseId()).size();
+                return count >= minPhotoCount;
+            }
+            return true;
+        }
+    }
+
     private boolean matches(GoodsSurveyFulfillment fulfillment, String query, AdminRole role) {
         if (query == null || query.isBlank()) {
             return true;
