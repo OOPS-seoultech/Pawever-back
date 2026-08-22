@@ -88,6 +88,15 @@ public enum ErrorCode {
     SURVEY_PHOTO_NOT_READY(HttpStatus.BAD_REQUEST, "사진 업로드가 완료되지 않았습니다."),
     SURVEY_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장소가 아직 설정되지 않았습니다."),
 
+    // 결제
+    PAYMENT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "결제가 아직 설정되지 않았습니다."),
+    PAYMENT_ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "결제할 주문을 찾을 수 없습니다."),
+    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "결제 금액이 주문 금액과 다릅니다."),
+    PAYMENT_ALREADY_EXPIRED(HttpStatus.GONE, "결제 시간이 지난 주문입니다."),
+    PAYMENT_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 있는 상태가 아닙니다."),
+    PAYMENT_CONFIRM_FAILED(HttpStatus.BAD_GATEWAY, "결제 승인에 실패했습니다."),
+    PAYMENT_CANCEL_FAILED(HttpStatus.BAD_GATEWAY, "결제 취소에 실패했습니다."),
+
     ADMIN_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "관리자 계정을 찾을 수 없습니다."),
     // 관리자 로그인이 열려 있지 않다는 사실 자체는 알려도 된다. 열려 있는데
     // 자격이 안 맞는 것과는 다른 상황이라 응답을 나눈다.
