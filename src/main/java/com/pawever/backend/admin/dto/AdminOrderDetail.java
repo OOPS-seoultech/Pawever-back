@@ -19,6 +19,8 @@ public record AdminOrderDetail(
         GoodsOrderStatus status,
         String statusLabel,
         String goodsType,
+        /** 사람이 읽는 굿즈 이름. */
+        String goodsTypeLabel,
         String petName,
         Pricing pricing,
         Payment payment,

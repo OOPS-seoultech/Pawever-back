@@ -14,6 +14,7 @@ import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatusChange;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
+import com.pawever.backend.goodssurvey.entity.GoodsTypeNames;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
@@ -65,6 +66,15 @@ public class AdminOrderService {
             EnumSet.copyOf(Arrays.stream(GoodsOrderStatus.values())
                     .filter(GoodsOrderStatus::isVisibleToProduction)
                     .toList());
+
+    /**
+     * 1차 체험단에서 갈 수 있는 상태.
+     *
+     * 결제가 없던 주문이라 결제 관련 상태로는 가지 않는다. 발송 완료는 여기
+     * 없다 — 송장을 등록해야 넘어간다.
+     */
+    private static final Set<GoodsOrderStatus> LEGACY_FREE_SETTABLE =
+            EnumSet.of(GoodsOrderStatus.IN_PRODUCTION);
 
     /** 제작팀이 스스로 바꿀 수 있는 상태. 발송과 취소는 관리자만 한다. */
     private static final Set<GoodsOrderStatus> PRODUCTION_SETTABLE =
@@ -136,6 +146,7 @@ public class AdminOrderService {
                 fulfillment.getStatus(),
                 fulfillment.getStatus().label(),
                 fulfillment.getGoodsType(),
+                GoodsTypeNames.of(fulfillment.getGoodsType()),
                 fulfillment.getPetName(),
                 new AdminOrderDetail.Pricing(
                         fulfillment.getListPriceKrw(),
@@ -271,6 +282,13 @@ public class AdminOrderService {
         // 취소는 결제 취소가 성공해야 넘어간다. 상태만 바꾸면 돈은 돌려주지 않고
         // 취소된 것으로 보인다.
         if (next == GoodsOrderStatus.CANCELED || next == GoodsOrderStatus.CANCEL_FAILED) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        // 1차 체험단은 결제라는 것이 없던 주문이다. 결제 완료로 바꾸면 받지도
+        // 않은 돈이 매출로 잡히고, 결제 만료·실패로 바꾸면 없던 결제가 실패한
+        // 것이 된다. 만들어 보내는 흐름으로만 나간다.
+        if (fulfillment.getStatus() == GoodsOrderStatus.LEGACY_FREE
+                && !LEGACY_FREE_SETTABLE.contains(next)) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
 
@@ -477,6 +495,7 @@ public class AdminOrderService {
                 fulfillment.getOrderNumber(),
                 submittedAt(fulfillment),
                 fulfillment.getGoodsType(),
+                GoodsTypeNames.of(fulfillment.getGoodsType()),
                 fulfillment.getPetName(),
                 PersonalDataMask.name(fulfillment.getGuardianName()),
                 PersonalDataMask.phone(fulfillment.getPhone()),

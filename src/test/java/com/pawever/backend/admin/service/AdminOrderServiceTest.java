@@ -136,15 +136,79 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 굿즈_코드를_사람이_읽는_이름으로_바꿔_내려준다() {
+        // 화면에 backplate 라고 떠 있으면 담당자가 매번 무엇인지 되물어야 한다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.LEGACY_FREE)));
+
+        var summary = service.list(ADMIN, Set.of(), null, null, 0, 20).orders().get(0);
+
+        assertThat(summary.goodsType()).isEqualTo("figure");
+        assertThat(summary.goodsTypeLabel()).isEqualTo("3D 전신 피규어");
+    }
+
+    @Test
+    void 제작팀도_1차_체험단을_볼_수_있다() {
+        // 돈은 받지 않았지만 만들어 보내야 하는 물건이다. 안 보이면 100건을
+        // 제작 화면에서 찾을 방법이 없다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order("PE-2026-000100", GoodsOrderStatus.LEGACY_FREE)));
+
+        assertThat(service.detail(PRODUCTION, "PE-2026-000100").orderNumber())
+                .isEqualTo("PE-2026-000100");
+    }
+
+    @Test
+    void 일차_체험단을_결제_완료로_바꿀_수_없다() {
+        // 결제라는 것이 없던 주문이다. 결제 완료로 바꾸면 받지도 않은 돈이
+        // 매출로 잡힌다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order("PE-2026-000100", GoodsOrderStatus.LEGACY_FREE)));
+
+        assertThatThrownBy(() -> service.changeStatus(
+                ADMIN, "PE-2026-000100", GoodsOrderStatus.PAYMENT_COMPLETED, null))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void 일차_체험단을_제작_중으로는_바꿀_수_있다() {
+        GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.LEGACY_FREE);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(ADMIN, "PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION, "착수");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 일차_체험단에도_송장을_넣을_수_있다() {
+        // 무료로 드린 것도 보내야 한다. 송장을 못 넣으면 100건이 발송 완료로
+        // 넘어가지 못한다.
+        GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.LEGACY_FREE);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order));
+
+        service.registerTracking(ADMIN, "PE-2026-000100", "CJ대한통운", "123456789");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.SHIPPED);
+    }
+
+    @Test
     void 제작팀에게는_결제_전_주문이_보이지_않는다() {
         // 돈을 받지 않은 주문이 제작 대기열에 섞이면 만들지 않아도 될 것을 만든다.
+        //
+        // 1차 체험단은 예외다. 결제는 없었지만 실제로 만들어 보내야 하는
+        // 물건이라 제작 화면에 있어야 한다. 결제를 기다리다 말았거나 실패한
+        // 주문과는 다르다.
         service.list(PRODUCTION, Set.of(), null, null, 0, 20);
 
         verify(fulfillmentRepository).findByStatusInOrderByCreatedAtDesc(
                 argThat(statuses ->
                         !statuses.contains(GoodsOrderStatus.PAYMENT_PENDING)
                                 && !statuses.contains(GoodsOrderStatus.PAYMENT_EXPIRED)
-                                && !statuses.contains(GoodsOrderStatus.LEGACY_FREE)
+                                && !statuses.contains(GoodsOrderStatus.PAYMENT_FAILED)
+                                && statuses.contains(GoodsOrderStatus.LEGACY_FREE)
                                 && statuses.contains(GoodsOrderStatus.PAYMENT_COMPLETED))
         );
     }

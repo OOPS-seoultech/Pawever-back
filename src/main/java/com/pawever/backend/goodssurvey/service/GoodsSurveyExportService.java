@@ -2,6 +2,7 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
+import com.pawever.backend.goodssurvey.entity.GoodsTypeNames;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhotoStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
@@ -42,20 +43,6 @@ import java.util.zip.ZipOutputStream;
 @Service
 @RequiredArgsConstructor
 public class GoodsSurveyExportService {
-
-    /**
-     * 화면에서 쓰는 굿즈 이름.
-     *
-     * 코드값만 보면 무엇을 만들어야 하는지 알 수 없어서 제작·배송 목록에 함께 싣는다.
-     * 굿즈가 늘면 여기에도 더해야 한다. 모르는 값은 코드값을 그대로 둬서 빈칸이 되지 않게 한다.
-     */
-    private static final Map<String, String> GOODS_NAMES = Map.of(
-            "acrylic", "아크릴 얼굴 키링",
-            "face", "3D 얼굴 키링",
-            "backplate", "뒷판형 3D 얼굴 키링",
-            "figure", "3D 전신 피규어",
-            "custom", "원하는 형태 직접 제안"
-    );
 
     // 사연은 화면 순서대로 고정해 둔다. 응답마다 키가 달라지지 않는다.
     private static final List<String> STORY_FIELDS = List.of(
@@ -246,7 +233,7 @@ public class GoodsSurveyExportService {
     }
 
     private String goodsName(String goodsType) {
-        return GOODS_NAMES.getOrDefault(goodsType, Objects.toString(goodsType, ""));
+        return GoodsTypeNames.of(goodsType);
     }
 
     private String extensionOf(String contentType) {
