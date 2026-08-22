@@ -56,6 +56,13 @@ public class GoodsSurveyProperties {
     private String marketingConsentVersion = "marketing-v1";
     // 파기 작업이 도는 시각. 접속이 가장 적은 새벽에 한 번 돈다.
     private String purgeCron = "0 15 4 * * *";
+
+    /**
+     * 결제 대기 만료를 걷어내는 주기.
+     *
+     * 결제 대기는 30분짜리다. 새벽 파기만 믿으면 하루를 기다린다.
+     */
+    private String paymentExpiryCron = "0 */5 * * * *";
     private String questionnaireVersion = "2026-07-25-v2";
     private Set<String> legacyQuestionnaireVersions = Set.of("2026-07-23-v1");
     private String privacyConsentVersion = "2026-07-23";

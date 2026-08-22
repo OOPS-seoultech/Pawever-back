@@ -109,6 +109,8 @@ survey:
     payment-window-minutes: 30
     # 보유 기간이 지난 개인정보를 지우는 작업. 한국 시각 기준 새벽 4시 15분.
     purge-cron: ${GOODS_SURVEY_PURGE_CRON:0 15 4 * * *}
+    # 결제 대기는 30분짜리다. 새벽 파기만 믿으면 하루를 기다린다.
+    payment-expiry-cron: ${GOODS_SURVEY_PAYMENT_EXPIRY_CRON:0 */5 * * * *}
     # 결과 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.
     export-token: ${GOODS_SURVEY_EXPORT_TOKEN:}
 
@@ -130,3 +132,12 @@ stats:
   # 설문 토큰과 나눠 둔다. 통계는 집계값뿐이라 팀 안에서 넓게 공유되는데,
   # 같은 토큰을 쓰면 이름·연락처·주소가 나가는 설문 통로까지 함께 열린다.
   export-token: ${STATS_EXPORT_TOKEN:}
+
+payment:
+  toss:
+    # 화면이 결제창을 여는 데 쓴다. 밖에 나가도 되는 값이다.
+    client-key: ${TOSS_CLIENT_KEY:}
+    # 승인·조회·취소에 쓴다. 서버 밖으로 나가면 안 된다.
+    # 비어 있으면 결제 통로가 열리지 않는다. 기본값을 두면 그 값이 운영에 나간다.
+    secret-key: ${TOSS_SECRET_KEY:}
+    base-url: ${TOSS_BASE_URL:https://api.tosspayments.com}

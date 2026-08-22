@@ -2,6 +2,7 @@ package com.pawever.backend.global.config;
 
 import com.pawever.backend.admin.config.AdminProperties;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.payment.config.TossPaymentsProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -50,6 +51,18 @@ class ApplicationYamlBindsToPropertiesTest {
         assertThat(properties.getSurveyRetentionDays()).isEqualTo(730);
         assertThat(properties.getContractRetentionDays()).isEqualTo(1825);
         assertThat(properties.getListPriceKrw()).isEqualTo(29_900);
+    }
+
+    @Test
+    void 결제_설정에_붙지_않는_키가_없다() throws IOException {
+        TossPaymentsProperties properties = bindStrictly("payment.toss", TossPaymentsProperties.class);
+
+        assertThat(properties.getBaseUrl()).isEqualTo("https://api.tosspayments.com");
+        // 키는 환경변수 자리라 여기서는 비어 있는 것이 맞다.
+        assertThat(properties.getClientKey()).isNotNull();
+        assertThat(properties.getSecretKey()).isNotNull();
+        // 비어 있으면 결제 통로가 열리지 않아야 한다. 기본값을 두면 그 값이 운영에 나간다.
+        assertThat(properties.isConfigured()).isFalse();
     }
 
     @Test
