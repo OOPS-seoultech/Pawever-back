@@ -100,13 +100,28 @@ public class AdminOrderService {
         return new AdminOrderListResponse(orders, matched.size(), page, size, summarize(found));
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 주문 하나를 연다.
+     *
+     * 읽기 전용이 아니다. 주소 전체를 열어 본 일을 이력에 남기기 때문이다.
+     * readOnly 로 되돌리면 이력만 조용히 사라지고 화면은 그대로 동작한다.
+     */
+    @Transactional
     public AdminOrderDetail detail(AdminPrincipal principal, String orderNumber) {
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
         List<GoodsSurveyPhoto> photos =
                 photoRepository.findByResponseId(fulfillment.getResponseId());
 
         boolean canSeeShipping = principal.role() == AdminRole.ADMIN;
+        if (canSeeShipping) {
+            // 제작팀에게는 주소가 내려가지 않으니 남길 것도 없다.
+            accessLogRepository.save(AdminAccessLog.of(
+                    principal.accountId(),
+                    "ADDRESS_VIEW",
+                    orderNumber,
+                    clock.instant()
+            ));
+        }
         return new AdminOrderDetail(
                 fulfillment.getOrderNumber(),
                 submittedAt(fulfillment),

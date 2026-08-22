@@ -19,6 +19,7 @@ import com.pawever.backend.goodssurvey.service.GoodsSurveyPhotoStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -152,6 +153,63 @@ class AdminOrderServiceTest {
         service.list(PRODUCTION, Set.of(GoodsOrderStatus.PAYMENT_PENDING), null, 0, 20);
 
         verify(fulfillmentRepository, never()).findByStatusInOrderByCreatedAtDesc(any());
+    }
+
+    @Test
+    void 관리자가_상세를_열면_주소_열람이_이력에_남는다() {
+        // 요구서 8장: 사진 다운로드·주문 취소·주소 전체 조회는 담당자·시각·
+        // 주문번호를 이력으로 남긴다. 남기지 않으면 정보가 밖으로 나갔을 때
+        // 누구를 거쳐 나갔는지 알 방법이 없다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        service.detail(ADMIN, "PE-2026-000001");
+
+        ArgumentCaptor<AdminAccessLog> captured = ArgumentCaptor.forClass(AdminAccessLog.class);
+        verify(accessLogRepository).save(captured.capture());
+        assertThat(captured.getValue().getAction()).isEqualTo("ADDRESS_VIEW");
+        assertThat(captured.getValue().getOrderNumber()).isEqualTo("PE-2026-000001");
+        assertThat(captured.getValue().getAdminAccountId()).isEqualTo(1L);
+    }
+
+    @Test
+    void 제작팀_상세는_주소_열람_이력을_남기지_않는다() {
+        // 주소가 내려가지 않으니 남길 것도 없다. 남기면 이력이 부풀어서
+        // 실제로 주소를 본 기록을 찾기 어려워진다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+
+        service.detail(PRODUCTION, "PE-2026-000001");
+
+        verify(accessLogRepository, never()).save(any());
+    }
+
+    @Test
+    void 상세_조회는_읽기_전용_트랜잭션이_아니다() throws Exception {
+        // 이력을 남기므로 쓰기가 필요하다. readOnly 로 되돌리면 화면은 그대로
+        // 동작하고 이력만 조용히 사라진다. 그때는 아무 시험도 깨지지 않는다.
+        org.springframework.transaction.annotation.Transactional annotation =
+                AdminOrderService.class
+                        .getMethod("detail", AdminPrincipal.class, String.class)
+                        .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.readOnly()).isFalse();
+    }
+
+    @Test
+    void 올리지_않은_사진_자리도_비어_있는_채로_내려간다() {
+        // 요구서: 선택 사진이 없으면 관리자 화면에 반드시 "미기입"으로 표시한다.
+        // 화면이 그렇게 그리려면 빈 자리도 함께 내려와야 한다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        AdminOrderDetail detail = service.detail(ADMIN, "PE-2026-000001");
+
+        assertThat(detail.photos()).hasSize(5);
+        assertThat(detail.photos()).extracting(AdminOrderDetail.Photo::slot)
+                .containsExactly(1, 2, 3, 4, 5);
+        assertThat(detail.photos()).allMatch(photo -> !photo.filled());
     }
 
     @Test
