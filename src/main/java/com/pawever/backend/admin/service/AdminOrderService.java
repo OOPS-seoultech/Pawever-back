@@ -88,7 +88,7 @@ public class AdminOrderService {
         List<GoodsSurveyFulfillment> found =
                 fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(visible);
         List<GoodsSurveyFulfillment> matched = found.stream()
-                .filter(fulfillment -> matches(fulfillment, query))
+                .filter(fulfillment -> matches(fulfillment, query, principal.role()))
                 .toList();
 
         int from = Math.min(page * size, matched.size());
@@ -310,14 +310,25 @@ public class AdminOrderService {
      *
      * 이름은 암호화해 저장해 데이터베이스에서 찾을 수 없다. 꺼내서 맞춰 본다.
      */
-    private boolean matches(GoodsSurveyFulfillment fulfillment, String query) {
+    /**
+     * 검색이 닿는 범위.
+     *
+     * 제작팀에게는 보호자 이름을 걸지 않는다. 목록에서 가리고 상세에서 비워
+     * 내려도, 검색이 이름에 걸리면 이름을 넣어 보고 결과 수로 확인할 수 있다.
+     * 값을 못 보게 하는 것과 값을 못 알아내게 하는 것은 다르다.
+     *
+     * 주문번호와 반려동물 이름은 제작에 필요한 값이라 그대로 둔다.
+     */
+    private boolean matches(GoodsSurveyFulfillment fulfillment, String query, AdminRole role) {
         if (query == null || query.isBlank()) {
             return true;
         }
         String needle = query.trim().toLowerCase(Locale.ROOT);
-        return contains(fulfillment.getOrderNumber(), needle)
-                || contains(fulfillment.getPetName(), needle)
-                || contains(fulfillment.getGuardianName(), needle);
+        if (contains(fulfillment.getOrderNumber(), needle)
+                || contains(fulfillment.getPetName(), needle)) {
+            return true;
+        }
+        return role == AdminRole.ADMIN && contains(fulfillment.getGuardianName(), needle);
     }
 
     private boolean contains(String value, String needle) {

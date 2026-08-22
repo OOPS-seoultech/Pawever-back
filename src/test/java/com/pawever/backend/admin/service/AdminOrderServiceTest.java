@@ -96,6 +96,43 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 제작팀은_보호자_이름으로_찾을_수_없다() {
+        // 목록에서 이름을 가리고 상세에서 비워 내려도, 검색이 이름에 걸리면
+        // 이름을 넣어 보고 결과 수로 확인할 수 있다. 값을 못 보게 하는 것과
+        // 값을 못 알아내게 하는 것은 다르다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+
+        AdminOrderListResponse response =
+                service.list(PRODUCTION, Set.of(), "김포에버", 0, 20);
+
+        assertThat(response.orders()).isEmpty();
+        assertThat(response.totalCount()).isZero();
+    }
+
+    @Test
+    void 관리자는_보호자_이름으로_찾을_수_있다() {
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+
+        AdminOrderListResponse response =
+                service.list(ADMIN, Set.of(), "김포에버", 0, 20);
+
+        assertThat(response.orders()).hasSize(1);
+    }
+
+    @Test
+    void 제작팀도_주문번호와_반려동물_이름으로는_찾을_수_있다() {
+        // 제작에 필요한 값이다. 이것까지 막으면 목록을 눈으로 훑는 수밖에 없다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+
+        assertThat(service.list(PRODUCTION, Set.of(), "몽이", 0, 20).orders()).hasSize(1);
+        assertThat(service.list(PRODUCTION, Set.of(), "PE-2026-000001", 0, 20).orders())
+                .hasSize(1);
+    }
+
+    @Test
     void 제작팀에게는_결제_전_주문이_보이지_않는다() {
         // 돈을 받지 않은 주문이 제작 대기열에 섞이면 만들지 않아도 될 것을 만든다.
         service.list(PRODUCTION, Set.of(), null, 0, 20);
