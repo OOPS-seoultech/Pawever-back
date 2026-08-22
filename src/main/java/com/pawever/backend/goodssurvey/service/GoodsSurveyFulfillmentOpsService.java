@@ -31,6 +31,7 @@ public class GoodsSurveyFulfillmentOpsService {
     private final GoodsSurveyProperties properties;
     private final GoodsOrderService orderService;
     private final HmacHasher hmacHasher;
+    private final GoodsSurveyUnsubscribeToken unsubscribeToken;
     private final Clock goodsSurveyClock;
 
     /**
@@ -81,15 +82,46 @@ public class GoodsSurveyFulfillmentOpsService {
     }
 
     /**
-     * 안내 이메일 수신거부를 접수한다.
+     * 메일에 실을 수신거부 링크의 값을 만든다.
      *
+     * 보내는 쪽은 주소를 알고 있으므로 여기서 번호를 찾아 서명해 준다.
+     * 링크에는 주소가 아니라 이 값을 싣는다.
+     */
+    @Transactional(readOnly = true)
+    public String issueUnsubscribeToken(String email) {
+        String emailHash = hmacHasher.hash("notice:" + normalizeEmail(email));
+        return noticeSubscriptionRepository.findByEmailHash(emailHash)
+                .map(subscription -> unsubscribeToken.issue(subscription.getId()))
+                .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND));
+    }
+
+    /**
+     * 링크를 눌러 스스로 수신거부한다.
+     *
+     * 사람 손을 거치지 않는다. 문의를 받아 처리하면 그 사이에 발송이 나갈 수
+     * 있는데, 요구서는 즉시 제외하라고 한다.
+     *
+     * 값이 맞지 않아도 조용히 넘어간다. 링크가 이미 처리됐는지, 우리가 만든
+     * 값이 맞는지를 알려 주면 그것으로 하나씩 넣어 볼 수 있게 된다.
+     */
+    @Transactional
+    public void unsubscribeByToken(String token) {
+        unsubscribeToken.verify(token)
+                .flatMap(noticeSubscriptionRepository::findById)
+                .ifPresent(subscription -> subscription.unsubscribe(goodsSurveyClock.instant()));
+    }
+
+    /**
+     * 문의를 받아 사람이 수신거부를 처리한다.
+     *
+     * 링크를 누르지 못하는 경우를 위해 남겨 둔다. 내부 토큰으로 막혀 있다.
      * 표시만 남기고, 주소는 다음 파기 작업이 돌 때 지워진다. 없는 주소를
      * 물어도 접수한 것처럼 답한다. 어떤 주소가 등록돼 있는지 확인하는
      * 통로로 쓰이면 안 된다.
      */
     @Transactional
     public void unsubscribeNotice(String email) {
-        String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        String normalized = normalizeEmail(email);
         if (normalized.isBlank()) {
             return;
         }
@@ -97,5 +129,9 @@ public class GoodsSurveyFulfillmentOpsService {
         String emailHash = hmacHasher.hash("notice:" + normalized);
         noticeSubscriptionRepository.findByEmailHash(emailHash)
                 .ifPresent(subscription -> subscription.unsubscribe(goodsSurveyClock.instant()));
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 }

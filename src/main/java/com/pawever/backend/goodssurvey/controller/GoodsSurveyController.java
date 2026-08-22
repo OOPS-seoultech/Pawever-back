@@ -14,6 +14,7 @@ import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
 import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.service.GoodsSurveyService;
 import jakarta.validation.Valid;
+import com.pawever.backend.goodssurvey.dto.GoodsSurveyUnsubscribeRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,6 +34,7 @@ public class GoodsSurveyController {
     private static final String EDIT_TOKEN_HEADER = "X-Survey-Edit-Token";
 
     private final GoodsSurveyService service;
+    private final com.pawever.backend.goodssurvey.service.GoodsSurveyFulfillmentOpsService opsService;
 
     @GetMapping("/campaign")
     public ApiResponse<GoodsSurveyCampaignResponse> getCampaign() {
@@ -91,6 +93,24 @@ public class GoodsSurveyController {
             @Valid @RequestBody SubscribeGoodsSurveyNoticeRequest request
     ) {
         service.subscribeNotice(responseId, editToken, request);
+        return ApiResponse.ok();
+    }
+
+    /**
+     * 안내 메일 수신을 거부한다.
+     *
+     * 값은 본문으로 받는다. 주소에 실으면 링크를 거치는 모든 곳에 남는다.
+     *
+     * 그리고 GET 이 아니라 POST 다. 회사 메일 검사기는 메일 안의 링크를 미리
+     * 열어 본다. GET 으로 해지되게 두면 사람이 누르지 않았는데 해지된다.
+     *
+     * 값이 맞지 않아도 성공으로 답한다. 어떤 값이 살아 있는지 알려 주면
+     * 그것으로 하나씩 넣어 볼 수 있게 된다.
+     */
+    @PostMapping("/notice-subscriptions/unsubscribe")
+    public ApiResponse<Void> unsubscribeNotice(
+            @Valid @RequestBody GoodsSurveyUnsubscribeRequest request) {
+        opsService.unsubscribeByToken(request.token());
         return ApiResponse.ok();
     }
 
