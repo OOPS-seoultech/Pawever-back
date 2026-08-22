@@ -7,6 +7,7 @@ import com.pawever.backend.admin.entity.AdminRole;
 import com.pawever.backend.admin.repository.AdminAccessLogRepository;
 import com.pawever.backend.admin.security.AdminPrincipal;
 import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
@@ -61,6 +62,7 @@ class AdminOrderServiceTest {
     @Mock private AdminAccessLogRepository accessLogRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
     @Mock private GoodsOrderService orderService;
+    @Mock private com.pawever.backend.payment.client.TossPaymentsClient tossClient;
 
     private AdminOrderService service;
 
@@ -73,6 +75,7 @@ class AdminOrderServiceTest {
                 accessLogRepository,
                 photoStorage,
                 orderService,
+                tossClient,
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
         lenient().when(statusChangeRepository.findByResponseIdOrderByChangedAtAsc(anyString()))
@@ -501,6 +504,91 @@ class AdminOrderServiceTest {
 
         assertThat(service.list(ADMIN, Set.of(), null, 두장이상, 0, 20).orders()).hasSize(1);
         assertThat(service.list(ADMIN, Set.of(), null, 세장이상, 0, 20).orders()).isEmpty();
+    }
+
+    @Test
+    void 결제_취소가_성공해야_주문이_취소된다() {
+        GoodsSurveyFulfillment order = paidOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(order));
+
+        service.cancel(ADMIN, "PE-2026-000101", "고객 요청");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.CANCELED);
+        assertThat(order.getCancelReason()).isEqualTo("고객 요청");
+    }
+
+    @Test
+    void 결제_취소가_실패하면_취소_처리_실패로_남긴다() {
+        // 상태를 먼저 바꾸면 돈은 그대로 두고 취소된 것으로 읽힌다.
+        // 사람이 확인해야 하는 건이라 조용히 지나가게 두지 않는다.
+        GoodsSurveyFulfillment order = paidOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(order));
+        when(tossClient.cancel(anyString(), anyString(), anyString()))
+                .thenThrow(new CustomException(ErrorCode.PAYMENT_CANCEL_FAILED));
+
+        assertThatThrownBy(() -> service.cancel(ADMIN, "PE-2026-000101", "제작 불가"))
+                .isInstanceOf(CustomException.class);
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.CANCEL_FAILED);
+        assertThat(order.getCancelReason()).isEqualTo("제작 불가");
+    }
+
+    @Test
+    void 취소할_수_없는_상태면_토스를_부르지도_않는다() {
+        // 결제 대기·발송 완료·이미 취소된 건이다. 부르면 엉뚱한 취소가 나간다.
+        GoodsSurveyFulfillment order = paidOrder(GoodsOrderStatus.SHIPPED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.cancel(ADMIN, "PE-2026-000101", "고객 요청"))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_NOT_CANCELABLE);
+
+        verify(tossClient, never()).cancel(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 결제한_적_없는_주문은_취소하지_않는다() {
+        // 1차 체험단처럼 결제 번호가 없는 건이다. 돌려줄 돈이 없다.
+        GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.cancel(ADMIN, "PE-2026-000100", "고객 요청"))
+                .isInstanceOf(CustomException.class);
+
+        verify(tossClient, never()).cancel(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 제작팀은_취소할_수_없다() {
+        assertThatThrownBy(() -> service.cancel(PRODUCTION, "PE-2026-000101", "고객 요청"))
+                .isInstanceOf(CustomException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.FORBIDDEN);
+
+        verify(tossClient, never()).cancel(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 같은_주문을_두_번_눌러도_이중_환불이_되지_않게_주문번호를_멱등키로_보낸다() {
+        // 토스가 같은 멱등 키에 앞의 결과를 그대로 돌려준다.
+        GoodsSurveyFulfillment order = paidOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(order));
+
+        service.cancel(ADMIN, "PE-2026-000101", "고객 요청");
+
+        verify(tossClient).cancel("toss-pay-1", "고객 요청", "PE-2026-000101");
+    }
+
+    /** 결제까지 끝난 주문. */
+    private GoodsSurveyFulfillment paidOrder(GoodsOrderStatus status) {
+        GoodsSurveyFulfillment fulfillment = order("PE-2026-000101", GoodsOrderStatus.PAYMENT_PENDING);
+        fulfillment.markPaid(NOW, "toss-pay-1", "간편결제");
+        fulfillment.changeStatus(status);
+        return fulfillment;
     }
 
     private GoodsSurveyFulfillment order(String orderNumber, GoodsOrderStatus status) {
