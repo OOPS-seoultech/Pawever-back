@@ -96,6 +96,7 @@ public enum ErrorCode {
     PAYMENT_NOT_PAYABLE(HttpStatus.CONFLICT, "결제할 수 있는 상태가 아닙니다."),
     PAYMENT_CONFIRM_FAILED(HttpStatus.BAD_GATEWAY, "결제 승인에 실패했습니다."),
     PAYMENT_CANCEL_FAILED(HttpStatus.BAD_GATEWAY, "결제 취소에 실패했습니다."),
+    PAYMENT_NOT_CANCELABLE(HttpStatus.CONFLICT, "취소할 수 있는 주문이 아닙니다."),
 
     ADMIN_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "관리자 계정을 찾을 수 없습니다."),
     // 관리자 로그인이 열려 있지 않다는 사실 자체는 알려도 된다. 열려 있는데

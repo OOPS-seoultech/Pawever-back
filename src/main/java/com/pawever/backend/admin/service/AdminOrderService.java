@@ -15,6 +15,7 @@ import com.pawever.backend.goodssurvey.entity.GoodsOrderStatusChange;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsTypeNames;
+import com.pawever.backend.payment.client.TossPaymentsClient;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
@@ -86,6 +87,7 @@ public class AdminOrderService {
     private final AdminAccessLogRepository accessLogRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsOrderService orderService;
+    private final TossPaymentsClient tossClient;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -304,6 +306,62 @@ public class AdminOrderService {
     }
 
     /** 송장을 넣으면 발송 완료로 넘어간다. 관리자만 한다. */
+    /**
+     * 주문을 취소한다.
+     *
+     * 상태를 먼저 바꾸지 않는다. 결제 취소가 실패했는데 주문만 취소로 보이면
+     * 돈은 그대로 두고 취소된 것으로 읽힌다. 토스가 취소를 받아들인 뒤에만
+     * 취소로 옮긴다.
+     *
+     * 실패하면 취소 처리 실패로 남긴다. 사람이 확인해야 하는 건이라 조용히
+     * 지나가게 두지 않는다.
+     *
+     * 멱등 키에 주문번호를 쓴다. 같은 주문을 두 번 눌러도 토스가 앞의 결과를
+     * 그대로 돌려주므로 이중 환불이 되지 않는다.
+     */
+    @Transactional
+    public void cancel(AdminPrincipal principal, String orderNumber, String reason) {
+        requireAdmin(principal);
+        GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
+
+        if (!fulfillment.getStatus().isCancelable()) {
+            throw new CustomException(ErrorCode.PAYMENT_NOT_CANCELABLE);
+        }
+        if (fulfillment.getPaymentKey() == null || fulfillment.getPaymentKey().isBlank()) {
+            // 결제 없이 만들어진 주문이다. 돌려줄 돈이 없으므로 취소할 것도 없다.
+            throw new CustomException(ErrorCode.PAYMENT_NOT_CANCELABLE);
+        }
+
+        GoodsOrderStatus before = fulfillment.getStatus();
+        try {
+            tossClient.cancel(fulfillment.getPaymentKey(), reason, orderNumber);
+        } catch (RuntimeException exception) {
+            fulfillment.cancel(GoodsOrderStatus.CANCEL_FAILED, reason);
+            orderService.recordManualChange(
+                    fulfillment.getResponseId(),
+                    before,
+                    GoodsOrderStatus.CANCEL_FAILED,
+                    String.valueOf(principal.accountId()),
+                    reason
+            );
+            accessLogRepository.save(AdminAccessLog.of(
+                    principal.accountId(), "ORDER_CANCEL_FAILED", orderNumber, clock.instant()));
+            throw exception;
+        }
+
+        fulfillment.cancel(GoodsOrderStatus.CANCELED, reason);
+        orderService.recordManualChange(
+                fulfillment.getResponseId(),
+                before,
+                GoodsOrderStatus.CANCELED,
+                String.valueOf(principal.accountId()),
+                reason
+        );
+        // 요구서 8장: 주문 취소도 이력으로 남긴다.
+        accessLogRepository.save(AdminAccessLog.of(
+                principal.accountId(), "ORDER_CANCEL", orderNumber, clock.instant()));
+    }
+
     @Transactional
     public void registerTracking(
             AdminPrincipal principal,

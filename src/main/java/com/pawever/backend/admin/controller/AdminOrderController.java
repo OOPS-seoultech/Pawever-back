@@ -128,17 +128,18 @@ public class AdminOrderController {
     }
 
     /**
-     * 취소는 아직 열지 않는다.
+     * 주문을 취소한다.
      *
-     * 결제 취소 API 가 성공해야 취소로 넘어간다. 결제를 붙이기 전에 이 통로를
-     * 열면 돈은 그대로 두고 취소된 것으로 보이는 주문이 생긴다.
+     * 결제 취소가 성공해야 취소로 넘어간다. 실패하면 취소 처리 실패로 남고
+     * 사람이 확인해야 한다.
      */
     @PostMapping("/{orderNumber}/cancel")
     public ApiResponse<Void> cancel(
             @PathVariable String orderNumber,
             @Valid @RequestBody AdminOrderCancelRequest request
     ) {
-        throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
+        orderService.cancel(currentPrincipal(), orderNumber, request.reason());
+        return ApiResponse.ok();
     }
 
     private AdminPrincipal currentPrincipal() {
