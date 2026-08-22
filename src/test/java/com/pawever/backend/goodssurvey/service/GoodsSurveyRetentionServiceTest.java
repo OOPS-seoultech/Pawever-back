@@ -285,7 +285,7 @@ class GoodsSurveyRetentionServiceTest {
                 NOW.minusSeconds(200 * 86_400L),
                 true,
                 "PE-2026-000001",
-                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인"),
+                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인", 3_000),
                 false,
                 "marketing-v1",
                 30,

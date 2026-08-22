@@ -91,8 +91,10 @@ class GoodsOrderServiceTest {
         GoodsOrderPricing pricing = orderService.priceFor(true);
 
         assertThat(pricing.listPriceKrw()).isEqualTo(29_900);
-        assertThat(pricing.discountAmountKrw()).isEqualTo(5_000);
-        assertThat(pricing.paymentAmountKrw()).isEqualTo(24_900);
+        assertThat(pricing.discountAmountKrw()).isEqualTo(6_000);
+        assertThat(pricing.shippingFeeKrw()).isEqualTo(3_000);
+        // 제작비 23,900 + 배송비 3,000
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(26_900);
         assertThat(pricing.promotionName()).isEqualTo("설문 참여 할인");
     }
 
@@ -102,7 +104,8 @@ class GoodsOrderServiceTest {
         // 여기서 깎아 주면 설문을 끝까지 답할 까닭이 없어진다.
         GoodsOrderPricing pricing = orderService.priceFor(false);
 
-        assertThat(pricing.paymentAmountKrw()).isEqualTo(29_900);
+        // 제작비 29,900 + 배송비 3,000
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(32_900);
         assertThat(pricing.discountAmountKrw()).isZero();
         assertThat(pricing.promotionName()).isNull();
     }

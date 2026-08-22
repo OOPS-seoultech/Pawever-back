@@ -363,7 +363,7 @@ class AdminOrderServiceTest {
                 NOW,
                 true,
                 orderNumber,
-                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인"),
+                GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인", 3_000),
                 false,
                 "marketing-v1",
                 30,

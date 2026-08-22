@@ -102,7 +102,9 @@ survey:
     # 굿즈 정상가. 2차 주력은 3D 전신 피규어 한 종이라 값이 하나다.
     list-price-krw: ${GOODS_LIST_PRICE_KRW:29900}
     # 설문에 답하고 온 사람에게 깎아 주는 금액.
-    survey-discount-krw: ${GOODS_SURVEY_DISCOUNT_KRW:5000}
+    survey-discount-krw: ${GOODS_SURVEY_DISCOUNT_KRW:6000}
+    # 화면에는 따로 보여 주고 결제는 한 번에 받는다.
+    shipping-fee-krw: ${GOODS_SHIPPING_FEE_KRW:3000}
     # 주문을 만든 뒤 결제를 기다리는 시간.
     payment-window-minutes: 30
     # 보유 기간이 지난 개인정보를 지우는 작업. 한국 시각 기준 새벽 4시 15분.

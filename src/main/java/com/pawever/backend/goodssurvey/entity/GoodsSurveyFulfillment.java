@@ -116,6 +116,15 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     private String promotionName;
 
     /**
+     * 배송비.
+     *
+     * 화면에는 제작비와 나눠 보여 주고 결제는 한 번에 받는다. 청구액에 이미
+     * 더해져 있지만, 얼마가 배송비였는지 나중에 알아야 해서 따로 적는다.
+     */
+    @Column(nullable = false)
+    private int shippingFeeKrw;
+
+    /**
      * 실제 청구할 금액.
      *
      * 주문을 만든 시점의 값이다. 이후 가격이나 프로모션이 바뀌어도 이 값은 그대로
@@ -220,6 +229,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         fulfillment.listPriceKrw = pricing.listPriceKrw();
         fulfillment.discountAmountKrw = pricing.discountAmountKrw();
         fulfillment.promotionName = pricing.promotionName();
+        fulfillment.shippingFeeKrw = pricing.shippingFeeKrw();
         fulfillment.paymentAmountKrw = pricing.paymentAmountKrw();
         fulfillment.paymentExpiresAt =
                 privacyConsentedAt.plus(paymentWindowMinutes, ChronoUnit.MINUTES);

@@ -566,7 +566,8 @@ public class GoodsSurveyService {
                 fulfillment.getPaymentAmountKrw(),
                 fulfillment.getOrderNumber(),
                 fulfillment.getListPriceKrw(),
-                fulfillment.getDiscountAmountKrw()
+                fulfillment.getDiscountAmountKrw(),
+                fulfillment.getShippingFeeKrw()
         );
     }
 
