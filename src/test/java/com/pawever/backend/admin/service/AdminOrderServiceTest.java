@@ -26,7 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -87,7 +89,7 @@ class AdminOrderServiceTest {
         when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
                 .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
 
-        AdminOrderListResponse response = service.list(ADMIN, Set.of(), null, 0, 20);
+        AdminOrderListResponse response = service.list(ADMIN, Set.of(), null, null, 0, 20);
 
         var summary = response.orders().get(0);
         assertThat(summary.guardianNameMasked()).isEqualTo("김***");
@@ -105,7 +107,7 @@ class AdminOrderServiceTest {
                 .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
 
         AdminOrderListResponse response =
-                service.list(PRODUCTION, Set.of(), "김포에버", 0, 20);
+                service.list(PRODUCTION, Set.of(), "김포에버", null, 0, 20);
 
         assertThat(response.orders()).isEmpty();
         assertThat(response.totalCount()).isZero();
@@ -117,7 +119,7 @@ class AdminOrderServiceTest {
                 .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
 
         AdminOrderListResponse response =
-                service.list(ADMIN, Set.of(), "김포에버", 0, 20);
+                service.list(ADMIN, Set.of(), "김포에버", null, 0, 20);
 
         assertThat(response.orders()).hasSize(1);
     }
@@ -128,15 +130,15 @@ class AdminOrderServiceTest {
         when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
                 .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
 
-        assertThat(service.list(PRODUCTION, Set.of(), "몽이", 0, 20).orders()).hasSize(1);
-        assertThat(service.list(PRODUCTION, Set.of(), "PE-2026-000001", 0, 20).orders())
+        assertThat(service.list(PRODUCTION, Set.of(), "몽이", null, 0, 20).orders()).hasSize(1);
+        assertThat(service.list(PRODUCTION, Set.of(), "PE-2026-000001", null, 0, 20).orders())
                 .hasSize(1);
     }
 
     @Test
     void 제작팀에게는_결제_전_주문이_보이지_않는다() {
         // 돈을 받지 않은 주문이 제작 대기열에 섞이면 만들지 않아도 될 것을 만든다.
-        service.list(PRODUCTION, Set.of(), null, 0, 20);
+        service.list(PRODUCTION, Set.of(), null, null, 0, 20);
 
         verify(fulfillmentRepository).findByStatusInOrderByCreatedAtDesc(
                 argThat(statuses ->
@@ -150,7 +152,7 @@ class AdminOrderServiceTest {
     @Test
     void 제작팀이_결제_대기_상태를_지정해_요청해도_넓혀지지_않는다() {
         // 화면이 보내는 값을 그대로 믿으면 요청을 고쳐 볼 수 없는 것을 본다.
-        service.list(PRODUCTION, Set.of(GoodsOrderStatus.PAYMENT_PENDING), null, 0, 20);
+        service.list(PRODUCTION, Set.of(GoodsOrderStatus.PAYMENT_PENDING), null, null, 0, 20);
 
         verify(fulfillmentRepository, never()).findByStatusInOrderByCreatedAtDesc(any());
     }
@@ -342,6 +344,99 @@ class AdminOrderServiceTest {
 
     private static <T> T argThat(org.mockito.ArgumentMatcher<T> matcher) {
         return org.mockito.ArgumentMatchers.argThat(matcher);
+    }
+
+    @Test
+    void 사진을_한_번에_받으면_자리_번호가_파일_이름에_남는다() {
+        // 압축을 풀면 순서가 섞인다. 제작 화면에서 부르는 번호와 맞아야
+        // 어느 사진인지 알 수 있다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+        when(photoRepository.findByResponseId(anyString()))
+                .thenReturn(List.of(photo("a"), photo("b")));
+        when(photoStorage.download(anyString())).thenReturn("사진".getBytes());
+
+        var archive = service.photoArchive(ADMIN, "PE-2026-000001");
+
+        assertThat(archive.fileName()).isEqualTo("PE-2026-000001_photos.zip");
+        List<String> names = new ArrayList<>();
+        try (var zip = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(archive.bytes()))) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                names.add(entry.getName());
+            }
+        } catch (java.io.IOException exception) {
+            throw new AssertionError(exception);
+        }
+        assertThat(names)
+                .containsExactly("PE-2026-000001_1.jpg", "PE-2026-000001_2.jpg");
+    }
+
+    @Test
+    void 사진을_한_번에_받아도_이력이_남는다() {
+        // 파일이 실제로 나가는 것은 이쪽이다. 여기서 빠뜨리면 이력이 반쪽이 된다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+        when(photoRepository.findByResponseId(anyString())).thenReturn(List.of(photo("a")));
+        when(photoStorage.download(anyString())).thenReturn("사진".getBytes());
+
+        service.photoArchive(PRODUCTION, "PE-2026-000001");
+
+        ArgumentCaptor<AdminAccessLog> captured = ArgumentCaptor.forClass(AdminAccessLog.class);
+        verify(accessLogRepository).save(captured.capture());
+        assertThat(captured.getValue().getAction()).isEqualTo("PHOTO_DOWNLOAD");
+    }
+
+    @Test
+    void 제작팀이_결제_전_주문의_사진을_한_번에_받으려_해도_막힌다() {
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000009"))
+                .thenReturn(Optional.of(order("PE-2026-000009", GoodsOrderStatus.PAYMENT_PENDING)));
+
+        assertThatThrownBy(() -> service.photoArchive(PRODUCTION, "PE-2026-000009"))
+                .isInstanceOf(CustomException.class);
+        verify(photoStorage, never()).download(anyString());
+    }
+
+    @Test
+    void 제출일로_목록을_좁힌다() {
+        // 담당자가 고르는 날짜는 한국 날짜다. UTC 자정으로 자르면 하루가 밀린다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        var 포함 = new AdminOrderService.OrderFilter(
+                null, LocalDate.of(2026, 8, 20), LocalDate.of(2026, 8, 20), null);
+        var 이후 = new AdminOrderService.OrderFilter(
+                null, LocalDate.of(2026, 8, 21), null, null);
+
+        assertThat(service.list(ADMIN, Set.of(), null, 포함, 0, 20).orders()).hasSize(1);
+        assertThat(service.list(ADMIN, Set.of(), null, 이후, 0, 20).orders()).isEmpty();
+    }
+
+    @Test
+    void 굿즈_종류로_목록을_좁힌다() {
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        var 맞음 = new AdminOrderService.OrderFilter("figure", null, null, null);
+        var 다름 = new AdminOrderService.OrderFilter("acrylic", null, null, null);
+
+        assertThat(service.list(ADMIN, Set.of(), null, 맞음, 0, 20).orders()).hasSize(1);
+        assertThat(service.list(ADMIN, Set.of(), null, 다름, 0, 20).orders()).isEmpty();
+    }
+
+    @Test
+    void 사진_수로_목록을_좁힌다() {
+        // 사진이 덜 온 주문을 찾을 때 쓴다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+        when(photoRepository.findByResponseId(anyString()))
+                .thenReturn(List.of(photo("a"), photo("b")));
+
+        var 두장이상 = new AdminOrderService.OrderFilter(null, null, null, 2);
+        var 세장이상 = new AdminOrderService.OrderFilter(null, null, null, 3);
+
+        assertThat(service.list(ADMIN, Set.of(), null, 두장이상, 0, 20).orders()).hasSize(1);
+        assertThat(service.list(ADMIN, Set.of(), null, 세장이상, 0, 20).orders()).isEmpty();
     }
 
     private GoodsSurveyFulfillment order(String orderNumber, GoodsOrderStatus status) {

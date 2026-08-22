@@ -14,6 +14,10 @@ import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -45,6 +50,13 @@ public class AdminOrderController {
     public ApiResponse<AdminOrderListResponse> list(
             @RequestParam(required = false) List<GoodsOrderStatus> status,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String goodsType,
+            // 한국 날짜다. 담당자가 화면에서 고르는 것은 UTC 자정이 아니다.
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedTo,
+            @RequestParam(required = false) Integer minPhotoCount,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
@@ -55,6 +67,8 @@ public class AdminOrderController {
                 currentPrincipal(),
                 statuses,
                 q,
+                new AdminOrderService.OrderFilter(
+                        goodsType, submittedFrom, submittedTo, minPhotoCount),
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), MAX_PAGE_SIZE)
         ));
@@ -69,6 +83,24 @@ public class AdminOrderController {
     @PostMapping("/{orderNumber}/photo-links")
     public ApiResponse<AdminPhotoDownloadResponse> photoLinks(@PathVariable String orderNumber) {
         return ApiResponse.ok(orderService.photoLinks(currentPrincipal(), orderNumber));
+    }
+
+    /**
+     * 사진을 한 번에 내려받는다.
+     *
+     * 파일이 그대로 나가는 통로라 링크를 내줄 때와 같은 이력을 남긴다.
+     */
+    @PostMapping("/{orderNumber}/photos.zip")
+    public ResponseEntity<byte[]> photoArchive(@PathVariable String orderNumber) {
+        AdminOrderService.PhotoArchive archive =
+                orderService.photoArchive(currentPrincipal(), orderNumber);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + archive.fileName() + "\"")
+                // 고객 사진이 담긴 응답이다. 어디에도 남지 않게 한다.
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(archive.bytes());
     }
 
     @PostMapping("/{orderNumber}/status")
