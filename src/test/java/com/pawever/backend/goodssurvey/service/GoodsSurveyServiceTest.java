@@ -16,6 +16,7 @@ import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
+import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderSequence;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderSequenceRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -125,6 +127,7 @@ class GoodsSurveyServiceTest {
                 testClock
         );
 
+        publishedEvents = new ArrayList<>();
         service = new GoodsSurveyService(
                 campaignRepository,
                 responseRepository,
@@ -138,9 +141,18 @@ class GoodsSurveyServiceTest {
                 new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
                 properties,
                 orderService,
-                testClock
+                testClock,
+                publishedEvents::add
         );
     }
+
+    /**
+     * 접수가 무엇을 알렸는지 붙들어 둔다.
+     *
+     * 실제로는 커밋된 뒤에 다른 스레드가 받아서 텔레그램으로 보낸다. 여기서
+     * 보는 것은 거기까지 가는 값이 맞느냐다.
+     */
+    private List<Object> publishedEvents;
 
     /**
      * 설문·굿즈 스위치를 바꿔 끼운다.
@@ -651,6 +663,107 @@ class GoodsSurveyServiceTest {
 
         assertThat(publicPhoto.isPublicationAgreed()).isTrue();
         assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+    }
+
+    @Test
+    void 접수되면_팀에_알릴_거리를_내보낸다() {
+        // 팀 채널이 이 값을 보고 움직인다. 여기서 빠진 항목은 어드민을
+        // 열어야만 보인다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.readTree(
+                "{\"visitId\":\"visit-notify\","
+                        + "\"lastTouch\":{\"utm_source\":\"instagram\",\"utm_medium\":\"cpc\"}}"
+        );
+        submitOnce(tracking, "idempotency-notify", "몽이", "황성욱", "01012345678");
+
+        GoodsOrderSubmittedEvent event = (GoodsOrderSubmittedEvent) publishedEvents.stream()
+                .filter(GoodsOrderSubmittedEvent.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(event.guardianName()).isEqualTo("황성욱");
+        assertThat(event.phone()).isEqualTo("01012345678");
+        assertThat(event.petName()).isEqualTo("몽이");
+        // 식별자가 아니라 사람이 읽는 이름이어야 한다.
+        assertThat(event.goodsLabel()).isEqualTo("3D 전신 피규어");
+        assertThat(event.trafficSource()).isEqualTo("instagram / cpc");
+        assertThat(event.orderNumber()).isNotBlank();
+        assertThat(event.surveyParticipant()).isTrue();
+    }
+
+    @Test
+    void 접수가_거절되면_아무것도_알리지_않는다() {
+        // 정원이 찬 뒤에도 알림이 나가면, 받지 않은 주문을 팀이 처리하러 간다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-full");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(reservableAnswers(), "q33", 30_000L, Map.of(), tracking)
+        );
+        useCampaign(true, false);
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-full",
+                applicationRequest(tracking, "몽이", "황성욱", "01012345678")
+        )).isInstanceOf(Exception.class);
+
+        assertThat(publishedEvents).noneMatch(GoodsOrderSubmittedEvent.class::isInstance);
+    }
+
+    private void submitOnce(
+            JsonNode tracking,
+            String idempotencyKey,
+            String petName,
+            String guardianName,
+            String phone
+    ) {
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(reservableAnswers(), "q33", 30_000L, Map.of(), tracking)
+        );
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(List.of(confirmedPhoto("photo-1", draft.responseId())));
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                idempotencyKey,
+                applicationRequest(tracking, petName, guardianName, phone)
+        );
+    }
+
+    private SubmitGoodsSurveyApplicationRequest applicationRequest(
+            JsonNode tracking,
+            String petName,
+            String guardianName,
+            String phone
+    ) {
+        return new SubmitGoodsSurveyApplicationRequest(
+                "figure",
+                "",
+                petName,
+                guardianName,
+                phone,
+                "01234",
+                "서울시 노원구",
+                "",
+                List.of("photo-1"),
+                List.of(),
+                "conversion-notify",
+                tracking,
+                true,
+                true,
+                false
+        );
     }
 
     @Test

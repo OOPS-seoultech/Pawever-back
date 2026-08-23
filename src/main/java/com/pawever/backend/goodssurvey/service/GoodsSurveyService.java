@@ -15,6 +15,8 @@ import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
 import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
+import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
+import com.pawever.backend.goodssurvey.event.TrafficSource;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
@@ -30,6 +32,7 @@ import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyStoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -62,6 +65,7 @@ public class GoodsSurveyService {
      * 1차 신청 기록에는 다른 값이 남아 있다. 그때 실제로 신청한 것이라 고치지 않는다.
      */
     private static final Set<String> GOODS_TYPES = Set.of("figure");
+    private static final Map<String, String> GOODS_LABELS = Map.of("figure", "3D 전신 피규어");
     /**
      * 랜딩에서 굿즈를 고르지 않고 설문에 들어온 경우.
      *
@@ -90,6 +94,7 @@ public class GoodsSurveyService {
     private final GoodsSurveyProperties properties;
     private final GoodsOrderService orderService;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public GoodsSurveyCampaignResponse getCampaign() {
@@ -515,6 +520,19 @@ public class GoodsSurveyService {
         fulfillmentRepository.save(fulfillment);
         orderService.recordCreated(fulfillment);
         response.submit();
+
+        // 알림은 커밋된 뒤에 나간다. 여기서 바로 보내면 뒤에서 롤백된
+        // 신청에도 알림이 가고, 텔레그램이 느린 동안 이 트랜잭션이 열려 있다.
+        eventPublisher.publishEvent(new GoodsOrderSubmittedEvent(
+                fulfillment.getOrderNumber(),
+                fulfillment.getGuardianName(),
+                fulfillment.getPhone(),
+                fulfillment.getPetName(),
+                goodsLabel(fulfillment),
+                fulfillment.getPaymentAmountKrw(),
+                fulfillment.isSurveyParticipant(),
+                TrafficSource.describe(request.tracking())
+        ));
         return applicationResponse(response, fulfillment);
     }
 
@@ -663,6 +681,21 @@ public class GoodsSurveyService {
                 && !properties.getLegacyQuestionnaireVersions().contains(version)) {
             throw new CustomException(ErrorCode.SURVEY_INVALID_ANSWERS);
         }
+    }
+
+    /**
+     * 알림에 적을 굿즈 이름.
+     *
+     * 직접 입력한 값이 있으면 그것이 실제로 만들 물건이다. 없으면 식별자를
+     * 사람이 읽는 이름으로 바꾸고, 모르는 식별자는 그대로 둔다 — 종류가
+     * 늘었는데 여기를 안 고쳤을 때 빈칸보다 낫다.
+     */
+    private String goodsLabel(GoodsSurveyFulfillment fulfillment) {
+        String custom = fulfillment.getCustomGoods();
+        if (custom != null && !custom.isBlank()) {
+            return custom;
+        }
+        return GOODS_LABELS.getOrDefault(fulfillment.getGoodsType(), fulfillment.getGoodsType());
     }
 
     private void validateGoodsType(String goodsType, String customGoods) {
