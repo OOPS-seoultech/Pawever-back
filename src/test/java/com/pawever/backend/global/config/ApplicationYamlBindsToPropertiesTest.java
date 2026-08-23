@@ -2,6 +2,7 @@ package com.pawever.backend.global.config;
 
 import com.pawever.backend.admin.config.AdminProperties;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.notification.telegram.TelegramProperties;
 import com.pawever.backend.payment.config.TossPaymentsProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.BindException;
@@ -51,6 +52,18 @@ class ApplicationYamlBindsToPropertiesTest {
         assertThat(properties.getSurveyRetentionDays()).isEqualTo(730);
         assertThat(properties.getContractRetentionDays()).isEqualTo(1825);
         assertThat(properties.getListPriceKrw()).isEqualTo(29_900);
+    }
+
+    @Test
+    void 텔레그램_알림_설정에_붙지_않는_키가_없다() throws IOException {
+        TelegramProperties properties = bindStrictly("notification.telegram", TelegramProperties.class);
+
+        assertThat(properties.getBaseUrl()).isEqualTo("https://api.telegram.org");
+        // 토큰과 채널은 환경변수 자리라 여기서는 비어 있는 것이 맞다.
+        assertThat(properties.getBotToken()).isNotNull();
+        assertThat(properties.getChatId()).isNotNull();
+        // 값이 없으면 알림을 아예 보내지 않는다. 접수를 막지는 않는다.
+        assertThat(properties.isConfigured()).isFalse();
     }
 
     @Test
