@@ -13,6 +13,7 @@ import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyStory;
@@ -94,7 +95,7 @@ class GoodsSurveyServiceTest {
                 });
         lenient().when(responseRepository.findById(any()))
                 .thenAnswer(invocation -> Optional.ofNullable(storedResponse.get()));
-        lenient().when(responseRepository.countSubmittedAllocations(any(), any()))
+        lenient().when(responseRepository.countSubmittedAllocations(any(), any(), any()))
                 .thenReturn(0L);
 
         Clock testClock = new Clock() {
@@ -541,7 +542,7 @@ class GoodsSurveyServiceTest {
                         new ObjectMapper().createObjectNode().put("visitId", "visit-2")
                 )
         );
-        when(responseRepository.countSubmittedAllocations(any(), any()))
+        when(responseRepository.countSubmittedAllocations(any(), any(), any()))
                 .thenReturn(73L);
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -789,7 +790,7 @@ class GoodsSurveyServiceTest {
         );
 
         // 배송 정보를 적는 동안 남은 자리가 모두 나갔다.
-        when(responseRepository.countSubmittedAllocations(any(), any()))
+        when(responseRepository.countSubmittedAllocations(any(), any(), any()))
                 .thenReturn(73L);
 
         assertThatThrownBy(() -> service.submitApplication(
