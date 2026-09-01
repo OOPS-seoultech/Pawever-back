@@ -15,6 +15,7 @@ import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
 import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import com.pawever.backend.goodssurvey.event.TrafficSource;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
@@ -633,7 +634,8 @@ public class GoodsSurveyService {
     private long countSubmittedAllocations(String campaignId) {
         return responseRepository.countSubmittedAllocations(
                 campaignId,
-                GoodsSurveyResponseStatus.SUBMITTED
+                GoodsSurveyResponseStatus.SUBMITTED,
+                GoodsOrderStatus.releasesSlot()
         );
     }
 

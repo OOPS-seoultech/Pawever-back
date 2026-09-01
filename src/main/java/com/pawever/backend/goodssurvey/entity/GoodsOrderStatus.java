@@ -47,6 +47,28 @@ public enum GoodsOrderStatus {
     private static final Set<GoodsOrderStatus> CANCELABLE =
             Set.of(PAYMENT_COMPLETED, IN_PRODUCTION);
 
+    /**
+     * 선착순 자리를 놓는 상태.
+     *
+     * 계약이 성립하지 않았거나 되돌려진 건이다. 이 셋은 정원을 세는 자리에서
+     * 빠져야 한다 — 결제되지 않아 사라진 주문이 자리를 잡고 있으면 100명
+     * 모집이 실제로는 99명이 되고, 쌓이면 아무도 신청하지 못한 채 닫힌다.
+     *
+     * CANCEL_FAILED 는 여기 없다. 돈은 받아 두고 환불에 실패한 상태라 사람이
+     * 정리하기 전까지 그 물건은 이 사람 몫이다. 자리를 놓으면 환불도 못 한 채
+     * 같은 자리를 다른 사람에게 판다.
+     *
+     * PAYMENT_PENDING 도 여기 없다. 기다리는 동안 자리를 놓으면, 안내받은
+     * 계좌로 입금하려던 사람이 낼 곳을 잃는다.
+     */
+    private static final Set<GoodsOrderStatus> RELEASES_SLOT =
+            Set.of(PAYMENT_EXPIRED, PAYMENT_FAILED, CANCELED);
+
+    /** 선착순 자리를 놓는 상태들. 정원을 세는 쪽에서 제외 목록으로 쓴다. */
+    public static Set<GoodsOrderStatus> releasesSlot() {
+        return RELEASES_SLOT;
+    }
+
     private final String label;
     private final boolean visibleToProduction;
 
