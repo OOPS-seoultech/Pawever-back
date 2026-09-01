@@ -19,6 +19,11 @@ WORKDIR /app
 
 COPY --from=build /app/build/libs/*.jar app.jar
 
+# 이 이미지를 만든 커밋. 배포가 "방금 만든 것이 실제로 떴는지" 확인하는 데 쓴다.
+# 값이 없으면 unknown 으로 뜨고, 그때 배포는 확인을 건너뛰지 않고 멈춘다.
+ARG GIT_SHA=""
+ENV APP_GIT_SHA=$GIT_SHA
+
 EXPOSE 8080
 
 ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
