@@ -174,6 +174,58 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 관리자가_결제_완료로_바꾸면_결제_시각이_남는다() {
+        // 무통장 입금이라 은행에서 시각이 넘어오지 않는다. 사람이 통장을 보고
+        // 누르는 그 시각이 우리가 가진 유일한 시각이다.
+        //
+        // 이 칸이 비면 화면만 어긋나는 게 아니다. 취소 버튼이 이 값으로
+        // 열리므로, 돈은 받아 두고 환불할 자리가 화면에서 사라진다.
+        GoodsSurveyFulfillment order =
+                order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(
+                ADMIN, "PE-2026-000123", GoodsOrderStatus.PAYMENT_COMPLETED, "통장 확인");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_COMPLETED);
+        assertThat(order.getPaidAt()).isEqualTo(NOW);
+        // 어떻게 받았는지도 남긴다. 나중에 PG 를 붙이면 카드와 섞인다.
+        assertThat(order.getPaymentMethod()).isEqualTo("MANUAL");
+    }
+
+    @Test
+    void 이미_결제된_건은_다시_눌러도_시각이_덮이지_않는다() {
+        // 두 번 누르거나, 나중에 PG 웹훅이 같은 건을 다시 보낼 수 있다.
+        // 그때마다 시각이 덮이면 실제로 받은 때를 잃는다.
+        GoodsSurveyFulfillment order =
+                order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+        order.markPaid(NOW.minusSeconds(3600), null, "MANUAL");
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(
+                ADMIN, "PE-2026-000123", GoodsOrderStatus.PAYMENT_COMPLETED, null);
+
+        assertThat(order.getPaidAt()).isEqualTo(NOW.minusSeconds(3600));
+    }
+
+    @Test
+    void 결제_완료가_아닌_상태는_결제_시각을_건드리지_않는다() {
+        // 제작 중·만료·실패로 옮기는 것은 돈을 받은 일과 무관하다.
+        GoodsSurveyFulfillment order =
+                order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(
+                ADMIN, "PE-2026-000123", GoodsOrderStatus.PAYMENT_EXPIRED, null);
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_EXPIRED);
+        assertThat(order.getPaidAt()).isNull();
+    }
+
+    @Test
     void 일차_체험단을_제작_중으로는_바꿀_수_있다() {
         GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.LEGACY_FREE);
         when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))

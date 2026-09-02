@@ -295,7 +295,22 @@ public class AdminOrderService {
         }
 
         GoodsOrderStatus before = fulfillment.getStatus();
-        fulfillment.changeStatus(next);
+        if (next == GoodsOrderStatus.PAYMENT_COMPLETED) {
+            // 상태만 옮기면 결제 시각이 비어 있는 채로 결제 완료가 된다.
+            //
+            // 그 칸은 보기 좋으라고 있는 것이 아니다. 결제 승인과 웹훅이
+            // "이미 받은 건인지"를 이 값으로 판단하고, 관리자 화면의 취소
+            // 버튼도 이 값이 있어야 열린다. 비어 있으면 돈은 받아 두고
+            // 환불할 자리가 화면에서 사라진다.
+            //
+            // 무통장 입금이라 은행에서 시각이 넘어오지 않는다. 사람이 통장을
+            // 보고 누르는 이 시각이 우리가 가진 유일한 시각이다. 이미 값이
+            // 있으면 markPaid 가 아무것도 하지 않으므로 두 번 눌러도, 나중에
+            // PG 웹훅이 겹쳐도 처음 받은 때가 덮이지 않는다.
+            fulfillment.markPaid(clock.instant(), null, "MANUAL");
+        } else {
+            fulfillment.changeStatus(next);
+        }
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
                 before,
