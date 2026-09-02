@@ -154,3 +154,19 @@ notification:
     # 봇이 그 채널의 관리자로 들어가 있어야 글이 써진다.
     chat-id: ${TELEGRAM_CHAT_ID:}
     base-url: ${TELEGRAM_BASE_URL:https://api.telegram.org}
+  sms:
+    # 알리고. 2026-08-16 에 팀이 가입하고 비용을 충전해 둔 계정이다.
+    api-key: ${ALIGO_API_KEY:}
+    user-id: ${ALIGO_USER_ID:}
+    # 통신사에 사전 등록된 번호만 쓸 수 있다. 등록되지 않은 번호는 키가
+    # 맞아도 알리고가 거절한다.
+    sender: ${ALIGO_SENDER:}
+    base-url: ${ALIGO_BASE_URL:https://apis.aligo.in}
+    # 켜지면 문자가 나가지 않는데 응답은 성공으로 온다. 운영에서는 꺼 둔다.
+    test-mode: ${ALIGO_TEST_MODE:false}
+    # 입금받을 계좌. 화면에는 적지 않고 이 문자로만 나간다 — 화면에 붙여 두면
+    # 신청하지 않은 사람도 입금해서 누가 어떤 주문 값을 냈는지 대조할 수 없다.
+    bank:
+      name: ${GOODS_BANK_NAME:}
+      account: ${GOODS_BANK_ACCOUNT:}
+      holder: ${GOODS_BANK_HOLDER:}
