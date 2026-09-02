@@ -53,7 +53,7 @@ public final class PaymentGuideMessage {
                 예금주 %s
                 입금자명 %s
 
-                %d분 안에 입금이 확인되지 않으면 주문이 자동으로 취소되고 보내주신 사진도 함께 파기됩니다.
+                %s 안에 입금이 확인되지 않으면 주문이 자동으로 취소되고 보내주신 사진도 함께 파기됩니다.
 
                 입금자명이 다르면 확인이 늦어질 수 있습니다. 문의는 이 문자에 회신 대신 pawever01@gmail.com 으로 주세요."""
                         .formatted(
@@ -64,10 +64,27 @@ public final class PaymentGuideMessage {
                                 field(bank.getAccount()),
                                 field(bank.getHolder()),
                                 name,
-                                paymentWindowMinutes
+                                humanWindow(paymentWindowMinutes)
                         ),
                 MAX_LENGTH
         );
+    }
+
+    /**
+     * 기다리는 시간을 사람이 읽는 말로 바꾼다.
+     *
+     * 설정은 분으로 들어온다. 그대로 적으면 "2880분 안에"가 되는데, 받는
+     * 사람은 그게 언제까지인지 계산해야 한다. 계산하게 만드는 안내는 안내가
+     * 아니다.
+     */
+    static String humanWindow(int minutes) {
+        if (minutes % (60 * 24) == 0) {
+            return (minutes / (60 * 24)) + "일";
+        }
+        if (minutes % 60 == 0) {
+            return (minutes / 60) + "시간";
+        }
+        return minutes + "분";
     }
 
     private static String field(String value) {

@@ -64,7 +64,25 @@ class PaymentGuideMessageTest {
     void 결제_대기_시간이_바뀌면_문구도_따라간다() {
         // 설정값을 문장에 손으로 적으면 둘이 갈린다. 서버는 45분을 기다리는데
         // 문자는 30분이라고 하면, 그 15분 동안 받은 문의는 전부 우리 잘못이다.
-        assertThat(PaymentGuideMessage.of(ORDER, bank(), 180)).contains("180분");
+        assertThat(PaymentGuideMessage.of(ORDER, bank(), 180)).contains("3시간");
+    }
+
+    @Test
+    void 기다리는_시간을_사람이_읽는_말로_적는다() {
+        // 설정은 분으로 들어온다. 그대로 적으면 "2880분 안에"가 되는데, 받는
+        // 사람은 그게 언제까지인지 계산해야 한다.
+        assertThat(PaymentGuideMessage.humanWindow(2880)).isEqualTo("2일");
+        assertThat(PaymentGuideMessage.humanWindow(1440)).isEqualTo("1일");
+        assertThat(PaymentGuideMessage.humanWindow(180)).isEqualTo("3시간");
+        assertThat(PaymentGuideMessage.humanWindow(30)).isEqualTo("30분");
+        // 딱 떨어지지 않으면 분 그대로 둔다. "1일 12시간"처럼 늘어놓는 것보다
+        // 짧고, 이런 값을 쓸 일도 없다.
+        assertThat(PaymentGuideMessage.humanWindow(90)).isEqualTo("90분");
+    }
+
+    @Test
+    void 이틀로_설정하면_이틀이라고_말한다() {
+        assertThat(PaymentGuideMessage.of(ORDER, bank(), 2880)).contains("2일 안에");
     }
 
     @Test
