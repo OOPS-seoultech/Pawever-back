@@ -103,6 +103,19 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 목록에서_부칠_건과_넘겨줄_건이_갈린다() {
+        // 상세를 하나씩 열어 확인하면 스무 건을 포장하는 동안 한 건은 반드시
+        // 섞인다. 현장 수령 건은 주소가 비어 있어서, 방법을 함께 보지 않으면
+        // 빠뜨린 주소와 구분되지도 않는다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        AdminOrderListResponse response = service.list(ADMIN, Set.of(), null, null, 0, 20);
+
+        assertThat(response.orders().get(0).deliveryMethod()).isEqualTo("SHIPPING");
+    }
+
+    @Test
     void 제작팀은_보호자_이름으로_찾을_수_없다() {
         // 목록에서 이름을 가리고 상세에서 비워 내려도, 검색이 이름에 걸리면
         // 이름을 넣어 보고 결과 수로 확인할 수 있다. 값을 못 보게 하는 것과

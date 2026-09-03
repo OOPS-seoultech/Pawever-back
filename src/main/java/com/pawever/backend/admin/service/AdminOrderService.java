@@ -578,6 +578,7 @@ public class AdminOrderService {
                 photoRepository.findByResponseId(fulfillment.getResponseId()).size(),
                 fulfillment.getPaymentAmountKrw(),
                 fulfillment.getPaidAt(),
+                fulfillment.getDeliveryMethod().name(),
                 fulfillment.getTrackingNumber()
         );
     }
