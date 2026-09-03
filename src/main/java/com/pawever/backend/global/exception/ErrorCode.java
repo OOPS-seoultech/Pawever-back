@@ -84,6 +84,7 @@ public enum ErrorCode {
     SURVEY_DUPLICATE_PHONE(HttpStatus.CONFLICT, "이미 이 캠페인에 신청한 연락처입니다."),
     SURVEY_IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT, "같은 제출 키로 다른 요청을 처리할 수 없습니다."),
     SURVEY_PHOTO_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "사진은 최대 5장까지 업로드할 수 있습니다."),
+    SURVEY_PHOTO_COUNT_INVALID(HttpStatus.BAD_REQUEST, "사진은 3장부터 5장까지 올릴 수 있습니다."),
     SURVEY_PHOTO_NOT_FOUND(HttpStatus.NOT_FOUND, "업로드할 사진 정보를 찾을 수 없습니다."),
     SURVEY_PHOTO_NOT_READY(HttpStatus.BAD_REQUEST, "사진 업로드가 완료되지 않았습니다."),
     SURVEY_STORAGE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "사진 저장소가 아직 설정되지 않았습니다."),

@@ -615,6 +615,65 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
+    void 사진이_세_장보다_적으면_접수되지_않는다() {
+        // 근거: [카톡 나혜님] "사진 3개 이상 등록해야 제출 버튼 활성화되도록
+        //       변경해주세요. 즉, 사진 3개 이상만 제출 가능하도록 (3-5개)"
+        //
+        // 화면은 세 장부터 열리게 고쳤지만 API 는 한 장도 받고 있었다. 화면만
+        // 막으면 그 화면을 거치지 않는 요청이 그대로 들어온다. 얼굴·전신·털무늬
+        // 세 종이 제작의 최소 구성이라, 두 장짜리 주문은 만들 수 없다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-too-few");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        // 두 장이 실제로 올라와 확인까지 끝난 상태를 만든다. 그래야 "덜
+        // 올라왔다"가 아니라 "장수가 모자라다"로 걸리는지 볼 수 있다.
+        // 고치고 나면 장수를 먼저 보고 끊으므로 이 stub 은 쓰이지 않는다.
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(
+                confirmedPhoto("photo-1", draft.responseId()),
+                confirmedPhoto("photo-2", draft.responseId())
+        ));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-too-few",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-1", "photo-2"),
+                        List.of(),
+                        "conversion-too-few",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("3장");
+    }
+
+    @Test
     void applicationStoresPublicationConsentForEachConfirmedPhoto() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
@@ -635,9 +694,10 @@ class GoodsSurveyServiceTest {
 
         GoodsSurveyPhoto publicPhoto = confirmedPhoto("photo-public", draft.responseId());
         GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-private", draft.responseId());
+        GoodsSurveyPhoto anotherPrivate = confirmedPhoto("photo-private-2", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(publicPhoto, privatePhoto));
+        )).thenReturn(List.of(publicPhoto, privatePhoto, anotherPrivate));
 
         service.submitApplication(
                 draft.responseId(),
@@ -652,7 +712,7 @@ class GoodsSurveyServiceTest {
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-public", "photo-private"),
+                        List.of("photo-public", "photo-private", "photo-private-2"),
                         List.of("photo-public"),
                         "conversion-photo-consent",
                         tracking,
@@ -664,6 +724,7 @@ class GoodsSurveyServiceTest {
 
         assertThat(publicPhoto.isPublicationAgreed()).isTrue();
         assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+        assertThat(anotherPrivate.isPublicationAgreed()).isFalse();
     }
 
     @Test
@@ -733,7 +794,7 @@ class GoodsSurveyServiceTest {
                 new SaveGoodsSurveyDraftRequest(reservableAnswers(), "q33", 30_000L, Map.of(), tracking)
         );
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(confirmedPhoto("photo-1", draft.responseId())));
+                .thenReturn(confirmedPhotos("photo", draft.responseId()));
         service.submitApplication(
                 draft.responseId(),
                 draft.editToken(),
@@ -757,7 +818,7 @@ class GoodsSurveyServiceTest {
                 "01234",
                 "서울시 노원구",
                 "",
-                List.of("photo-1"),
+                photoIds("photo"),
                 List.of(),
                 "conversion-notify",
                 tracking,
@@ -845,10 +906,9 @@ class GoodsSurveyServiceTest {
         // 예약 15분을 훌쩍 넘긴 시점.
         currentTime = NOW.plusSeconds(90 * 60);
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-slow", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(photo));
+        )).thenReturn(confirmedPhotos("photo-slow", draft.responseId()));
 
         service.submitApplication(
                 draft.responseId(),
@@ -863,7 +923,7 @@ class GoodsSurveyServiceTest {
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-slow"),
+                        photoIds("photo-slow"),
                         List.of(),
                         "conversion-slow",
                         tracking,
@@ -896,10 +956,11 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-legacy-private", draft.responseId());
+        List<GoodsSurveyPhoto> legacyPhotos =
+                confirmedPhotos("photo-legacy-private", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(privatePhoto));
+        )).thenReturn(legacyPhotos);
 
         service.submitApplication(
                 draft.responseId(),
@@ -914,7 +975,7 @@ class GoodsSurveyServiceTest {
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-legacy-private"),
+                        photoIds("photo-legacy-private"),
                         null,
                         "conversion-legacy-photo",
                         tracking,
@@ -924,7 +985,7 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+        assertThat(legacyPhotos).noneMatch(GoodsSurveyPhoto::isPublicationAgreed);
     }
 
     private static Map<String, JsonNode> reservableAnswers() {
@@ -951,9 +1012,8 @@ class GoodsSurveyServiceTest {
 
         service.startDirectPurchase(draft.responseId(), draft.editToken());
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-direct", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(photo));
+                .thenReturn(confirmedPhotos("photo-direct", draft.responseId()));
 
         ArgumentCaptor<GoodsSurveyFulfillment> saved =
                 ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
@@ -993,9 +1053,8 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-member", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(photo));
+                .thenReturn(confirmedPhotos("photo-member", draft.responseId()));
 
         ArgumentCaptor<GoodsSurveyFulfillment> saved =
                 ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
@@ -1018,7 +1077,7 @@ class GoodsSurveyServiceTest {
     private SubmitGoodsSurveyApplicationRequest directApplication(
             JsonNode tracking,
             String conversionEventId,
-            String photoId
+            String photoPrefix
     ) {
         return new SubmitGoodsSurveyApplicationRequest(
                 "figure",
@@ -1029,7 +1088,7 @@ class GoodsSurveyServiceTest {
                 "01234",
                 "서울시 노원구",
                 "",
-                List.of(photoId),
+                photoIds(photoPrefix),
                 List.of(),
                 conversionEventId,
                 tracking,
@@ -1037,6 +1096,22 @@ class GoodsSurveyServiceTest {
                 true,
                 false
         );
+    }
+
+    /**
+     * 제작에 필요한 최소 구성인 세 장.
+     *
+     * 장수가 모자란 신청은 접수되지 않으므로, 성공 경로를 다루는 시험은 세
+     * 장을 갖춰 둔다.
+     */
+    private List<String> photoIds(String prefix) {
+        return List.of(prefix + "-1", prefix + "-2", prefix + "-3");
+    }
+
+    private List<GoodsSurveyPhoto> confirmedPhotos(String prefix, String responseId) {
+        return photoIds(prefix).stream()
+                .map(id -> confirmedPhoto(id, responseId))
+                .toList();
     }
 
     private GoodsSurveyPhoto confirmedPhoto(String id, String responseId) {

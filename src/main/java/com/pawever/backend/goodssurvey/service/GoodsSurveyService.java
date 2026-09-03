@@ -65,6 +65,21 @@ public class GoodsSurveyService {
      * 다섯 종을 받고 있어, 팔지 않기로 한 상품이 주문될 수 있었다.
      * 1차 신청 기록에는 다른 값이 남아 있다. 그때 실제로 신청한 것이라 고치지 않는다.
      */
+    /**
+     * 제작에 필요한 사진 장수.
+     *
+     * 얼굴·전신·털무늬 세 종이 최소 구성이다. 아무 사진 세 장이 아니라 칸마다
+     * 무엇을 찍어야 하는지가 정해져 있고, 그래서 화면의 등록 칸도 세 개다.
+     *
+     * 화면만 세 장으로 막아 두면 그 화면을 거치지 않는 요청은 한 장으로도
+     * 들어온다. 만들 수 없는 주문이 결제까지 가므로 여기서도 본다.
+     *
+     * 근거: [카톡 나혜님] "사진 3개 이상 등록해야 제출 버튼 활성화되도록
+     *       변경해주세요. 즉, 사진 3개 이상만 제출 가능하도록 (3-5개)"
+     */
+    private static final int PHOTO_MIN_COUNT = 3;
+    private static final int PHOTO_MAX_COUNT = 5;
+
     private static final Set<String> GOODS_TYPES = Set.of("figure");
     private static final Map<String, String> GOODS_LABELS = Map.of("figure", "3D 전신 피규어");
     /**
@@ -458,10 +473,14 @@ public class GoodsSurveyService {
         }
 
         Set<String> uniquePhotoIds = new LinkedHashSet<>(request.photoIds());
-        if (uniquePhotoIds.size() != request.photoIds().size()
-                || uniquePhotoIds.isEmpty()
-                || uniquePhotoIds.size() > 5) {
+        if (uniquePhotoIds.size() != request.photoIds().size()) {
             throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        }
+        // 장수는 사진을 찾아보기 전에 본다. 몇 장을 보냈는지는 보낸 것만으로
+        // 알 수 있고, 모자란 요청 때문에 저장소를 뒤질 이유가 없다.
+        if (uniquePhotoIds.size() < PHOTO_MIN_COUNT
+                || uniquePhotoIds.size() > PHOTO_MAX_COUNT) {
+            throw new CustomException(ErrorCode.SURVEY_PHOTO_COUNT_INVALID);
         }
         List<String> requestedPublicPhotoIds =
                 request.publicPhotoIds() == null ? List.of() : request.publicPhotoIds();
