@@ -32,13 +32,66 @@ class PaymentGuideMessageTest {
         return bank;
     }
 
+    /**
+     * 확정본 그대로인지.
+     *
+     * 이 문자는 선아님이 검토해 확정한 문구다. 한 줄씩 담겼는지만 보면 순서와
+     * 줄바꿈이 흐트러져도 통과한다 — 확정을 받은 것은 문장 하나가 아니라 이
+     * 배치 전체다. 그래서 통째로 못 박는다.
+     *
+     * 이 시험이 깨지면 코드를 고칠 것이 아니라 확정본을 다시 받아야 한다는 뜻이다.
+     */
+    @Test
+    void 확정받은_문구_그대로_보낸다() {
+        String message = PaymentGuideMessage.of(ORDER, bank(), 2880);
+
+        assertThat(message).isEqualTo(
+                """
+                [포에버] 굿즈 주문 입금 안내
+
+                안녕하세요, 황성욱님.
+                포에버를 믿고 소중한 아이의 굿즈를 신청해주셔서 감사합니다.
+
+                아래 계좌로 입금해주시면 제작이 진행됩니다.
+
+                ◼︎ 주문번호 : PE-2026-000123
+                ◼︎ 입금 금액 : 32,900원
+
+                ◼︎ 입금 계좌 : 국민은행 123456-78-901234 포에버
+                ◼︎ 입금자명 : 황성욱
+
+                2일 안에 입금이 확인되지 않으면 주문이 자동으로 취소되고 보내주신 사진도 함께 파기됩니다.
+
+                굿즈 신청 시 작성해주신 이름과 동일한 이름으로 입금 부탁드립니다.
+                다른 이름으로 입금하실 경우 확인이 늦어질 수 있습니다.
+
+                ◼︎ 문의는 문자 회신 대신 pawever01@gmail.com로 부탁드립니다!"""
+        );
+    }
+
+    /**
+     * 계좌는 확정본에 적힌 값을 박지 않고 설정에서 온다.
+     *
+     * 확정본에는 실제 계좌가 적혀 있다. 그대로 옮겨 적으면 계좌가 바뀌는 날
+     * 문자만 옛 계좌를 부른다 — 그 돈은 우리 계좌로 오지 않는다.
+     */
+    @Test
+    void 계좌가_바뀌면_문자도_따라간다() {
+        SmsProperties.Bank moved = new SmsProperties.Bank();
+        moved.setName("IBK기업은행");
+        moved.setAccount("256-126343-04-019");
+        moved.setHolder("이종무");
+
+        assertThat(PaymentGuideMessage.of(ORDER, moved, 2880))
+                .contains("◼︎ 입금 계좌 : IBK기업은행 256-126343-04-019 이종무");
+    }
+
     @Test
     void 입금에_필요한_넷을_모두_담는다() {
         String message = PaymentGuideMessage.of(ORDER, bank(), 30);
 
         assertThat(message)
-                .contains("국민은행 123456-78-901234")
-                .contains("예금주 포에버")
+                .contains("◼︎ 입금 계좌 : 국민은행 123456-78-901234 포에버")
                 .contains("32,900원")
                 .contains("PE-2026-000123")
                 .contains("30분");
@@ -49,7 +102,7 @@ class PaymentGuideMessageTest {
         // 무통장 입금은 들어온 돈에 주문번호가 붙어 오지 않는다. 이름이
         // 어긋나면 어느 주문의 돈인지 사람이 찾아야 하고, 찾는 동안 만료된다.
         assertThat(PaymentGuideMessage.of(ORDER, bank(), 30))
-                .contains("입금자명 황성욱");
+                .contains("◼︎ 입금자명 : 황성욱");
     }
 
     @Test
