@@ -2,6 +2,7 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderSequence;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatusChange;
@@ -54,7 +55,17 @@ public class GoodsOrderService {
      * 설문에 답하고 온 사람만 깎아 준다. 건너뛴 사람은 정상가다. 답하는 수고와
      * 값의 차이가 이 서비스가 설문을 받는 이유다.
      */
-    public GoodsOrderPricing priceFor(boolean surveyParticipant) {
+    public GoodsOrderPricing priceFor(GoodsSalesChannel channel, boolean surveyParticipant) {
+        if (channel == GoodsSalesChannel.FLEA) {
+            // 현장 한정가다. 설문을 거치지 않는 자리라 누가 오든 같은 값이고,
+            // 설문 참여 할인과 겹쳐 쓰지 않는다.
+            return GoodsOrderPricing.discounted(
+                    properties.getListPriceKrw(),
+                    properties.getFleaDiscountKrw(),
+                    properties.getFleaPromotionName(),
+                    properties.getShippingFeeKrw()
+            );
+        }
         if (!surveyParticipant) {
             return GoodsOrderPricing.listPrice(
                     properties.getListPriceKrw(), properties.getShippingFeeKrw());

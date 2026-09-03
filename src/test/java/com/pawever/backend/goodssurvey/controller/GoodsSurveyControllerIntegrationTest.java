@@ -1,5 +1,6 @@
 package com.pawever.backend.goodssurvey.controller;
 
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyCampaignRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository;
@@ -17,7 +18,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -25,7 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(properties = {
-        "app.cors.allowed-origins=https://pawever-landing.pages.dev,https://feat-goods-survey-landing.pawever-landing.pages.dev"
+        "app.cors.allowed-origins=https://pawever-landing.pages.dev,https://feat-goods-survey-landing.pawever-landing.pages.dev",
+        "survey.goods.flea-campaign-id=goods-2026-09-flea"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -52,6 +56,68 @@ class GoodsSurveyControllerIntegrationTest {
                         true
                 )
         );
+        campaignRepository.save(
+                GoodsSurveyCampaign.create(
+                        "goods-2026-09-flea",
+                        GoodsSalesChannel.FLEA,
+                        70,
+                        0,
+                        now.minusSeconds(3600),
+                        now.plusSeconds(3600),
+                        false,
+                        true
+                )
+        );
+    }
+
+    @Test
+    void 플리마켓_랜딩은_자기_모집의_남은_자리를_묻는다() throws Exception {
+        // 온라인과 현장은 정원을 따로 센다. 경로를 적지 않으면 상시 온라인,
+        // flea 를 적으면 플리마켓 모집을 본다.
+        mockMvc.perform(get("/api/public/goods-survey/campaign"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.channel").value("ONLINE"))
+                .andExpect(jsonPath("$.data.capacity").value(100));
+
+        mockMvc.perform(get("/api/public/goods-survey/campaign").param("channel", "flea"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.channel").value("FLEA"))
+                .andExpect(jsonPath("$.data.campaignId").value("goods-2026-09-flea"))
+                .andExpect(jsonPath("$.data.capacity").value(70))
+                .andExpect(jsonPath("$.data.remaining").value(70))
+                // 설문은 닫혀 있고 굿즈만 열려 있다. QR 을 찍고 바로 주문한다.
+                .andExpect(jsonPath("$.data.surveyOpen").value(false))
+                .andExpect(jsonPath("$.data.goodsOpen").value(true));
+    }
+
+    @Test
+    void 플리마켓으로_들어오면_그_모집에_붙는다() throws Exception {
+        // 설문 스위치가 닫혀 있어도 플리마켓 주문은 만들어져야 한다. 여기서
+        // 막히면 현장에서 QR 을 찍은 사람이 아무것도 못 한다.
+        String createBody = """
+                {
+                  "questionnaireVersion": "2026-07-25-v2",
+                  "selectedGoods": "figure",
+                  "tracking": {"visitId": "visit-flea", "device": {"category": "mobile"}},
+                  "channel": "flea"
+                }
+                """;
+        String created = mockMvc.perform(
+                        post("/api/public/goods-survey/responses")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(createBody)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.remaining").value(70))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String responseId = objectMapper.readTree(created).path("data").path("responseId").asText();
+        assertThat(responseRepository.findById(responseId))
+                .get()
+                .extracting(response -> response.getCampaignId())
+                .isEqualTo("goods-2026-09-flea");
     }
 
     @Test

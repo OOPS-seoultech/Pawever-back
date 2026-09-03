@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -36,9 +37,16 @@ public class GoodsSurveyController {
     private final GoodsSurveyService service;
     private final com.pawever.backend.goodssurvey.service.GoodsSurveyFulfillmentOpsService opsService;
 
+    /**
+     * @param channel 판매 경로. 값이 없으면 상시 온라인 판매를 본다.
+     *                플리마켓 랜딩은 {@code ?channel=flea} 로 자기 모집의
+     *                남은 자리와 개폐 여부를 묻는다.
+     */
     @GetMapping("/campaign")
-    public ApiResponse<GoodsSurveyCampaignResponse> getCampaign() {
-        return ApiResponse.ok(service.getCampaign());
+    public ApiResponse<GoodsSurveyCampaignResponse> getCampaign(
+            @RequestParam(required = false) String channel
+    ) {
+        return ApiResponse.ok(service.getCampaign(channel));
     }
 
     @PostMapping("/responses")

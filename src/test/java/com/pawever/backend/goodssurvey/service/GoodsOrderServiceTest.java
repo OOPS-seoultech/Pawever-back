@@ -2,6 +2,7 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderSequence;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderSequenceRepository;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
@@ -88,7 +89,7 @@ class GoodsOrderServiceTest {
 
     @Test
     void 설문에_답하고_왔으면_할인가를_적용한다() {
-        GoodsOrderPricing pricing = orderService.priceFor(true);
+        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, true);
 
         assertThat(pricing.listPriceKrw()).isEqualTo(29_900);
         assertThat(pricing.discountAmountKrw()).isEqualTo(6_000);
@@ -99,10 +100,24 @@ class GoodsOrderServiceTest {
     }
 
     @Test
+    void 플리마켓은_설문을_거쳤든_아니든_같은_값이다() {
+        // 현장에서 QR 을 찍고 바로 주문하는 자리라 설문을 거칠 길이 없다.
+        // 설문 참여 할인과 겹쳐 쓰면 같은 현장가가 두 갈래로 갈린다.
+        GoodsOrderPricing afterSurvey = orderService.priceFor(GoodsSalesChannel.FLEA, true);
+        GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, false);
+
+        assertThat(afterSurvey).isEqualTo(direct);
+        assertThat(direct.discountAmountKrw()).isEqualTo(18_000);
+        assertThat(direct.promotionName()).isEqualTo("과기대 플리마켓 할인");
+        // 제작비 11,900 + 배송비 3,000
+        assertThat(direct.paymentAmountKrw()).isEqualTo(14_900);
+    }
+
+    @Test
     void 설문을_건너뛰었으면_정상가를_적용한다() {
         // 답하는 수고와 값의 차이가 이 서비스가 설문을 받는 이유다.
         // 여기서 깎아 주면 설문을 끝까지 답할 까닭이 없어진다.
-        GoodsOrderPricing pricing = orderService.priceFor(false);
+        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, false);
 
         // 제작비 29,900 + 배송비 3,000
         assertThat(pricing.paymentAmountKrw()).isEqualTo(32_900);

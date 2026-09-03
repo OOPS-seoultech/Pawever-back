@@ -18,6 +18,7 @@ import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import com.pawever.backend.goodssurvey.event.TrafficSource;
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
@@ -49,6 +50,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -113,12 +115,13 @@ public class GoodsSurveyService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
-    public GoodsSurveyCampaignResponse getCampaign() {
-        GoodsSurveyCampaign campaign = findCampaign();
+    public GoodsSurveyCampaignResponse getCampaign(String channel) {
+        GoodsSurveyCampaign campaign = findCampaign(parseChannel(channel));
         long active = countSubmittedAllocations(campaign.getId());
         boolean goodsOpen = campaign.isGoodsAvailable(active);
         return new GoodsSurveyCampaignResponse(
                 campaign.getId(),
+                campaign.getChannel().name(),
                 campaign.getCapacity(),
                 campaign.allocated(active),
                 campaign.remaining(active),
@@ -134,9 +137,16 @@ public class GoodsSurveyService {
     public GoodsSurveyDraftResponse createDraft(CreateGoodsSurveyRequest request) {
         validateQuestionnaireVersion(request.questionnaireVersion());
         validateSelectedGoods(request.selectedGoods());
-        GoodsSurveyCampaign campaign = findCampaign();
-        // 굿즈 정원은 보지 않는다. 굿즈가 마감돼도 설문은 계속 받는다.
-        if (!campaign.isSurveyOpen()) {
+        GoodsSalesChannel channel = parseChannel(request.channel());
+        GoodsSurveyCampaign campaign = findCampaign(channel);
+        // 설문을 거치는 통로에서만 설문 스위치를 본다. 플리마켓은 QR 을 찍고
+        // 바로 주문하는 자리라 설문이 없고, 대신 굿즈 스위치가 문을 지킨다.
+        if (channel == GoodsSalesChannel.FLEA) {
+            if (!campaign.isGoodsAvailable(countSubmittedAllocations(campaign.getId()))) {
+                throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
+            }
+        } else if (!campaign.isSurveyOpen()) {
+            // 굿즈 정원은 보지 않는다. 굿즈가 마감돼도 설문은 계속 받는다.
             throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_CLOSED);
         }
         long active = countSubmittedAllocations(campaign.getId());
@@ -184,13 +194,13 @@ public class GoodsSurveyService {
         // 예약 시간이 지났어도 설문을 끝낸 사실은 그대로다.
         // 만료를 이유로 튕기면 이미 다 답한 사람이 영영 신청을 못 한다.
         if (response.getStatus() == GoodsSurveyResponseStatus.RESERVED) {
-            GoodsSurveyCampaign campaign = findCampaign();
+            GoodsSurveyCampaign campaign = campaignOf(response);
             int remaining = campaign.remaining(countSubmittedAllocations(campaign.getId()));
             return completion(response, remaining);
         }
         if (response.getStatus() == GoodsSurveyResponseStatus.COMPLETED_NO_SLOT
                 || response.getStatus() == GoodsSurveyResponseStatus.TERMINATED) {
-            GoodsSurveyCampaign campaign = findCampaign();
+            GoodsSurveyCampaign campaign = campaignOf(response);
             int remaining = campaign.remaining(countSubmittedAllocations(campaign.getId()));
             return completion(response, remaining);
         }
@@ -205,7 +215,7 @@ public class GoodsSurveyService {
         }
 
         GoodsSurveyCampaign campaign = campaignRepository
-                .findByIdForUpdate(properties.getCampaignId())
+                .findByIdForUpdate(response.getCampaignId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
 
         long activeBeforeReservation = countSubmittedAllocations(campaign.getId());
@@ -236,7 +246,7 @@ public class GoodsSurveyService {
     @Transactional
     public GoodsSurveyCompletionResponse startDirectPurchase(String responseId, String editToken) {
         GoodsSurveyResponse response = findAndAuthenticate(responseId, editToken);
-        GoodsSurveyCampaign campaign = findCampaign();
+        GoodsSurveyCampaign campaign = campaignOf(response);
         long allocations = countSubmittedAllocations(campaign.getId());
 
         // 이미 직행으로 들어왔거나 제출까지 끝냈으면 그대로 둔다.
@@ -531,7 +541,7 @@ public class GoodsSurveyService {
                 // 얼마를 청구할지가 여기서 갈리므로 지금 확정해 남긴다.
                 response.isSurveyParticipant(),
                 orderService.issueOrderNumber(),
-                orderService.priceFor(response.isSurveyParticipant()),
+                orderService.priceFor(campaign.getChannel(), response.isSurveyParticipant()),
                 request.marketingAgreed(),
                 properties.getMarketingConsentVersion(),
                 properties.getPaymentWindowMinutes(),
@@ -591,7 +601,9 @@ public class GoodsSurveyService {
             GoodsSurveyResponse response,
             GoodsSurveyFulfillment fulfillment
     ) {
-        GoodsSurveyCampaign campaign = findCampaign();
+        // 남은 자리는 이 사람이 들어온 모집 기준이다. 설정이 가리키는 모집을
+        // 보면 플리마켓으로 신청한 사람에게 온라인 잔여가 나간다.
+        GoodsSurveyCampaign campaign = campaignOf(response);
         int remaining = campaign.remaining(
                 countSubmittedAllocations(campaign.getId())
         );
@@ -645,9 +657,54 @@ public class GoodsSurveyService {
         return response;
     }
 
-    private GoodsSurveyCampaign findCampaign() {
-        return campaignRepository.findById(properties.getCampaignId())
+    /**
+     * 통로에 열려 있는 모집을 찾는다.
+     *
+     * 어느 모집을 열지는 설정이 고르고, 그 모집이 자기 통로를 들고 있다.
+     * 둘이 어긋나면 값이 잘못 매겨지므로 통과시키지 않는다.
+     */
+    private GoodsSurveyCampaign findCampaign(GoodsSalesChannel channel) {
+        GoodsSurveyCampaign campaign = campaignRepository.findById(campaignIdOf(channel))
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
+        if (campaign.getChannel() != channel) {
+            throw new CustomException(ErrorCode.SURVEY_CHANNEL_CLOSED);
+        }
+        return campaign;
+    }
+
+    private String campaignIdOf(GoodsSalesChannel channel) {
+        if (channel != GoodsSalesChannel.FLEA) {
+            return properties.getCampaignId();
+        }
+        String fleaCampaignId = properties.getFleaCampaignId();
+        // 설정하지 않으면 이 통로는 없는 것으로 본다. 행사가 끝나면 값을 비워
+        // 닫는다. 여는 쪽이 아니라 닫히는 쪽으로 기울어야 한다.
+        if (fleaCampaignId == null || fleaCampaignId.isBlank()) {
+            throw new CustomException(ErrorCode.SURVEY_CHANNEL_CLOSED);
+        }
+        return fleaCampaignId;
+    }
+
+    /**
+     * 이 응답이 붙어 있는 모집.
+     *
+     * 설정이 지금 무엇을 가리키든 상관없다. 사람은 자기가 들어온 모집의
+     * 조건에 동의했고, 그 조건으로 끝까지 가야 한다.
+     */
+    private GoodsSurveyCampaign campaignOf(GoodsSurveyResponse response) {
+        return campaignRepository.findById(response.getCampaignId())
+                .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
+    }
+
+    private GoodsSalesChannel parseChannel(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return GoodsSalesChannel.ONLINE;
+        }
+        try {
+            return GoodsSalesChannel.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException notAChannel) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
     }
 
     private long countSubmittedAllocations(String campaignId) {

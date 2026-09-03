@@ -31,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -60,6 +61,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class GoodsSurveyServiceTest {
 
+    private GoodsSurveyProperties properties;
+
     private static final Instant NOW = Instant.parse("2026-07-24T09:00:00Z");
 
     @Mock private GoodsSurveyCampaignRepository campaignRepository;
@@ -80,7 +83,7 @@ class GoodsSurveyServiceTest {
 
     @BeforeEach
     void setUp() {
-        GoodsSurveyProperties properties = new GoodsSurveyProperties();
+        properties = new GoodsSurveyProperties();
         properties.setCampaignId("goods-2026-07");
         properties.setReservationMinutes(15);
 
@@ -177,6 +180,91 @@ class GoodsSurveyServiceTest {
                 .thenReturn(Optional.of(campaign));
     }
 
+    /**
+     * 플리마켓 모집을 끼운다.
+     *
+     * 설문 스위치는 닫아 둔다. QR 을 찍고 바로 주문하는 자리라 설문을 거치지
+     * 않고, 문은 굿즈 스위치가 지킨다.
+     */
+    private void useFleaCampaign(boolean goodsOpen) {
+        GoodsSurveyCampaign flea = GoodsSurveyCampaign.create(
+                "goods-2026-09-flea",
+                GoodsSalesChannel.FLEA,
+                70,
+                0,
+                Instant.parse("2026-09-01T00:00:00Z"),
+                Instant.parse("2026-12-31T14:59:59Z"),
+                false,
+                goodsOpen
+        );
+        lenient().when(campaignRepository.findById("goods-2026-09-flea"))
+                .thenReturn(Optional.of(flea));
+        lenient().when(campaignRepository.findByIdForUpdate("goods-2026-09-flea"))
+                .thenReturn(Optional.of(flea));
+    }
+
+    @Test
+    void 플리마켓으로_들어오면_현장가로_접수된다() {
+        // 근거: [피그마 0uW99BqaTJKUVlowzQswli / 8-2 Rending Page]
+        //       5472:1478 "서울과학기술대학교 플리마켓 전용가",
+        //       5472:1480 "11,900원", 5498:2395 "60.2% 할인",
+        //       5472:1773 "배송비 3,000원 별도"
+        //
+        // 29,900 - 18,000 = 11,900 이고 18,000 / 29,900 = 60.2% 다. 디자인이
+        // 기존 정가를 기준으로 잡아 둔 값이라 할인 하나로 들어간다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-flea", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-flea",
+                directApplication(tracking, "conversion-flea", "photo-flea")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(18_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("과기대 플리마켓 할인");
+        // 제작비 11,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
+    }
+
+    @Test
+    void 플리마켓_모집을_정하지_않으면_그_경로는_열리지_않는다() {
+        // 행사가 끝나면 설정을 비워 닫는다. 배포 없이 환경변수만 비우면 되고,
+        // 그러면 새 주문이 들어올 길 자체가 사라진다.
+        properties.setFleaCampaignId("");
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea-off");
+
+        assertThatThrownBy(() -> service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        )).hasMessageContaining("열려 있지 않은 판매 경로");
+    }
+
+    @Test
+    void 설정이_가리키는_모집이_다른_경로면_받지_않는다() {
+        // 설정과 모집이 어긋난 채로 통과시키면 플리마켓으로 들어온 사람에게
+        // 온라인 값 29,900 이 매겨진다. 값을 틀리게 매기느니 열지 않는다.
+        properties.setFleaCampaignId("goods-2026-07");
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea-mixed");
+
+        assertThatThrownBy(() -> service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        )).hasMessageContaining("열려 있지 않은 판매 경로");
+    }
+
     @Test
     void surveyKeepsAcceptingAnswersAfterTheGoodsCampaignIsClosed() {
         // 1차 무료 제작이 끝난 상태. 정원이 남아 있어도 굿즈는 열리지 않아야 하고,
@@ -186,7 +274,7 @@ class GoodsSurveyServiceTest {
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-goods-closed");
 
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -217,7 +305,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-story-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -267,7 +355,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -300,7 +388,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -340,7 +428,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-dup");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -371,7 +459,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-early");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         assertThatThrownBy(() -> service.subscribeNotice(
@@ -389,7 +477,7 @@ class GoodsSurveyServiceTest {
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected");
 
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
 
         assertThat(draft.responseId()).isNotBlank();
@@ -402,7 +490,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected-apply");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -448,7 +536,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-25-v2",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed"),
+                        null
                 )
         )).hasMessageContaining("설문 접수가 종료");
     }
@@ -460,7 +549,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-switch-off");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -509,7 +598,7 @@ class GoodsSurveyServiceTest {
                 "device", Map.of("category", "mobile")
         ));
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -539,7 +628,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-23-v1",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-2")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-2"),
+                        null
                 )
         );
         when(responseRepository.countSubmittedAllocations(any(), any(), any()))
@@ -570,7 +660,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-25-v2",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-3")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-3"),
+                        null
                 )
         );
 
@@ -595,7 +686,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-thin");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         assertThatThrownBy(() -> service.completeSurvey(
@@ -625,7 +716,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-too-few");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -678,7 +769,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -759,7 +850,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-full");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -786,7 +877,7 @@ class GoodsSurveyServiceTest {
             String phone
     ) {
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -836,7 +927,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -889,7 +980,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-slow");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -942,7 +1033,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-legacy-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-23-v1", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-23-v1", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -1007,7 +1098,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         service.startDirectPurchase(draft.responseId(), draft.editToken());
@@ -1039,7 +1130,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-member");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
