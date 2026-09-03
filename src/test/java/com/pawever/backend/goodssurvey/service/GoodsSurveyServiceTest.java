@@ -5,6 +5,7 @@ import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyPhotoUploadRequest;
 import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyRequest;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyCompletionResponse;
+import com.pawever.backend.goodssurvey.dto.GoodsSurveyApplicationResponse;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyDraftResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
+import com.pawever.backend.notification.sms.SmsProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -63,6 +65,7 @@ import static org.mockito.Mockito.when;
 class GoodsSurveyServiceTest {
 
     private GoodsSurveyProperties properties;
+    private SmsProperties smsProperties;
 
     private static final Instant NOW = Instant.parse("2026-07-24T09:00:00Z");
 
@@ -86,6 +89,11 @@ class GoodsSurveyServiceTest {
     void setUp() {
         properties = new GoodsSurveyProperties();
         properties.setCampaignId("goods-2026-07");
+        // 접수 화면이 적어 줄 계좌. 문자가 쓰는 것과 같은 설정이다.
+        smsProperties = new SmsProperties();
+        smsProperties.getBank().setName("기업은행");
+        smsProperties.getBank().setAccount("000-000000-00-000");
+        smsProperties.getBank().setHolder("포에버");
         properties.setReservationMinutes(15);
 
         useCampaign(true, true);
@@ -145,6 +153,7 @@ class GoodsSurveyServiceTest {
                 new ObjectMapper(),
                 new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
                 properties,
+                smsProperties,
                 orderService,
                 testClock,
                 publishedEvents::add
@@ -238,6 +247,56 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getPromotionName()).isEqualTo("과기대 플리마켓 할인");
         // 제작비 11,900 + 배송비 3,000
         assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
+    }
+
+    /** 직행으로 들어와 사진까지 갖춘 신청 하나. 접수 응답을 돌려준다. */
+    private GoodsSurveyApplicationResponse submitDirect(String suffix) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-" + suffix);
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-" + suffix, draft.responseId()));
+        return service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-" + suffix,
+                directApplication(tracking, "conversion-" + suffix, "photo-" + suffix)
+        );
+    }
+
+    @Test
+    void 접수하면_어디로_넣을지도_함께_알려준다() {
+        // 계좌를 문자로만 보내던 때가 있었다. 문자가 오기 전까지 사람은 아무것도
+        // 할 수 없고, 현장에서 QR 을 찍고 그 자리에서 넣는 자리라면 줄이 선다.
+        //
+        // 문자가 쓰는 것과 같은 설정을 읽는다. 두 곳에 따로 적어 두면 계좌를
+        // 바꾼 날 한쪽만 바뀌고, 그때부터 들어온 돈은 어느 주문의 것인지 알 수
+        // 없다.
+        GoodsSurveyApplicationResponse result = submitDirect("bank");
+
+        assertThat(result.bank()).isNotNull();
+        assertThat(result.bank().name()).isEqualTo("기업은행");
+        assertThat(result.bank().account()).isEqualTo("000-000000-00-000");
+        assertThat(result.bank().holder()).isEqualTo("포에버");
+        // 언제까지 넣어야 하는지도 함께 준다. 기한을 모르면 자리가 언제
+        // 돌아가는지 알 수 없다.
+        assertThat(result.paymentExpiresAt()).isNotNull();
+        // 잘못 들어온 돈은 이 번호로 대조한다.
+        assertThat(result.orderNumber()).isNotBlank();
+    }
+
+    @Test
+    void 계좌를_정하지_않았으면_비워서_보낸다() {
+        // 없는 계좌를 빈칸으로 그려 두면 사람이 빈칸으로 송금할 곳을 찾는다.
+        // 로컬과 시험에서는 값이 없는 것이 정상이다.
+        smsProperties.getBank().setAccount("");
+
+        GoodsSurveyApplicationResponse result = submitDirect("nobank");
+
+        assertThat(result.bank()).isNull();
     }
 
     @Test

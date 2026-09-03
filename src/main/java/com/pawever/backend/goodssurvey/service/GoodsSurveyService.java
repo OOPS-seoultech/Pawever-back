@@ -1,6 +1,7 @@
 package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.notification.sms.SmsProperties;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
@@ -111,6 +112,8 @@ public class GoodsSurveyService {
     private final ObjectMapper objectMapper;
     private final HmacHasher hmacHasher;
     private final GoodsSurveyProperties properties;
+    // 화면에 적어 줄 계좌. 문자가 쓰는 것과 같은 설정이어야 한다.
+    private final SmsProperties smsProperties;
     private final GoodsOrderService orderService;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
@@ -643,8 +646,28 @@ public class GoodsSurveyService {
                 fulfillment.getOrderNumber(),
                 fulfillment.getListPriceKrw(),
                 fulfillment.getDiscountAmountKrw(),
-                fulfillment.getShippingFeeKrw()
+                fulfillment.getShippingFeeKrw(),
+                bankAccount(),
+                fulfillment.getPaymentExpiresAt()
         );
+    }
+
+    /**
+     * 화면에 적어 줄 입금처.
+     *
+     * 문자가 쓰는 것과 같은 설정을 읽는다. 두 곳에 따로 적어 두면 계좌를 바꾼
+     * 날 한쪽만 바뀌고, 그때부터 들어온 돈은 어느 주문의 것인지 알 수 없다.
+     *
+     * 설정이 비어 있으면 null 을 준다. 없는 계좌를 빈칸으로 그려 두면 사람이
+     * 빈칸으로 송금할 곳을 찾는다.
+     */
+    private GoodsSurveyApplicationResponse.BankAccount bankAccount() {
+        SmsProperties.Bank bank = smsProperties.getBank();
+        if (!bank.isConfigured()) {
+            return null;
+        }
+        return new GoodsSurveyApplicationResponse.BankAccount(
+                bank.getName(), bank.getAccount(), bank.getHolder());
     }
 
     private GoodsSurveyPhotoUploadResponse confirmedPhoto(GoodsSurveyPhoto photo) {
