@@ -17,10 +17,19 @@ public record SubmitGoodsSurveyApplicationRequest(
         @NotBlank
         @Pattern(regexp = "^(?:\\+?82)?0?1[016789][0-9]{7,8}$|^01[016789]-?[0-9]{3,4}-?[0-9]{4}$")
         String phone,
-        @NotBlank @Size(max = 10) String postalCode,
-        @NotBlank @Size(max = 200) String address,
+        /**
+         * 건네는 방법. SHIPPING 또는 PICKUP 이고, 비어 있으면 택배로 본다.
+         *
+         * PICKUP 은 행사장이 있는 경로에서만 고를 수 있다. 이때 주소는 받지
+         * 않고 배송비도 붙지 않는다.
+         */
+        @Size(max = 20) String deliveryMethod,
+        // 택배일 때만 있어야 한다. 현장 수령은 받는 사람이 그 자리에 온다.
+        @Size(max = 10) String postalCode,
+        @Size(max = 200) String address,
         @Size(max = 200) String addressDetail,
-        @Size(min = 1, max = 5) List<@NotBlank @Size(max = 36) String> photoIds,
+        // 얼굴·전신·털무늬 세 종이 제작의 최소 구성이다.
+        @Size(min = 3, max = 5) List<@NotBlank @Size(max = 36) String> photoIds,
         @Size(max = 5) List<@NotBlank @Size(max = 36) String> publicPhotoIds,
         @NotBlank @Size(max = 80) String conversionEventId,
         @NotNull JsonNode tracking,

@@ -403,6 +403,7 @@ public class AdminOrderService {
         return new AdminOrderDetail.Shipping(
                 fulfillment.getGuardianName(),
                 fulfillment.getPhone(),
+                fulfillment.getDeliveryMethod().name(),
                 fulfillment.getPostalCode(),
                 fulfillment.getAddress(),
                 fulfillment.getAddressDetail(),

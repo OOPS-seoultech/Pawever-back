@@ -31,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.mockito.Mock;
@@ -237,6 +238,138 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getPromotionName()).isEqualTo("과기대 플리마켓 할인");
         // 제작비 11,900 + 배송비 3,000
         assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
+    }
+
+    @Test
+    void 현장_수령이면_배송비도_주소도_없다() {
+        // 근거: [피그마 0uW99BqaTJKUVlowzQswli / 8-2 Rending Page]
+        //       5472:1482 "방문수령 외 택배 시 배송비 3,000원 별도"
+        //       5472:1755 "선착순 70명 예약하고, 과기대에서 수령하기"
+        //
+        // 부치지 않으니 배송비가 없고, 받는 사람이 그 자리에 오니 주소도 없다.
+        // 적어 보냈더라도 남기지 않는다 — 쓰지 않을 주소를 보관하면 지킬 것만
+        // 늘어난다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-pickup");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-pickup", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-pickup",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "pickup",
+                        "01234",
+                        "서울시 노원구",
+                        "101동 202호",
+                        photoIds("photo-pickup"),
+                        List.of(),
+                        "conversion-pickup",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDeliveryMethod())
+                .isEqualTo(GoodsDeliveryMethod.PICKUP);
+        assertThat(saved.getValue().getShippingFeeKrw()).isZero();
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(11_900);
+        assertThat(saved.getValue().getPostalCode()).isNull();
+        assertThat(saved.getValue().getAddress()).isNull();
+        assertThat(saved.getValue().getAddressDetail()).isNull();
+    }
+
+    @Test
+    void 현장_수령은_플리마켓이_아니면_고를_수_없다() {
+        // 상시 온라인 판매에는 건네줄 자리가 없다. 여기서 열어 두면 부칠 곳
+        // 없는 주문이 들어오고, 행사가 끝난 뒤에도 그대로 남는다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-pickup-online");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-pickup-online", draft.responseId()));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-pickup-online",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "pickup",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        photoIds("photo-pickup-online"),
+                        List.of(),
+                        "conversion-pickup-online",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("현장 수령을 고를 수 없는");
+    }
+
+    @Test
+    void 부쳐야_하는데_주소가_없으면_접수되지_않는다() {
+        // 주소를 선택으로 바꾼 것은 현장 수령 때문이다. 부치는 주문까지 주소
+        // 없이 통과하면 만들어 놓고 보낼 곳이 없다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-no-address");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-no-address", draft.responseId()));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-no-address",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        null,
+                        "",
+                        "",
+                        "",
+                        photoIds("photo-no-address"),
+                        List.of(),
+                        "conversion-no-address",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("입력");
     }
 
     @Test
@@ -514,6 +647,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -577,6 +711,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -750,6 +885,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -800,6 +936,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -906,6 +1043,7 @@ class GoodsSurveyServiceTest {
                 petName,
                 guardianName,
                 phone,
+                null,
                 "01234",
                 "서울시 노원구",
                 "",
@@ -955,6 +1093,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -1011,6 +1150,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -1063,6 +1203,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -1176,6 +1317,7 @@ class GoodsSurveyServiceTest {
                 "몽이",
                 "보호자",
                 "01012345678",
+                null,
                 "01234",
                 "서울시 노원구",
                 "",

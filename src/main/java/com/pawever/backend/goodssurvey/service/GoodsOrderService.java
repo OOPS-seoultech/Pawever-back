@@ -2,6 +2,7 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderSequence;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
@@ -55,7 +56,15 @@ public class GoodsOrderService {
      * 설문에 답하고 온 사람만 깎아 준다. 건너뛴 사람은 정상가다. 답하는 수고와
      * 값의 차이가 이 서비스가 설문을 받는 이유다.
      */
-    public GoodsOrderPricing priceFor(GoodsSalesChannel channel, boolean surveyParticipant) {
+    public GoodsOrderPricing priceFor(
+            GoodsSalesChannel channel,
+            boolean surveyParticipant,
+            GoodsDeliveryMethod deliveryMethod
+    ) {
+        // 부치지 않으면 배송비도 없다.
+        int shippingFeeKrw = deliveryMethod == GoodsDeliveryMethod.PICKUP
+                ? 0
+                : properties.getShippingFeeKrw();
         if (channel == GoodsSalesChannel.FLEA) {
             // 현장 한정가다. 설문을 거치지 않는 자리라 누가 오든 같은 값이고,
             // 설문 참여 할인과 겹쳐 쓰지 않는다.
@@ -63,18 +72,17 @@ public class GoodsOrderService {
                     properties.getListPriceKrw(),
                     properties.getFleaDiscountKrw(),
                     properties.getFleaPromotionName(),
-                    properties.getShippingFeeKrw()
+                    shippingFeeKrw
             );
         }
         if (!surveyParticipant) {
-            return GoodsOrderPricing.listPrice(
-                    properties.getListPriceKrw(), properties.getShippingFeeKrw());
+            return GoodsOrderPricing.listPrice(properties.getListPriceKrw(), shippingFeeKrw);
         }
         return GoodsOrderPricing.discounted(
                 properties.getListPriceKrw(),
                 properties.getSurveyDiscountKrw(),
                 properties.getSurveyPromotionName(),
-                properties.getShippingFeeKrw()
+                shippingFeeKrw
         );
     }
 

@@ -18,6 +18,7 @@ import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import com.pawever.backend.goodssurvey.event.TrafficSource;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
@@ -477,6 +478,26 @@ public class GoodsSurveyService {
 
         validateIdempotencyKey(idempotencyKey);
         validateGoodsType(request.goodsType(), request.customGoods());
+
+        GoodsDeliveryMethod deliveryMethod = parseDelivery(request.deliveryMethod());
+        // 현장 수령은 행사장이 있는 경로에서만 고를 수 있다. 상시 온라인 판매에
+        // 열어 두면 부칠 곳 없는 주문이 들어온다.
+        if (deliveryMethod == GoodsDeliveryMethod.PICKUP
+                && campaign.getChannel() != GoodsSalesChannel.FLEA) {
+            throw new CustomException(ErrorCode.SURVEY_PICKUP_NOT_AVAILABLE);
+        }
+        String postalCode = trimToNull(request.postalCode());
+        String address = trimToNull(request.address());
+        String addressDetail = trimToNull(request.addressDetail());
+        if (deliveryMethod == GoodsDeliveryMethod.PICKUP) {
+            // 받는 사람이 그 자리에 온다. 적어 보냈더라도 남기지 않는다 —
+            // 쓰지 않을 주소를 보관하면 지킬 것만 늘어난다.
+            postalCode = null;
+            address = null;
+            addressDetail = null;
+        } else if (postalCode == null || address == null) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
         answerValidator.validateTrackingOnly(request.tracking());
         if (!request.privacyAgreed() || !request.shippingConfirmed()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
@@ -532,16 +553,21 @@ public class GoodsSurveyService {
                 request.guardianName().trim(),
                 normalizedPhone,
                 phoneHash,
-                request.postalCode().trim(),
-                request.address().trim(),
-                trimToNull(request.addressDetail()),
+                deliveryMethod,
+                postalCode,
+                address,
+                addressDetail,
                 properties.getPrivacyConsentVersion(),
                 now,
                 // 제출하면 둘 다 SUBMITTED 가 되어 나중에는 구분할 수 없다.
                 // 얼마를 청구할지가 여기서 갈리므로 지금 확정해 남긴다.
                 response.isSurveyParticipant(),
                 orderService.issueOrderNumber(),
-                orderService.priceFor(campaign.getChannel(), response.isSurveyParticipant()),
+                orderService.priceFor(
+                        campaign.getChannel(),
+                        response.isSurveyParticipant(),
+                        deliveryMethod
+                ),
                 request.marketingAgreed(),
                 properties.getMarketingConsentVersion(),
                 properties.getPaymentWindowMinutes(),
@@ -694,6 +720,17 @@ public class GoodsSurveyService {
     private GoodsSurveyCampaign campaignOf(GoodsSurveyResponse response) {
         return campaignRepository.findById(response.getCampaignId())
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));
+    }
+
+    private GoodsDeliveryMethod parseDelivery(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return GoodsDeliveryMethod.SHIPPING;
+        }
+        try {
+            return GoodsDeliveryMethod.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException notAMethod) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
     }
 
     private GoodsSalesChannel parseChannel(String raw) {

@@ -10,6 +10,7 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
@@ -655,6 +656,7 @@ class AdminOrderServiceTest {
                 "김포에버",
                 "01012345678",
                 "phone-hash",
+                GoodsDeliveryMethod.SHIPPING,
                 "01234",
                 "서울특별시 노원구 공릉로 232",
                 "101호",

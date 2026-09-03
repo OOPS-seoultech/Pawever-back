@@ -3,6 +3,7 @@ package com.pawever.backend.goodssurvey.service;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
@@ -278,6 +279,7 @@ class GoodsSurveyRetentionServiceTest {
                 "보호자",
                 "01012345678",
                 "phone-hash-" + responseId,
+                GoodsDeliveryMethod.SHIPPING,
                 "01234",
                 "서울시 어딘가",
                 "101호",
