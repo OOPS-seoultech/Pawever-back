@@ -156,8 +156,61 @@ class GoodsSurveyRepositoryTest {
         )).isEqualTo(1);
     }
 
+    @Test
+    void 자리를_놓은_주문은_번호도_함께_놓는다() {
+        // 자리는 돌려주면서 번호는 붙들고 있었다. 그래서 결제가 만료된 사람은
+        // 돌아온 그 자리를 정작 자기만 못 썼다 — 현장에서 48시간 안에 입금하지
+        // 못한 사람이 정확히 이 경우다.
+        Instant now = Instant.parse("2026-08-30T09:00:00Z");
+        GoodsSurveyCampaign campaign = campaignRepository.save(
+                GoodsSurveyCampaign.create(
+                        "goods-2026-09", 100, 0,
+                        now.minusSeconds(3600), now.plusSeconds(3600), true, true
+                )
+        );
+        submittedWithOrder("gone", campaign.getId(), now, GoodsOrderStatus.PAYMENT_EXPIRED);
+        submittedWithOrder("live", campaign.getId(), now, GoodsOrderStatus.PAYMENT_PENDING);
+
+        assertThat(fulfillmentRepository.existsLiveByPhoneHash(
+                "hash-gone", GoodsOrderStatus.releasesSlot()
+        )).isFalse();
+
+        // 결제를 기다리는 건은 아직 살아 있다. 같은 번호로 또 사면 두 자리를
+        // 잡는다.
+        assertThat(fulfillmentRepository.existsLiveByPhoneHash(
+                "hash-live", GoodsOrderStatus.releasesSlot()
+        )).isTrue();
+    }
+
+    @Test
+    void 만료된_뒤_같은_번호로_다시_살_수_있다() {
+        // 번호 해시에 유일 제약이 걸려 있어서, 다시 사는 순간 데이터베이스가
+        // 막았다. 화면에서 걸러 주더라도 그 아래에서 또 막히면 고친 것이 아니다.
+        Instant now = Instant.parse("2026-08-30T09:00:00Z");
+        GoodsSurveyCampaign campaign = campaignRepository.save(
+                GoodsSurveyCampaign.create(
+                        "goods-2026-09", 100, 0,
+                        now.minusSeconds(3600), now.plusSeconds(3600), true, true
+                )
+        );
+        submittedWithOrder("first", campaign.getId(), now, GoodsOrderStatus.PAYMENT_EXPIRED, "hash-same");
+
+        submittedWithOrder("again", campaign.getId(), now, GoodsOrderStatus.PAYMENT_PENDING, "hash-same");
+
+        assertThat(fulfillmentRepository.existsLiveByPhoneHash(
+                "hash-same", GoodsOrderStatus.releasesSlot()
+        )).isTrue();
+    }
+
     private void submittedWithOrder(
             String suffix, String campaignId, Instant now, GoodsOrderStatus status
+    ) {
+        submittedWithOrder(suffix, campaignId, now, status, "hash-" + suffix);
+    }
+
+    private void submittedWithOrder(
+            String suffix, String campaignId, Instant now, GoodsOrderStatus status,
+            String phoneHash
     ) {
         GoodsSurveyResponse response = draft(suffix, campaignId);
         response.startDirectPurchase(now);
@@ -166,7 +219,7 @@ class GoodsSurveyRepositoryTest {
 
         GoodsSurveyFulfillment fulfillment = GoodsSurveyFulfillment.create(
                 response.getId(), "idem-" + suffix, "conv-" + suffix, "{}",
-                "figure", null, "보리", "황성욱", "010-1234-5678", "hash-" + suffix,
+                "figure", null, "보리", "황성욱", "010-1234-5678", phoneHash,
                 GoodsDeliveryMethod.SHIPPING,
                 "01811", "서울 노원구", "101호", "v1", now, false,
                 // 주문번호 칸은 20자이고 값은 유일해야 한다. 접미사 길이가
