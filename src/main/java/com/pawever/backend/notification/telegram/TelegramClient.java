@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
@@ -55,9 +56,26 @@ public class TelegramClient {
             );
             return true;
         } catch (RestClientException e) {
-            // 토큰에 담긴 값이 로그로 새지 않도록 주소는 남기지 않는다.
-            log.error("텔레그램 알림 전송 실패: {}", e.getMessage());
+            log.error("텔레그램 알림 전송 실패: {}", describe(e));
             return false;
         }
+    }
+
+    /**
+     * 실패한 까닭만 남긴다. 주소는 남기지 않는다.
+     *
+     * 주소에 봇 토큰이 박혀 있다. 그리고 {@code e.getMessage()} 에는 그 주소가
+     * 통째로 들어간다 — 남기지 않으려던 것이 예외 문구를 타고 그대로 나갔다.
+     * 실제로 운영 로그에 토큰이 찍혔고, 그 로그를 읽을 수 있는 사람은 모두
+     * 봇을 쓸 수 있게 됐다.
+     *
+     * 답이 온 경우에는 상태와 본문만 남긴다. 텔레그램이 주는 본문에는 토큰이
+     * 없고, 무엇이 잘못됐는지는 거기에 적혀 있다.
+     */
+    private String describe(RestClientException e) {
+        if (e instanceof RestClientResponseException answered) {
+            return answered.getStatusCode() + " " + answered.getResponseBodyAsString();
+        }
+        return e.getClass().getSimpleName();
     }
 }

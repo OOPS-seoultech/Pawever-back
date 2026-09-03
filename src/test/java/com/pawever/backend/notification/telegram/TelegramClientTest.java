@@ -1,7 +1,13 @@
 package com.pawever.backend.notification.telegram;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
@@ -58,6 +64,41 @@ class TelegramClientTest {
 
         assertThat(client.sendHtml("안녕")).isFalse();
         server.verify();
+    }
+
+    @Test
+    void 실패_로그에_봇_토큰이_남지_않는다() {
+        // 봇 토큰은 그 자체가 봇이다. 가진 사람은 우리 채널에 글을 쓰고 봇이
+        // 받는 메시지를 읽는다.
+        //
+        // 그런데 요청 주소에 토큰이 박혀 있고, RestTemplate 예외의 문구에는
+        // 그 주소가 통째로 들어간다. "주소는 남기지 않는다"고 적어 두고
+        // e.getMessage() 를 그대로 찍고 있었다 — 2026-09-03 운영 로그에
+        // 토큰이 찍혔고, 그 로그를 읽을 수 있는 사람은 모두 봇을 쓸 수 있게
+        // 됐다.
+        properties.setBotToken("123456789:AA-secret-value");
+        Logger logger = (Logger) LoggerFactory.getLogger(TelegramClient.class);
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        logger.addAppender(logs);
+        logger.setLevel(Level.DEBUG);
+
+        server.expect(requestTo("https://api.telegram.org/bot123456789:AA-secret-value/sendMessage"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND)
+                        .body("{\"ok\":false,\"error_code\":404,\"description\":\"Not Found\"}")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON));
+
+        assertThat(client.sendHtml("안녕")).isFalse();
+
+        String written = logs.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (a, b) -> a + " " + b);
+        logger.detachAppender(logs);
+
+        assertThat(written).doesNotContain("AA-secret-value");
+        // 원인은 남아야 한다. 까닭 없는 실패 로그는 없는 것과 같다.
+        assertThat(written).contains("404");
+        assertThat(written).contains("Not Found");
     }
 
     @Test
