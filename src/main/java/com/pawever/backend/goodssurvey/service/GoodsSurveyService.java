@@ -538,7 +538,8 @@ public class GoodsSurveyService {
 
         String normalizedPhone = normalizePhone(request.phone());
         String phoneHash = hmacHasher.hash(response.getCampaignId() + ":" + normalizedPhone);
-        if (fulfillmentRepository.existsByPhoneHash(phoneHash)) {
+        if (fulfillmentRepository.existsLiveByPhoneHash(
+                phoneHash, GoodsOrderStatus.releasesSlot())) {
             throw new CustomException(ErrorCode.SURVEY_DUPLICATE_PHONE);
         }
         if (fulfillmentRepository.existsByIdempotencyKey(idempotencyKey)) {

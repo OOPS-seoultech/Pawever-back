@@ -4,6 +4,8 @@ import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -14,7 +16,26 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
 
     Optional<GoodsSurveyFulfillment> findByResponseId(String responseId);
 
-    boolean existsByPhoneHash(String phoneHash);
+    /**
+     * 이 번호로 살아 있는 주문이 있는지.
+     *
+     * 상태를 보지 않고 번호만 세면, 결제가 만료되거나 취소된 사람도 다시
+     * 살 수 없다. 자리는 돌아오는데(countSubmittedAllocations) 그 자리를
+     * 그 사람만 못 쓴다 — 현장에서 48시간 안에 입금하지 못한 사람이 정확히
+     * 이 경우다.
+     *
+     * 자리를 놓은 상태는 번호도 함께 놓는다.
+     */
+    @Query("""
+            select count(fulfillment) > 0
+            from GoodsSurveyFulfillment fulfillment
+            where fulfillment.phoneHash = :phoneHash
+              and fulfillment.status not in :releasedStatuses
+            """)
+    boolean existsLiveByPhoneHash(
+            @Param("phoneHash") String phoneHash,
+            @Param("releasedStatuses") Collection<GoodsOrderStatus> releasedStatuses
+    );
 
     boolean existsByIdempotencyKey(String idempotencyKey);
 

@@ -60,7 +60,13 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     @Column(nullable = false, length = 1000)
     private String phone;
 
-    @Column(nullable = false, unique = true, length = 88)
+    /**
+     * 같은 번호가 여러 줄 있을 수 있다.
+     *
+     * 결제가 만료돼 자리를 놓은 뒤 그 사람이 다시 사면 두 번째 줄이 생긴다.
+     * 유일 제약을 걸어 두면 그 재구매가 데이터베이스에서 막힌다.
+     */
+    @Column(nullable = false, length = 88)
     private String phoneHash;
 
     /**
