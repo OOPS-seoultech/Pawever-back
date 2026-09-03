@@ -10,6 +10,7 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.repository.GoodsOrderStatusChangeRepository;
@@ -99,6 +100,19 @@ class AdminOrderServiceTest {
         assertThat(summary.phoneMasked()).isEqualTo("010-12**-56**");
         // 반려견 이름은 가리지 않는다. 제작 화면에서 부르는 이름이다.
         assertThat(summary.petName()).isEqualTo("몽이");
+    }
+
+    @Test
+    void 목록에서_부칠_건과_넘겨줄_건이_갈린다() {
+        // 상세를 하나씩 열어 확인하면 스무 건을 포장하는 동안 한 건은 반드시
+        // 섞인다. 현장 수령 건은 주소가 비어 있어서, 방법을 함께 보지 않으면
+        // 빠뜨린 주소와 구분되지도 않는다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        AdminOrderListResponse response = service.list(ADMIN, Set.of(), null, null, 0, 20);
+
+        assertThat(response.orders().get(0).deliveryMethod()).isEqualTo("SHIPPING");
     }
 
     @Test
@@ -655,6 +669,7 @@ class AdminOrderServiceTest {
                 "김포에버",
                 "01012345678",
                 "phone-hash",
+                GoodsDeliveryMethod.SHIPPING,
                 "01234",
                 "서울특별시 노원구 공릉로 232",
                 "101호",

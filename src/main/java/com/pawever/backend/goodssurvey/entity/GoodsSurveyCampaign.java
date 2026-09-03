@@ -3,6 +3,8 @@ package com.pawever.backend.goodssurvey.entity;
 import com.pawever.backend.global.common.BaseTimeEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -20,6 +22,17 @@ public class GoodsSurveyCampaign extends BaseTimeEntity {
     @Id
     @Column(length = 50)
     private String id;
+
+    /**
+     * 이 모집을 파는 통로.
+     *
+     * 값과 정원이 통로마다 다르다. 설정이 아니라 모집에 붙여 두는 이유는,
+     * 행사가 끝나 설정을 지워도 이미 이 모집에 붙은 주문은 사람이 동의한
+     * 값 그대로 계산돼야 하기 때문이다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private GoodsSalesChannel channel = GoodsSalesChannel.ONLINE;
 
     @Column(nullable = false)
     private int capacity;
@@ -62,8 +75,24 @@ public class GoodsSurveyCampaign extends BaseTimeEntity {
             boolean surveyOpen,
             boolean goodsOpen
     ) {
+        return create(
+                id, GoodsSalesChannel.ONLINE, capacity, historicalAllocated,
+                startsAt, endsAt, surveyOpen, goodsOpen);
+    }
+
+    public static GoodsSurveyCampaign create(
+            String id,
+            GoodsSalesChannel channel,
+            int capacity,
+            int historicalAllocated,
+            Instant startsAt,
+            Instant endsAt,
+            boolean surveyOpen,
+            boolean goodsOpen
+    ) {
         GoodsSurveyCampaign campaign = new GoodsSurveyCampaign();
         campaign.id = id;
+        campaign.channel = channel;
         campaign.capacity = capacity;
         campaign.historicalAllocated = historicalAllocated;
         campaign.startsAt = startsAt;

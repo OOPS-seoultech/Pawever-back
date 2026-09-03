@@ -68,7 +68,7 @@ public class GoodsSurveyExportService {
 
         List<String> header = List.of(
                 "응답ID", "신청일시", "굿즈이름", "굿즈종류", "직접입력굿즈", "반려견이름",
-                "보호자이름", "연락처", "우편번호", "주소", "상세주소",
+                "보호자이름", "연락처", "수령방법", "우편번호", "주소", "상세주소",
                 "사진수", "사진저장키",
                 // 동의 없이는 신청이 성립하지 않지만, 그것만으로는 기록이 아니다.
                 // 언제 어떤 문구에 동의했는지 남아야 나중에 보여줄 수 있다.
@@ -90,8 +90,11 @@ public class GoodsSurveyExportService {
                             fulfillment.getPetName(),
                             fulfillment.getGuardianName(),
                             fulfillment.getPhone(),
-                            fulfillment.getPostalCode(),
-                            fulfillment.getAddress(),
+                            // 현장 수령 건은 주소 칸이 비어 있다. 수령 방법이
+                            // 함께 있어야 빠뜨린 것과 구분된다.
+                            fulfillment.getDeliveryMethod().name(),
+                            text(fulfillment.getPostalCode()),
+                            text(fulfillment.getAddress()),
                             text(fulfillment.getAddressDetail()),
                             String.valueOf(attached.size()),
                             attached.stream()

@@ -106,6 +106,12 @@ survey:
     list-price-krw: ${GOODS_LIST_PRICE_KRW:29900}
     # 설문에 답하고 온 사람에게 깎아 주는 금액.
     survey-discount-krw: ${GOODS_SURVEY_DISCOUNT_KRW:6000}
+    # 플리마켓 모집. 비어 있으면 이 통로 자체가 열리지 않는다.
+    # 행사가 끝나면 이 값을 비워 닫는다.
+    flea-campaign-id: ${GOODS_FLEA_CAMPAIGN_ID:}
+    # 현장 한정 할인. 29,900 - 18,000 = 11,900 (디자인의 "60.2% 할인")
+    flea-discount-krw: ${GOODS_FLEA_DISCOUNT_KRW:18000}
+    flea-promotion-name: 과기대 플리마켓 할인
     # 화면에는 따로 보여 주고 결제는 한 번에 받는다.
     shipping-fee-krw: ${GOODS_SHIPPING_FEE_KRW:3000}
     # 주문을 만든 뒤 입금을 기다리는 시간. 48시간.

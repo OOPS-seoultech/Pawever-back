@@ -2,6 +2,7 @@ package com.pawever.backend.goodssurvey.service;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhotoStatus;
@@ -208,6 +209,7 @@ class GoodsSurveyExportServiceTest {
                 "보호자",
                 "01012345678",
                 "hash-" + responseId,
+                GoodsDeliveryMethod.SHIPPING,
                 "01234",
                 "서울시 노원구",
                 "",

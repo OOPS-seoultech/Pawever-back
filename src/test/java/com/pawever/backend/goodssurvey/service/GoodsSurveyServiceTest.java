@@ -5,6 +5,7 @@ import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyPhotoUploadRequest;
 import com.pawever.backend.goodssurvey.dto.CreateGoodsSurveyRequest;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyCompletionResponse;
+import com.pawever.backend.goodssurvey.dto.GoodsSurveyApplicationResponse;
 import com.pawever.backend.goodssurvey.dto.GoodsSurveyDraftResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
@@ -31,6 +32,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
+import com.pawever.backend.goodssurvey.entity.GoodsSalesChannel;
+import com.pawever.backend.notification.sms.SmsProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -60,6 +64,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class GoodsSurveyServiceTest {
 
+    private GoodsSurveyProperties properties;
+    private SmsProperties smsProperties;
+
     private static final Instant NOW = Instant.parse("2026-07-24T09:00:00Z");
 
     @Mock private GoodsSurveyCampaignRepository campaignRepository;
@@ -80,8 +87,13 @@ class GoodsSurveyServiceTest {
 
     @BeforeEach
     void setUp() {
-        GoodsSurveyProperties properties = new GoodsSurveyProperties();
+        properties = new GoodsSurveyProperties();
         properties.setCampaignId("goods-2026-07");
+        // 접수 화면이 적어 줄 계좌. 문자가 쓰는 것과 같은 설정이다.
+        smsProperties = new SmsProperties();
+        smsProperties.getBank().setName("기업은행");
+        smsProperties.getBank().setAccount("000-000000-00-000");
+        smsProperties.getBank().setHolder("포에버");
         properties.setReservationMinutes(15);
 
         useCampaign(true, true);
@@ -141,6 +153,7 @@ class GoodsSurveyServiceTest {
                 new ObjectMapper(),
                 new HmacHasher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
                 properties,
+                smsProperties,
                 orderService,
                 testClock,
                 publishedEvents::add
@@ -177,6 +190,273 @@ class GoodsSurveyServiceTest {
                 .thenReturn(Optional.of(campaign));
     }
 
+    /**
+     * 플리마켓 모집을 끼운다.
+     *
+     * 설문 스위치는 닫아 둔다. QR 을 찍고 바로 주문하는 자리라 설문을 거치지
+     * 않고, 문은 굿즈 스위치가 지킨다.
+     */
+    private void useFleaCampaign(boolean goodsOpen) {
+        GoodsSurveyCampaign flea = GoodsSurveyCampaign.create(
+                "goods-2026-09-flea",
+                GoodsSalesChannel.FLEA,
+                70,
+                0,
+                Instant.parse("2026-09-01T00:00:00Z"),
+                Instant.parse("2026-12-31T14:59:59Z"),
+                false,
+                goodsOpen
+        );
+        lenient().when(campaignRepository.findById("goods-2026-09-flea"))
+                .thenReturn(Optional.of(flea));
+        lenient().when(campaignRepository.findByIdForUpdate("goods-2026-09-flea"))
+                .thenReturn(Optional.of(flea));
+    }
+
+    @Test
+    void 플리마켓으로_들어오면_현장가로_접수된다() {
+        // 근거: [피그마 0uW99BqaTJKUVlowzQswli / 8-2 Rending Page]
+        //       5472:1478 "서울과학기술대학교 플리마켓 전용가",
+        //       5472:1480 "11,900원", 5498:2395 "60.2% 할인",
+        //       5472:1773 "배송비 3,000원 별도"
+        //
+        // 29,900 - 18,000 = 11,900 이고 18,000 / 29,900 = 60.2% 다. 디자인이
+        // 기존 정가를 기준으로 잡아 둔 값이라 할인 하나로 들어간다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-flea", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-flea",
+                directApplication(tracking, "conversion-flea", "photo-flea")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(18_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("과기대 플리마켓 할인");
+        // 제작비 11,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
+    }
+
+    /** 직행으로 들어와 사진까지 갖춘 신청 하나. 접수 응답을 돌려준다. */
+    private GoodsSurveyApplicationResponse submitDirect(String suffix) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-" + suffix);
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-" + suffix, draft.responseId()));
+        return service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-" + suffix,
+                directApplication(tracking, "conversion-" + suffix, "photo-" + suffix)
+        );
+    }
+
+    @Test
+    void 접수하면_어디로_넣을지도_함께_알려준다() {
+        // 계좌를 문자로만 보내던 때가 있었다. 문자가 오기 전까지 사람은 아무것도
+        // 할 수 없고, 현장에서 QR 을 찍고 그 자리에서 넣는 자리라면 줄이 선다.
+        //
+        // 문자가 쓰는 것과 같은 설정을 읽는다. 두 곳에 따로 적어 두면 계좌를
+        // 바꾼 날 한쪽만 바뀌고, 그때부터 들어온 돈은 어느 주문의 것인지 알 수
+        // 없다.
+        GoodsSurveyApplicationResponse result = submitDirect("bank");
+
+        assertThat(result.bank()).isNotNull();
+        assertThat(result.bank().name()).isEqualTo("기업은행");
+        assertThat(result.bank().account()).isEqualTo("000-000000-00-000");
+        assertThat(result.bank().holder()).isEqualTo("포에버");
+        // 언제까지 넣어야 하는지도 함께 준다. 기한을 모르면 자리가 언제
+        // 돌아가는지 알 수 없다.
+        assertThat(result.paymentExpiresAt()).isNotNull();
+        // 잘못 들어온 돈은 이 번호로 대조한다.
+        assertThat(result.orderNumber()).isNotBlank();
+    }
+
+    @Test
+    void 계좌를_정하지_않았으면_비워서_보낸다() {
+        // 없는 계좌를 빈칸으로 그려 두면 사람이 빈칸으로 송금할 곳을 찾는다.
+        // 로컬과 시험에서는 값이 없는 것이 정상이다.
+        smsProperties.getBank().setAccount("");
+
+        GoodsSurveyApplicationResponse result = submitDirect("nobank");
+
+        assertThat(result.bank()).isNull();
+    }
+
+    @Test
+    void 현장_수령이면_배송비도_주소도_없다() {
+        // 근거: [피그마 0uW99BqaTJKUVlowzQswli / 8-2 Rending Page]
+        //       5472:1482 "방문수령 외 택배 시 배송비 3,000원 별도"
+        //       5472:1755 "선착순 70명 예약하고, 과기대에서 수령하기"
+        //
+        // 부치지 않으니 배송비가 없고, 받는 사람이 그 자리에 오니 주소도 없다.
+        // 적어 보냈더라도 남기지 않는다 — 쓰지 않을 주소를 보관하면 지킬 것만
+        // 늘어난다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-pickup");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-pickup", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-pickup",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "pickup",
+                        "01234",
+                        "서울시 노원구",
+                        "101동 202호",
+                        photoIds("photo-pickup"),
+                        List.of(),
+                        "conversion-pickup",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDeliveryMethod())
+                .isEqualTo(GoodsDeliveryMethod.PICKUP);
+        assertThat(saved.getValue().getShippingFeeKrw()).isZero();
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(11_900);
+        assertThat(saved.getValue().getPostalCode()).isNull();
+        assertThat(saved.getValue().getAddress()).isNull();
+        assertThat(saved.getValue().getAddressDetail()).isNull();
+    }
+
+    @Test
+    void 현장_수령은_플리마켓이_아니면_고를_수_없다() {
+        // 상시 온라인 판매에는 건네줄 자리가 없다. 여기서 열어 두면 부칠 곳
+        // 없는 주문이 들어오고, 행사가 끝난 뒤에도 그대로 남는다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-pickup-online");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-pickup-online", draft.responseId()));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-pickup-online",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        "pickup",
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        photoIds("photo-pickup-online"),
+                        List.of(),
+                        "conversion-pickup-online",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("현장 수령을 고를 수 없는");
+    }
+
+    @Test
+    void 부쳐야_하는데_주소가_없으면_접수되지_않는다() {
+        // 주소를 선택으로 바꾼 것은 현장 수령 때문이다. 부치는 주문까지 주소
+        // 없이 통과하면 만들어 놓고 보낼 곳이 없다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-no-address");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-no-address", draft.responseId()));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-no-address",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        null,
+                        "",
+                        "",
+                        "",
+                        photoIds("photo-no-address"),
+                        List.of(),
+                        "conversion-no-address",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("입력");
+    }
+
+    @Test
+    void 플리마켓_모집을_정하지_않으면_그_경로는_열리지_않는다() {
+        // 행사가 끝나면 설정을 비워 닫는다. 배포 없이 환경변수만 비우면 되고,
+        // 그러면 새 주문이 들어올 길 자체가 사라진다.
+        properties.setFleaCampaignId("");
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea-off");
+
+        assertThatThrownBy(() -> service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        )).hasMessageContaining("열려 있지 않은 판매 경로");
+    }
+
+    @Test
+    void 설정이_가리키는_모집이_다른_경로면_받지_않는다() {
+        // 설정과 모집이 어긋난 채로 통과시키면 플리마켓으로 들어온 사람에게
+        // 온라인 값 29,900 이 매겨진다. 값을 틀리게 매기느니 열지 않는다.
+        properties.setFleaCampaignId("goods-2026-07");
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-flea-mixed");
+
+        assertThatThrownBy(() -> service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        )).hasMessageContaining("열려 있지 않은 판매 경로");
+    }
+
     @Test
     void surveyKeepsAcceptingAnswersAfterTheGoodsCampaignIsClosed() {
         // 1차 무료 제작이 끝난 상태. 정원이 남아 있어도 굿즈는 열리지 않아야 하고,
@@ -186,7 +466,7 @@ class GoodsSurveyServiceTest {
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-goods-closed");
 
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -217,7 +497,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-story-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -267,7 +547,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo-no-slot");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -300,7 +580,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -340,7 +620,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-dup");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -371,7 +651,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-notice-early");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         assertThatThrownBy(() -> service.subscribeNotice(
@@ -389,7 +669,7 @@ class GoodsSurveyServiceTest {
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected");
 
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
 
         assertThat(draft.responseId()).isNotBlank();
@@ -402,7 +682,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-unselected-apply");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "unselected", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -426,6 +706,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -448,7 +729,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-25-v2",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-survey-closed"),
+                        null
                 )
         )).hasMessageContaining("설문 접수가 종료");
     }
@@ -460,7 +742,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-switch-off");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -488,6 +770,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -509,7 +792,7 @@ class GoodsSurveyServiceTest {
                 "device", Map.of("category", "mobile")
         ));
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         GoodsSurveyCompletionResponse result = service.completeSurvey(
@@ -539,7 +822,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-23-v1",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-2")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-2"),
+                        null
                 )
         );
         when(responseRepository.countSubmittedAllocations(any(), any(), any()))
@@ -570,7 +854,8 @@ class GoodsSurveyServiceTest {
                 new CreateGoodsSurveyRequest(
                         "2026-07-25-v2",
                         "figure",
-                        new ObjectMapper().createObjectNode().put("visitId", "visit-3")
+                        new ObjectMapper().createObjectNode().put("visitId", "visit-3"),
+                        null
                 )
         );
 
@@ -595,7 +880,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-thin");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         assertThatThrownBy(() -> service.completeSurvey(
@@ -615,11 +900,71 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
+    void 사진이_세_장보다_적으면_접수되지_않는다() {
+        // 근거: [카톡 나혜님] "사진 3개 이상 등록해야 제출 버튼 활성화되도록
+        //       변경해주세요. 즉, 사진 3개 이상만 제출 가능하도록 (3-5개)"
+        //
+        // 화면은 세 장부터 열리게 고쳤지만 API 는 한 장도 받고 있었다. 화면만
+        // 막으면 그 화면을 거치지 않는 요청이 그대로 들어온다. 얼굴·전신·털무늬
+        // 세 종이 제작의 최소 구성이라, 두 장짜리 주문은 만들 수 없다.
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-too-few");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(
+                        reservableAnswers(),
+                        "q33",
+                        30_000L,
+                        Map.of(),
+                        tracking
+                )
+        );
+
+        // 두 장이 실제로 올라와 확인까지 끝난 상태를 만든다. 그래야 "덜
+        // 올라왔다"가 아니라 "장수가 모자라다"로 걸리는지 볼 수 있다.
+        // 고치고 나면 장수를 먼저 보고 끊으므로 이 stub 은 쓰이지 않는다.
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(
+                any(), any(), any()
+        )).thenReturn(List.of(
+                confirmedPhoto("photo-1", draft.responseId()),
+                confirmedPhoto("photo-2", draft.responseId())
+        ));
+
+        assertThatThrownBy(() -> service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-too-few",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        "몽이",
+                        "보호자",
+                        "01012345678",
+                        null,
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        List.of("photo-1", "photo-2"),
+                        List.of(),
+                        "conversion-too-few",
+                        tracking,
+                        true,
+                        true,
+                        false
+                )
+        )).hasMessageContaining("3장");
+    }
+
+    @Test
     void applicationStoresPublicationConsentForEachConfirmedPhoto() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -635,9 +980,10 @@ class GoodsSurveyServiceTest {
 
         GoodsSurveyPhoto publicPhoto = confirmedPhoto("photo-public", draft.responseId());
         GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-private", draft.responseId());
+        GoodsSurveyPhoto anotherPrivate = confirmedPhoto("photo-private-2", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(publicPhoto, privatePhoto));
+        )).thenReturn(List.of(publicPhoto, privatePhoto, anotherPrivate));
 
         service.submitApplication(
                 draft.responseId(),
@@ -649,10 +995,11 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-public", "photo-private"),
+                        List.of("photo-public", "photo-private", "photo-private-2"),
                         List.of("photo-public"),
                         "conversion-photo-consent",
                         tracking,
@@ -664,6 +1011,7 @@ class GoodsSurveyServiceTest {
 
         assertThat(publicPhoto.isPublicationAgreed()).isTrue();
         assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+        assertThat(anotherPrivate.isPublicationAgreed()).isFalse();
     }
 
     @Test
@@ -698,7 +1046,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-full");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -725,7 +1073,7 @@ class GoodsSurveyServiceTest {
             String phone
     ) {
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -733,7 +1081,7 @@ class GoodsSurveyServiceTest {
                 new SaveGoodsSurveyDraftRequest(reservableAnswers(), "q33", 30_000L, Map.of(), tracking)
         );
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(confirmedPhoto("photo-1", draft.responseId())));
+                .thenReturn(confirmedPhotos("photo", draft.responseId()));
         service.submitApplication(
                 draft.responseId(),
                 draft.editToken(),
@@ -754,10 +1102,11 @@ class GoodsSurveyServiceTest {
                 petName,
                 guardianName,
                 phone,
+                null,
                 "01234",
                 "서울시 노원구",
                 "",
-                List.of("photo-1"),
+                photoIds("photo"),
                 List.of(),
                 "conversion-notify",
                 tracking,
@@ -775,7 +1124,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-late");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -803,6 +1152,7 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
@@ -828,7 +1178,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-slow");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -845,10 +1195,9 @@ class GoodsSurveyServiceTest {
         // 예약 15분을 훌쩍 넘긴 시점.
         currentTime = NOW.plusSeconds(90 * 60);
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-slow", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(photo));
+        )).thenReturn(confirmedPhotos("photo-slow", draft.responseId()));
 
         service.submitApplication(
                 draft.responseId(),
@@ -860,10 +1209,11 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-slow"),
+                        photoIds("photo-slow"),
                         List.of(),
                         "conversion-slow",
                         tracking,
@@ -882,7 +1232,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-legacy-photo");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-23-v1", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-23-v1", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -896,10 +1246,11 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        GoodsSurveyPhoto privatePhoto = confirmedPhoto("photo-legacy-private", draft.responseId());
+        List<GoodsSurveyPhoto> legacyPhotos =
+                confirmedPhotos("photo-legacy-private", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
-        )).thenReturn(List.of(privatePhoto));
+        )).thenReturn(legacyPhotos);
 
         service.submitApplication(
                 draft.responseId(),
@@ -911,10 +1262,11 @@ class GoodsSurveyServiceTest {
                         "몽이",
                         "보호자",
                         "01012345678",
+                        null,
                         "01234",
                         "서울시 노원구",
                         "",
-                        List.of("photo-legacy-private"),
+                        photoIds("photo-legacy-private"),
                         null,
                         "conversion-legacy-photo",
                         tracking,
@@ -924,7 +1276,7 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        assertThat(privatePhoto.isPublicationAgreed()).isFalse();
+        assertThat(legacyPhotos).noneMatch(GoodsSurveyPhoto::isPublicationAgreed);
     }
 
     private static Map<String, JsonNode> reservableAnswers() {
@@ -946,14 +1298,13 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
 
         service.startDirectPurchase(draft.responseId(), draft.editToken());
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-direct", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(photo));
+                .thenReturn(confirmedPhotos("photo-direct", draft.responseId()));
 
         ArgumentCaptor<GoodsSurveyFulfillment> saved =
                 ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
@@ -979,7 +1330,7 @@ class GoodsSurveyServiceTest {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-member");
         GoodsSurveyDraftResponse draft = service.createDraft(
-                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking)
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
         );
         service.completeSurvey(
                 draft.responseId(),
@@ -993,9 +1344,8 @@ class GoodsSurveyServiceTest {
                 )
         );
 
-        GoodsSurveyPhoto photo = confirmedPhoto("photo-member", draft.responseId());
         when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
-                .thenReturn(List.of(photo));
+                .thenReturn(confirmedPhotos("photo-member", draft.responseId()));
 
         ArgumentCaptor<GoodsSurveyFulfillment> saved =
                 ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
@@ -1018,7 +1368,7 @@ class GoodsSurveyServiceTest {
     private SubmitGoodsSurveyApplicationRequest directApplication(
             JsonNode tracking,
             String conversionEventId,
-            String photoId
+            String photoPrefix
     ) {
         return new SubmitGoodsSurveyApplicationRequest(
                 "figure",
@@ -1026,10 +1376,11 @@ class GoodsSurveyServiceTest {
                 "몽이",
                 "보호자",
                 "01012345678",
+                null,
                 "01234",
                 "서울시 노원구",
                 "",
-                List.of(photoId),
+                photoIds(photoPrefix),
                 List.of(),
                 conversionEventId,
                 tracking,
@@ -1037,6 +1388,22 @@ class GoodsSurveyServiceTest {
                 true,
                 false
         );
+    }
+
+    /**
+     * 제작에 필요한 최소 구성인 세 장.
+     *
+     * 장수가 모자란 신청은 접수되지 않으므로, 성공 경로를 다루는 시험은 세
+     * 장을 갖춰 둔다.
+     */
+    private List<String> photoIds(String prefix) {
+        return List.of(prefix + "-1", prefix + "-2", prefix + "-3");
+    }
+
+    private List<GoodsSurveyPhoto> confirmedPhotos(String prefix, String responseId) {
+        return photoIds(prefix).stream()
+                .map(id -> confirmedPhoto(id, responseId))
+                .toList();
     }
 
     private GoodsSurveyPhoto confirmedPhoto(String id, String responseId) {

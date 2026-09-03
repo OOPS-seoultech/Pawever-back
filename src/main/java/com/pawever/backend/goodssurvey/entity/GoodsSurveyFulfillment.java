@@ -63,12 +63,24 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     @Column(nullable = false, unique = true, length = 88)
     private String phoneHash;
 
+    /**
+     * 건네는 방법.
+     *
+     * 현장 수령이면 주소가 비어 있고 배송비도 0이다. 부칠 건과 넘겨줄 건이
+     * 섞이면 관리자가 배송 대기 목록에서 부칠 수 없는 주문을 보게 된다.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private GoodsDeliveryMethod deliveryMethod = GoodsDeliveryMethod.SHIPPING;
+
+    /** 현장 수령이면 비어 있다. */
     @Convert(converter = EncryptedStringConverter.class)
-    @Column(nullable = false, length = 1000)
+    @Column(length = 1000)
     private String postalCode;
 
+    /** 현장 수령이면 비어 있다. */
     @Convert(converter = EncryptedStringConverter.class)
-    @Column(nullable = false, length = 2000)
+    @Column(length = 2000)
     private String address;
 
     @Convert(converter = EncryptedStringConverter.class)
@@ -194,6 +206,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
             String guardianName,
             String phone,
             String phoneHash,
+            GoodsDeliveryMethod deliveryMethod,
             String postalCode,
             String address,
             String addressDetail,
@@ -218,6 +231,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         fulfillment.guardianName = guardianName;
         fulfillment.phone = phone;
         fulfillment.phoneHash = phoneHash;
+        fulfillment.deliveryMethod = deliveryMethod;
         fulfillment.postalCode = postalCode;
         fulfillment.address = address;
         fulfillment.addressDetail = addressDetail;

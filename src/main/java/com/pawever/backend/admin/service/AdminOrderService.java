@@ -403,6 +403,7 @@ public class AdminOrderService {
         return new AdminOrderDetail.Shipping(
                 fulfillment.getGuardianName(),
                 fulfillment.getPhone(),
+                fulfillment.getDeliveryMethod().name(),
                 fulfillment.getPostalCode(),
                 fulfillment.getAddress(),
                 fulfillment.getAddressDetail(),
@@ -577,6 +578,7 @@ public class AdminOrderService {
                 photoRepository.findByResponseId(fulfillment.getResponseId()).size(),
                 fulfillment.getPaymentAmountKrw(),
                 fulfillment.getPaidAt(),
+                fulfillment.getDeliveryMethod().name(),
                 fulfillment.getTrackingNumber()
         );
     }

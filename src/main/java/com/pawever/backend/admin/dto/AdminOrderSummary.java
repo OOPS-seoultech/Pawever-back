@@ -26,6 +26,13 @@ public record AdminOrderSummary(
         int photoCount,
         int paymentAmountKrw,
         Instant paidAt,
+        /**
+         * 부칠 건인지 넘겨줄 건인지. SHIPPING 또는 PICKUP.
+         *
+         * 목록에서 갈라 보여야 한다. 상세를 하나씩 열어 확인하면 스무 건을
+         * 포장하는 동안 한 건은 반드시 섞인다.
+         */
+        String deliveryMethod,
         String trackingNumber
 ) {
 }

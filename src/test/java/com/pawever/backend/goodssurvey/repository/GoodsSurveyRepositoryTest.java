@@ -3,6 +3,7 @@ package com.pawever.backend.goodssurvey.repository;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponse;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus;
@@ -166,6 +167,7 @@ class GoodsSurveyRepositoryTest {
         GoodsSurveyFulfillment fulfillment = GoodsSurveyFulfillment.create(
                 response.getId(), "idem-" + suffix, "conv-" + suffix, "{}",
                 "figure", null, "보리", "황성욱", "010-1234-5678", "hash-" + suffix,
+                GoodsDeliveryMethod.SHIPPING,
                 "01811", "서울 노원구", "101호", "v1", now, false,
                 // 주문번호 칸은 20자이고 값은 유일해야 한다. 접미사 길이가
                 // 제각각이라 뒤를 0으로 채워 길이를 고정한다.

@@ -48,9 +48,14 @@ public record AdminOrderDetail(
     ) {
     }
 
+    /**
+     * @param deliveryMethod SHIPPING 이면 부치고 PICKUP 이면 행사장에서 건넨다.
+     *                       PICKUP 은 주소가 비어 있다.
+     */
     public record Shipping(
             String guardianName,
             String phone,
+            String deliveryMethod,
             String postalCode,
             String address,
             String addressDetail,

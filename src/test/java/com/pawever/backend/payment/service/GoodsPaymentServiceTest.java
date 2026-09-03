@@ -4,6 +4,7 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.goodssurvey.service.GoodsOrderService;
@@ -200,6 +201,7 @@ class GoodsPaymentServiceTest {
         GoodsSurveyFulfillment fulfillment = GoodsSurveyFulfillment.create(
                 "resp-1", "idem-1", "conv-1", "{}", "figure", null,
                 "몽이", "김포에버", "01012345678", "phone-hash",
+                GoodsDeliveryMethod.SHIPPING,
                 "01234", "서울특별시 노원구 공릉로 232", "101호",
                 "2026-07-23", NOW, true, ORDER,
                 GoodsOrderPricing.discounted(29_900, 6_000, "설문 참여 할인", 3_000),
