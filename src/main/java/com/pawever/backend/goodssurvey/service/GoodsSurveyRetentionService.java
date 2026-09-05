@@ -99,9 +99,8 @@ public class GoodsSurveyRetentionService {
                 );
 
         for (GoodsSurveyFulfillment fulfillment : targets) {
-            deletePhotos(photoRepository.findByResponseId(fulfillment.getResponseId()));
+            discardVoidOrderData(fulfillment);
             fulfillment.changeStatus(GoodsOrderStatus.PAYMENT_EXPIRED);
-            fulfillment.stripDeliveryDetails();
             orderService.recordSystemChange(
                     fulfillment.getResponseId(),
                     GoodsOrderStatus.PAYMENT_PENDING,
@@ -110,6 +109,23 @@ public class GoodsSurveyRetentionService {
             );
         }
         return targets.size();
+    }
+
+    /**
+     * 계약이 성립하지 않았거나 되돌려진 주문의 사진과 상세주소를 그 자리에서
+     * 지운다. 행은 남긴다 — 무엇이 왜 만료·취소됐는지 관리자가 볼 수 있어야 한다.
+     *
+     * 시간이 지나 저절로 만료된 건({@link #expireUnpaidOrders})과, 관리자가
+     * 손으로 만료·실패·취소로 옮긴 건이 같은 자리에서 같은 일을 한다. 두 곳에
+     * 따로 적으면 한쪽만 고쳐진다.
+     *
+     * 취소 처리 실패는 부르지 않는다. 돈은 받아 둔 채 환불에 실패한 상태라
+     * 사람이 정리하기 전까지 그 물건은 이 사람 몫이다.
+     */
+    @Transactional
+    public void discardVoidOrderData(GoodsSurveyFulfillment fulfillment) {
+        deletePhotos(photoRepository.findByResponseId(fulfillment.getResponseId()));
+        fulfillment.stripDeliveryDetails();
     }
 
     /** 법정 보존 기간까지 지난 계약 기록. */

@@ -10,6 +10,8 @@ import com.pawever.backend.admin.repository.AdminAccessLogRepository;
 import com.pawever.backend.admin.security.AdminPrincipal;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
+import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatusChange;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
@@ -21,6 +23,7 @@ import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentReposito
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository;
 import com.pawever.backend.goodssurvey.service.GoodsOrderService;
 import com.pawever.backend.goodssurvey.service.GoodsSurveyPhotoStorage;
+import com.pawever.backend.goodssurvey.service.GoodsSurveyRetentionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,18 +71,19 @@ public class AdminOrderService {
                     .filter(GoodsOrderStatus::isVisibleToProduction)
                     .toList());
 
-    /**
-     * 1차 체험단에서 갈 수 있는 상태.
-     *
-     * 결제가 없던 주문이라 결제 관련 상태로는 가지 않는다. 발송 완료는 여기
-     * 없다 — 송장을 등록해야 넘어간다.
-     */
-    private static final Set<GoodsOrderStatus> LEGACY_FREE_SETTABLE =
-            EnumSet.of(GoodsOrderStatus.IN_PRODUCTION);
-
     /** 제작팀이 스스로 바꿀 수 있는 상태. 발송과 취소는 관리자만 한다. */
     private static final Set<GoodsOrderStatus> PRODUCTION_SETTABLE =
             EnumSet.of(GoodsOrderStatus.IN_PRODUCTION);
+
+    /**
+     * 수령 완료로 갈 수 있는 상태.
+     *
+     * 돈이 확인된 뒤라야 한다. 결제 전 주문을 건넨 것으로 적으면 받지 않은
+     * 물건값이 없어진다. 제작 중을 거치지 않고 바로 건네는 일도 있어서 결제
+     * 완료에서도 열어 둔다.
+     */
+    private static final Set<GoodsOrderStatus> PICKUP_COMPLETABLE =
+            EnumSet.of(GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.IN_PRODUCTION);
 
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
@@ -88,6 +92,8 @@ public class AdminOrderService {
     private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsOrderService orderService;
     private final TossPaymentsClient tossClient;
+    private final GoodsSurveyRetentionService retentionService;
+    private final GoodsSurveyProperties properties;
     private final Clock clock;
 
     @Transactional(readOnly = true)
@@ -162,7 +168,8 @@ public class AdminOrderService {
                         fulfillment.getPaymentMethod(),
                         fulfillment.getPaidAt(),
                         fulfillment.getPaymentExpiresAt(),
-                        fulfillment.getCancelReason())
+                        fulfillment.getCancelReason(),
+                        hasPaymentKey(fulfillment))
                         : null,
                 canSeeShipping ? shippingOf(fulfillment) : null,
                 photoSlots(photos),
@@ -270,6 +277,12 @@ public class AdminOrderService {
         };
     }
 
+    /**
+     * 상태를 손으로 옮긴다.
+     *
+     * 어디서 어디로 갈 수 있는지는 {@link GoodsOrderStatus#canManuallyBecome}
+     * 이 정한다. 여기서는 그 표를 따르고, 역할과 결제 시각만 더 본다.
+     */
     @Transactional
     public void changeStatus(
             AdminPrincipal principal,
@@ -281,21 +294,18 @@ public class AdminOrderService {
         if (principal.role() == AdminRole.PRODUCTION && !PRODUCTION_SETTABLE.contains(next)) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
-        // 취소는 결제 취소가 성공해야 넘어간다. 상태만 바꾸면 돈은 돌려주지 않고
-        // 취소된 것으로 보인다.
-        if (next == GoodsOrderStatus.CANCELED || next == GoodsOrderStatus.CANCEL_FAILED) {
-            throw new CustomException(ErrorCode.INVALID_INPUT);
-        }
-        // 1차 체험단은 결제라는 것이 없던 주문이다. 결제 완료로 바꾸면 받지도
-        // 않은 돈이 매출로 잡히고, 결제 만료·실패로 바꾸면 없던 결제가 실패한
-        // 것이 된다. 만들어 보내는 흐름으로만 나간다.
-        if (fulfillment.getStatus() == GoodsOrderStatus.LEGACY_FREE
-                && !LEGACY_FREE_SETTABLE.contains(next)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT);
-        }
 
         GoodsOrderStatus before = fulfillment.getStatus();
-        if (next == GoodsOrderStatus.PAYMENT_COMPLETED) {
+        if (next == before) {
+            // 두 번 누른 것이다. "결제 완료 → 결제 완료" 가 이력에 남으면 읽는
+            // 사람이 무슨 일이 있었는지 찾게 된다.
+            return;
+        }
+        if (!before.canManuallyBecome(next)) {
+            throw new CustomException(ErrorCode.ORDER_STATUS_TRANSITION_NOT_ALLOWED);
+        }
+
+        if (next == GoodsOrderStatus.PAYMENT_COMPLETED && before == GoodsOrderStatus.PAYMENT_PENDING) {
             // 상태만 옮기면 결제 시각이 비어 있는 채로 결제 완료가 된다.
             //
             // 그 칸은 보기 좋으라고 있는 것이 아니다. 결제 승인과 웹훅이
@@ -305,11 +315,26 @@ public class AdminOrderService {
             //
             // 무통장 입금이라 은행에서 시각이 넘어오지 않는다. 사람이 통장을
             // 보고 누르는 이 시각이 우리가 가진 유일한 시각이다. 이미 값이
-            // 있으면 markPaid 가 아무것도 하지 않으므로 두 번 눌러도, 나중에
-            // PG 웹훅이 겹쳐도 처음 받은 때가 덮이지 않는다.
+            // 있으면 markPaid 가 아무것도 하지 않으므로 나중에 PG 웹훅이
+            // 겹쳐도 처음 받은 때가 덮이지 않는다.
             fulfillment.markPaid(clock.instant(), null, "MANUAL");
+        } else if (next == GoodsOrderStatus.PAYMENT_COMPLETED) {
+            // 제작 중에서 되돌리는 길이다. 되돌린 것이지 새로 받은 것이 아니라
+            // 결제 시각은 그대로 둔다. 결제가 없던 주문(1차 체험단이 제작 중으로
+            // 넘어온 건)은 되돌릴 결제도 없다 — 옮기면 받지도 않은 돈이 지금
+            // 받은 것으로 적힌다.
+            if (fulfillment.getPaidAt() == null) {
+                throw new CustomException(ErrorCode.ORDER_STATUS_TRANSITION_NOT_ALLOWED);
+            }
+            fulfillment.changeStatus(next);
         } else {
             fulfillment.changeStatus(next);
+        }
+        if (GoodsOrderStatus.releasesSlot().contains(next)) {
+            // 만료·실패는 계약이 성립하지 않은 것이다. 시간이 지나 저절로 만료된
+            // 건은 스케줄러가 사진을 지우는데, 사람이 같은 상태로 옮긴 건은
+            // 아무도 지우지 않았다. 같은 상태면 같은 일이다.
+            retentionService.discardVoidOrderData(fulfillment);
         }
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
@@ -320,19 +345,23 @@ public class AdminOrderService {
         );
     }
 
-    /** 송장을 넣으면 발송 완료로 넘어간다. 관리자만 한다. */
     /**
-     * 주문을 취소한다.
+     * 주문을 취소한다. 관리자만 한다.
      *
-     * 상태를 먼저 바꾸지 않는다. 결제 취소가 실패했는데 주문만 취소로 보이면
-     * 돈은 그대로 두고 취소된 것으로 읽힌다. 토스가 취소를 받아들인 뒤에만
-     * 취소로 옮긴다.
+     * 결제 대행사 키가 있는 주문은 상태를 먼저 바꾸지 않는다. 결제 취소가
+     * 실패했는데 주문만 취소로 보이면 돈은 그대로 두고 취소된 것으로 읽힌다.
+     * 토스가 취소를 받아들인 뒤에만 취소로 옮긴다. 실패하면 취소 처리 실패로
+     * 남긴다 — 사람이 확인해야 하는 건이라 조용히 지나가게 두지 않는다.
+     * 멱등 키에 주문번호를 쓰므로 같은 주문을 두 번 눌러도 이중 환불이 되지
+     * 않는다.
      *
-     * 실패하면 취소 처리 실패로 남긴다. 사람이 확인해야 하는 건이라 조용히
-     * 지나가게 두지 않는다.
+     * 계좌이체로 받은 주문(결제 키 없음)은 대행사를 부를 것이 없다. 환불은
+     * 사람이 은행에서 먼저 하고, 여기서는 그 사실을 적는다. 이 길이 없으면
+     * 지금 받는 주문은 하나도 취소할 수 없다 — 환불을 해 줘도 결제 완료로
+     * 남아 제작 대기열과 정원 한 자리를 계속 차지한다.
      *
-     * 멱등 키에 주문번호를 쓴다. 같은 주문을 두 번 눌러도 토스가 앞의 결과를
-     * 그대로 돌려주므로 이중 환불이 되지 않는다.
+     * 결제 자체가 없던 주문(1차 체험단이 제작 중으로 넘어온 건)은 돌려줄
+     * 돈이 없으므로 취소할 것도 없다.
      */
     @Transactional
     public void cancel(AdminPrincipal principal, String orderNumber, String reason) {
@@ -342,12 +371,15 @@ public class AdminOrderService {
         if (!fulfillment.getStatus().isCancelable()) {
             throw new CustomException(ErrorCode.PAYMENT_NOT_CANCELABLE);
         }
-        if (fulfillment.getPaymentKey() == null || fulfillment.getPaymentKey().isBlank()) {
-            // 결제 없이 만들어진 주문이다. 돌려줄 돈이 없으므로 취소할 것도 없다.
+        if (fulfillment.getPaidAt() == null) {
             throw new CustomException(ErrorCode.PAYMENT_NOT_CANCELABLE);
         }
 
         GoodsOrderStatus before = fulfillment.getStatus();
+        if (!hasPaymentKey(fulfillment)) {
+            markCanceled(principal, fulfillment, before, reason);
+            return;
+        }
         try {
             tossClient.cancel(fulfillment.getPaymentKey(), reason, orderNumber);
         } catch (RuntimeException exception) {
@@ -364,7 +396,18 @@ public class AdminOrderService {
             throw exception;
         }
 
+        markCanceled(principal, fulfillment, before, reason);
+    }
+
+    private void markCanceled(
+            AdminPrincipal principal,
+            GoodsSurveyFulfillment fulfillment,
+            GoodsOrderStatus before,
+            String reason
+    ) {
         fulfillment.cancel(GoodsOrderStatus.CANCELED, reason);
+        // 계약이 되돌려졌다. 사진을 들고 있을 근거가 없다.
+        retentionService.discardVoidOrderData(fulfillment);
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
                 before,
@@ -374,7 +417,12 @@ public class AdminOrderService {
         );
         // 요구서 8장: 주문 취소도 이력으로 남긴다.
         accessLogRepository.save(AdminAccessLog.of(
-                principal.accountId(), "ORDER_CANCEL", orderNumber, clock.instant()));
+                principal.accountId(), "ORDER_CANCEL", fulfillment.getOrderNumber(), clock.instant()));
+    }
+
+    /** 결제 대행사 키가 붙어 있는지. 없으면 계좌이체거나 결제가 없던 주문이다. */
+    private static boolean hasPaymentKey(GoodsSurveyFulfillment fulfillment) {
+        return fulfillment.getPaymentKey() != null && !fulfillment.getPaymentKey().isBlank();
     }
 
     @Transactional
@@ -390,12 +438,66 @@ public class AdminOrderService {
         GoodsOrderStatus before = fulfillment.getStatus();
         fulfillment.registerTracking(company, number);
         fulfillment.changeStatus(GoodsOrderStatus.SHIPPED);
+        if (fulfillment.getDeleteAfter() == null) {
+            // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고
+            // 고지했다. 여기서 표시하지 않으면 내부 API 를 건마다 따로 부르지
+            // 않는 한 사진이 계약 기록과 함께 5년을 산다. 송장을 고쳐 다시
+            // 넣어도 날짜는 밀리지 않는다 — 밀리면 고지한 기간보다 오래 갖는다.
+            fulfillment.markDeliveryCompleted(
+                    clock.instant(), properties.getPersonalDataRetentionDays());
+        }
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
                 before,
                 GoodsOrderStatus.SHIPPED,
                 String.valueOf(principal.accountId()),
                 company + " " + number
+        );
+    }
+
+    /**
+     * 현장에서 건넨 주문을 끝낸다. 관리자만 한다.
+     *
+     * 송장을 받지 않는다. 현장 수령에는 택배사도 송장번호도 없고, 발송 완료
+     * 하나만 끝으로 두면 이 주문들은 끝낼 길이 없다.
+     *
+     * 이 시각부터 사진 보유 기간(90일)을 센다. 고지한 파기 기준일이 "배송
+     * 완료를 표시한 날"인데, 표시할 길이 없으면 기준일이 잡히지 않아 사진이
+     * 계약 기록과 함께 5년을 산다.
+     *
+     * 이미 끝난 주문을 다시 눌러도 아무 일도 하지 않는다. 현장에서 같은
+     * 버튼을 두 번 누르는 일은 흔하고, 두 번째가 오류로 끝나면 첫 번째도
+     * 실패한 줄 알고 다른 것을 만진다.
+     */
+    @Transactional
+    public void completePickup(AdminPrincipal principal, String orderNumber) {
+        requireAdmin(principal);
+        GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
+
+        if (fulfillment.getDeliveryMethod() != GoodsDeliveryMethod.PICKUP) {
+            // 부쳐야 하는 물건이다. 송장 없이 끝내면 고객이 조회할 번호가 없다.
+            throw new CustomException(ErrorCode.ORDER_NOT_PICKUP_COMPLETABLE);
+        }
+        if (fulfillment.getStatus() == GoodsOrderStatus.PICKED_UP) {
+            return;
+        }
+        if (!PICKUP_COMPLETABLE.contains(fulfillment.getStatus())) {
+            throw new CustomException(ErrorCode.ORDER_NOT_PICKUP_COMPLETABLE);
+        }
+
+        GoodsOrderStatus before = fulfillment.getStatus();
+        Instant now = clock.instant();
+        fulfillment.changeStatus(GoodsOrderStatus.PICKED_UP);
+        if (fulfillment.getDeleteAfter() == null) {
+            // 다시 찍어도 파기 예정일이 뒤로 밀리지 않게 한 번만 잡는다.
+            fulfillment.markDeliveryCompleted(now, properties.getPersonalDataRetentionDays());
+        }
+        orderService.recordManualChange(
+                fulfillment.getResponseId(),
+                before,
+                GoodsOrderStatus.PICKED_UP,
+                String.valueOf(principal.accountId()),
+                "현장 수령"
         );
     }
 

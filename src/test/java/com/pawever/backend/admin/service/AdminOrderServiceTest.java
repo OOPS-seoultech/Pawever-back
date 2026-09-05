@@ -8,6 +8,7 @@ import com.pawever.backend.admin.repository.AdminAccessLogRepository;
 import com.pawever.backend.admin.security.AdminPrincipal;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
+import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
@@ -64,6 +65,7 @@ class AdminOrderServiceTest {
     @Mock private GoodsSurveyPhotoStorage photoStorage;
     @Mock private GoodsOrderService orderService;
     @Mock private com.pawever.backend.payment.client.TossPaymentsClient tossClient;
+    @Mock private com.pawever.backend.goodssurvey.service.GoodsSurveyRetentionService retentionService;
 
     private AdminOrderService service;
 
@@ -77,6 +79,9 @@ class AdminOrderServiceTest {
                 photoStorage,
                 orderService,
                 tossClient,
+                retentionService,
+                // 사진 보유 기간 90일. 수령 완료 시각에 더해 파기 예정일을 잡는다.
+                new GoodsSurveyProperties(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
         lenient().when(statusChangeRepository.findByResponseIdOrderByChangedAtAsc(anyString()))
@@ -237,6 +242,113 @@ class AdminOrderServiceTest {
 
         assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_EXPIRED);
         assertThat(order.getPaidAt()).isNull();
+    }
+
+    @Test
+    void 미입금_주문은_제작_중으로_넘길_수_없다() {
+        // 결제 대기에서 "결제 완료" 옆의 "제작 중"을 누르면 그대로 넘어갔다.
+        // 제작팀 화면에 뜨고 돈을 받지 않은 피규어를 만들게 된다.
+        GoodsSurveyFulfillment order = order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.changeStatus(
+                ADMIN, "PE-2026-000123", GoodsOrderStatus.IN_PRODUCTION, null))
+                .isInstanceOf(CustomException.class);
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_PENDING);
+        verify(orderService, never()).recordManualChange(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 끝난_주문은_손으로_되돌릴_수_없다() {
+        // 발송·수령이 끝난 주문이 다시 제작 대기열에 들어가면 안 된다.
+        for (GoodsOrderStatus done : List.of(
+                GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP, GoodsOrderStatus.CANCELED)) {
+            GoodsSurveyFulfillment order = order("PE-2026-000001", done);
+            when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                    .thenReturn(Optional.of(order));
+
+            assertThatThrownBy(() -> service.changeStatus(
+                    ADMIN, "PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION, null))
+                    .as("%s 에서 제작 중으로", done)
+                    .isInstanceOf(CustomException.class);
+            assertThat(order.getStatus()).isEqualTo(done);
+        }
+    }
+
+    @Test
+    void 만료된_주문은_결제_완료로_되살릴_수_없다() {
+        // 만료 시점에 사진은 이미 파기됐다. 상태만 살리면 사진 없는 결제 완료
+        // 주문이 되어 만들 수 없다. 늦게 입금한 사람은 새로 신청해야 한다.
+        GoodsSurveyFulfillment order = order("PE-2026-000123", GoodsOrderStatus.PAYMENT_EXPIRED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.changeStatus(
+                ADMIN, "PE-2026-000123", GoodsOrderStatus.PAYMENT_COMPLETED, null))
+                .isInstanceOf(CustomException.class);
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_EXPIRED);
+        assertThat(order.getPaidAt()).isNull();
+    }
+
+    @Test
+    void 돈_받은_주문은_만료나_실패로_보낼_수_없다() {
+        // 만료·실패는 자리를 놓는 상태다. 돈은 받아 둔 채 같은 자리를 다른
+        // 사람에게 팔게 된다.
+        GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        for (GoodsOrderStatus dead : List.of(
+                GoodsOrderStatus.PAYMENT_EXPIRED, GoodsOrderStatus.PAYMENT_FAILED)) {
+            assertThatThrownBy(() -> service.changeStatus(
+                    ADMIN, "PE-2026-000201", dead, null))
+                    .as("제작 중에서 %s 로", dead)
+                    .isInstanceOf(CustomException.class);
+        }
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 제작_중은_잘못_눌렀을_때_결제_완료로_한_단계_되돌릴_수_있다() {
+        GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(ADMIN, "PE-2026-000201", GoodsOrderStatus.PAYMENT_COMPLETED, "잘못 누름");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_COMPLETED);
+        // 되돌린 것이지 새로 받은 것이 아니다. 결제 시각은 처음 받은 때 그대로다.
+        assertThat(order.getPaidAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    void 결제가_없던_주문은_제작_중에서_결제_완료로_되돌릴_수_없다() {
+        // 1차 체험단이 제작 중으로 넘어온 건이다. 되돌리기라며 결제 완료로
+        // 옮기면 받지도 않은 돈이 지금 받은 것으로 적힌다.
+        GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.changeStatus(
+                ADMIN, "PE-2026-000100", GoodsOrderStatus.PAYMENT_COMPLETED, null))
+                .isInstanceOf(CustomException.class);
+        assertThat(order.getPaidAt()).isNull();
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 같은_상태로_다시_보내면_이력을_남기지_않는다() {
+        // 두 번 누른 것이다. "결제 완료 → 결제 완료" 가 이력에 남으면
+        // 읽는 사람이 무슨 일이 있었는지 찾게 된다.
+        GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(ADMIN, "PE-2026-000201", GoodsOrderStatus.PAYMENT_COMPLETED, null);
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_COMPLETED);
+        verify(orderService, never()).recordManualChange(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -466,6 +578,132 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 현장_수령_주문은_송장_없이_수령_완료로_끝낸다() {
+        // 발송 완료는 송장을 넣어야 넘어간다. 현장 수령에는 택배사도 송장번호도
+        // 없어서, 이 길이 없으면 70건이 제작 중에 영원히 남거나 가짜 송장을 넣게 된다.
+        GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.completePickup(ADMIN, "PE-2026-000201");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PICKED_UP);
+        assertThat(order.getTrackingNumber()).isNull();
+        verify(orderService).recordManualChange(
+                "resp-1", GoodsOrderStatus.IN_PRODUCTION, GoodsOrderStatus.PICKED_UP, "1", "현장 수령");
+    }
+
+    @Test
+    void 수령_완료를_찍으면_사진_파기_시계가_돌기_시작한다() {
+        // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고 고지했다.
+        // 표시할 길이 없으면 기준일이 잡히지 않아 사진이 계약 기록과 함께 5년을 산다.
+        GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.completePickup(ADMIN, "PE-2026-000201");
+
+        assertThat(order.getDeliveryCompletedAt()).isEqualTo(NOW);
+        assertThat(order.getDeleteAfter()).isEqualTo(NOW.plus(Duration.ofDays(90)));
+    }
+
+    @Test
+    void 결제_완료에서도_바로_수령_완료로_갈_수_있다() {
+        // 제작 중을 거치지 않고 건네는 일이 있다. 그 한 단계 때문에 막으면
+        // 현장에서 두 번 눌러야 한다.
+        GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.completePickup(ADMIN, "PE-2026-000201");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PICKED_UP);
+    }
+
+    @Test
+    void 택배_주문은_수령_완료로_끝낼_수_없다() {
+        // 부쳐야 하는 물건이다. 송장 없이 끝내면 고객이 조회할 번호가 없다.
+        GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.completePickup(ADMIN, "PE-2026-000001"))
+                .isInstanceOf(CustomException.class);
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 결제_전_주문은_수령_완료로_끝낼_수_없다() {
+        // 돈을 받지 않은 물건을 건넨 것으로 적을 수 없다.
+        GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.completePickup(ADMIN, "PE-2026-000201"))
+                .isInstanceOf(CustomException.class);
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_PENDING);
+    }
+
+    @Test
+    void 이미_수령_완료인_주문을_다시_눌러도_기록이_두_번_남지_않는다() {
+        // 현장에서 같은 버튼을 두 번 누르는 일은 흔하다. 두 번째가 오류로
+        // 끝나면 첫 번째도 실패한 줄 알고 다른 것을 만진다.
+        GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.PICKED_UP);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.completePickup(ADMIN, "PE-2026-000201");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.PICKED_UP);
+        verify(orderService, never()).recordManualChange(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 제작팀은_수령_완료를_찍을_수_없다() {
+        // 건네는 일은 관리자가 한다. 발송과 같은 무게다.
+        assertThatThrownBy(() -> service.completePickup(PRODUCTION, "PE-2026-000201"))
+                .isInstanceOf(CustomException.class);
+        verify(fulfillmentRepository, never()).findByOrderNumber(any());
+    }
+
+    @Test
+    void 수령_완료는_제작팀에게_보인다() {
+        // 끝난 것도 목록에서 걸러 볼 수 있어야 아직 만들 것과 구분된다.
+        assertThat(GoodsOrderStatus.PICKED_UP.isVisibleToProduction()).isTrue();
+        assertThat(GoodsOrderStatus.PICKED_UP.label()).isEqualTo("수령 완료");
+    }
+
+    @Test
+    void 송장을_넣으면_사진_파기_시계가_돌기_시작한다() {
+        // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고 고지했다.
+        // 송장 등록이 그 표시를 하지 않으면, 내부 API 를 건마다 따로 부르지
+        // 않는 한 사진이 계약 기록과 함께 5년을 산다.
+        GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order));
+
+        service.registerTracking(ADMIN, "PE-2026-000001", "CJ대한통운", "123456789");
+
+        assertThat(order.getDeliveryCompletedAt()).isEqualTo(NOW);
+        assertThat(order.getDeleteAfter()).isEqualTo(NOW.plus(Duration.ofDays(90)));
+    }
+
+    @Test
+    void 송장을_고쳐_다시_넣어도_파기_예정일은_밀리지_않는다() {
+        // 밀리면 고지한 기간보다 오래 갖고 있게 된다.
+        GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.SHIPPED);
+        Instant firstShipped = NOW.minus(Duration.ofDays(10));
+        order.markDeliveryCompleted(firstShipped, 90);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order));
+
+        service.registerTracking(ADMIN, "PE-2026-000001", "롯데택배", "987654321");
+
+        assertThat(order.getTrackingNumber()).isEqualTo("987654321");
+        assertThat(order.getDeleteAfter()).isEqualTo(firstShipped.plus(Duration.ofDays(90)));
+    }
+
+    @Test
     void 제작팀은_송장을_넣을_수_없다() {
         assertThatThrownBy(() ->
                 service.registerTracking(PRODUCTION, "PE-2026-000001", "CJ대한통운", "123456789"))
@@ -616,6 +854,117 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 계좌이체로_받은_주문은_토스를_부르지_않고_취소된다() {
+        // 지금 받는 돈은 전부 계좌이체다. 결제 대행사 키가 없어서 토스 취소를
+        // 전제로 하면 어떤 주문도 취소할 수 없고, 환불을 해 줘도 주문은 결제
+        // 완료로 남아 제작 대기열과 정원 한 자리를 계속 차지한다.
+        GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.cancel(ADMIN, "PE-2026-000201", "고객 요청");
+
+        assertThat(order.getStatus()).isEqualTo(GoodsOrderStatus.CANCELED);
+        assertThat(order.getCancelReason()).isEqualTo("고객 요청");
+        verify(tossClient, never()).cancel(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 계좌이체_취소도_같은_이력을_남긴다() {
+        // 돈이 어떻게 나갔는지는 주문에서 찾을 수 있어야 한다. 토스 취소와
+        // 같은 자리에 같은 이름으로 남겨 두 경로가 한 이력으로 읽히게 한다.
+        GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(order));
+
+        service.cancel(ADMIN, "PE-2026-000201", "사진 품질 미달");
+
+        verify(orderService).recordManualChange(
+                "resp-1", GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.CANCELED,
+                "1", "사진 품질 미달");
+        ArgumentCaptor<AdminAccessLog> log = ArgumentCaptor.forClass(AdminAccessLog.class);
+        verify(accessLogRepository).save(log.capture());
+        assertThat(log.getValue().getAction()).isEqualTo("ORDER_CANCEL");
+    }
+
+    @Test
+    void 상세는_결제_대행사에_묶인_결제인지_알려준다() {
+        // 화면이 "결제도 함께 취소됐다"고 말할지 "환불은 직접 해야 한다"고
+        // 말할지가 여기서 갈린다. 화면이 결제 수단 문자열을 보고 짐작하게
+        // 두지 않는다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(paidOrder(GoodsOrderStatus.PAYMENT_COMPLETED)));
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(bankTransferOrder(GoodsOrderStatus.PAYMENT_COMPLETED)));
+
+        assertThat(service.detail(ADMIN, "PE-2026-000101").payment().pgLinked()).isTrue();
+        assertThat(service.detail(ADMIN, "PE-2026-000201").payment().pgLinked()).isFalse();
+    }
+
+    @Test
+    void 취소하면_사진을_그_자리에서_지운다() {
+        // 계약이 되돌려진 주문이다. 사진을 들고 있을 근거가 없는데, 지우는
+        // 자리가 없으면 계약 기록과 함께 5년을 산다.
+        GoodsSurveyFulfillment bank = bankTransferOrder(GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(bank));
+        GoodsSurveyFulfillment toss = paidOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(toss));
+
+        service.cancel(ADMIN, "PE-2026-000201", "고객 요청");
+        service.cancel(ADMIN, "PE-2026-000101", "고객 요청");
+
+        verify(retentionService).discardVoidOrderData(bank);
+        verify(retentionService).discardVoidOrderData(toss);
+    }
+
+    @Test
+    void 결제_취소가_실패하면_사진을_지우지_않는다() {
+        // 돈은 받아 둔 채 환불에 실패한 상태다. 사람이 정리하기 전까지 그
+        // 물건은 이 사람 몫이고, 만들어야 할 수도 있다.
+        GoodsSurveyFulfillment order = paidOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000101"))
+                .thenReturn(Optional.of(order));
+        when(tossClient.cancel(anyString(), anyString(), anyString()))
+                .thenThrow(new CustomException(ErrorCode.PAYMENT_CANCEL_FAILED));
+
+        assertThatThrownBy(() -> service.cancel(ADMIN, "PE-2026-000101", "제작 불가"))
+                .isInstanceOf(CustomException.class);
+
+        verify(retentionService, never()).discardVoidOrderData(any());
+    }
+
+    @Test
+    void 손으로_만료나_실패로_바꾸면_사진을_지운다() {
+        // 시간이 지나 저절로 만료된 건은 스케줄러가 사진을 지우는데, 사람이
+        // 같은 상태로 옮긴 건은 아무도 지우지 않았다. 같은 상태면 같은 일이다.
+        for (GoodsOrderStatus dead : List.of(
+                GoodsOrderStatus.PAYMENT_EXPIRED, GoodsOrderStatus.PAYMENT_FAILED)) {
+            GoodsSurveyFulfillment order = order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+            when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                    .thenReturn(Optional.of(order));
+
+            service.changeStatus(ADMIN, "PE-2026-000123", dead, null);
+
+            assertThat(order.getStatus()).isEqualTo(dead);
+            verify(retentionService).discardVoidOrderData(order);
+        }
+    }
+
+    @Test
+    void 결제_완료나_제작_중으로_바꿀_때는_사진을_건드리지_않는다() {
+        GoodsSurveyFulfillment order = order("PE-2026-000123", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000123"))
+                .thenReturn(Optional.of(order));
+
+        service.changeStatus(ADMIN, "PE-2026-000123", GoodsOrderStatus.PAYMENT_COMPLETED, null);
+        service.changeStatus(ADMIN, "PE-2026-000123", GoodsOrderStatus.IN_PRODUCTION, null);
+
+        verify(retentionService, never()).discardVoidOrderData(any());
+    }
+
+    @Test
     void 결제한_적_없는_주문은_취소하지_않는다() {
         // 1차 체험단처럼 결제 번호가 없는 건이다. 돌려줄 돈이 없다.
         GoodsSurveyFulfillment order = order("PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION);
@@ -654,6 +1003,48 @@ class AdminOrderServiceTest {
         GoodsSurveyFulfillment fulfillment = order("PE-2026-000101", GoodsOrderStatus.PAYMENT_PENDING);
         fulfillment.markPaid(NOW, "toss-pay-1", "간편결제");
         fulfillment.changeStatus(status);
+        return fulfillment;
+    }
+
+    /** 계좌이체로 받아 관리자가 손으로 결제 완료를 찍은 주문. 결제 대행사 키가 없다. */
+    private GoodsSurveyFulfillment bankTransferOrder(GoodsOrderStatus status) {
+        GoodsSurveyFulfillment fulfillment = pickupOrder(GoodsOrderStatus.PAYMENT_PENDING);
+        fulfillment.markPaid(NOW, null, "MANUAL");
+        fulfillment.changeStatus(status);
+        return fulfillment;
+    }
+
+    /** 현장 수령 주문. 주소가 없고 배송비도 0이다. */
+    private GoodsSurveyFulfillment pickupOrder(GoodsOrderStatus status) {
+        GoodsSurveyFulfillment fulfillment = GoodsSurveyFulfillment.create(
+                "resp-1",
+                "idem-2",
+                "conv-2",
+                "{}",
+                "figure",
+                null,
+                "보리",
+                "김포에버",
+                "01012345678",
+                "phone-hash-2",
+                GoodsDeliveryMethod.PICKUP,
+                null,
+                null,
+                null,
+                "2026-07-23",
+                NOW,
+                false,
+                "PE-2026-000201",
+                GoodsOrderPricing.discounted(29_900, 18_000, "과기대 플리마켓 할인", 0),
+                false,
+                "marketing-v1",
+                2880,
+                1825
+        );
+        if (status != GoodsOrderStatus.PAYMENT_PENDING) {
+            fulfillment.markPaid(NOW, null, "MANUAL");
+            fulfillment.changeStatus(status);
+        }
         return fulfillment;
     }
 
