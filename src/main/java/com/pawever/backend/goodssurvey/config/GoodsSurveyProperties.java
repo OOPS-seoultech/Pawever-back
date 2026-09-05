@@ -89,6 +89,14 @@ public class GoodsSurveyProperties {
     private int fleaPaymentWindowMinutes = 180;
     // 광고성 정보 수신 동의 문구의 판. 문구를 고치면 이 값도 올린다.
     private String marketingConsentVersion = "marketing-v1";
+    /**
+     * 담당자 접속기록 보관 기간.
+     *
+     * 개인정보처리시스템의 접속기록은 1년 이상 보관해야 한다. 요구하는 것은
+     * 최소 기간이지 영원히 두라는 것이 아니라, 지우는 자리를 함께 둔다.
+     */
+    private int adminAccessLogRetentionDays = 365;
+
     // 파기 작업이 도는 시각. 접속이 가장 적은 새벽에 한 번 돈다.
     private String purgeCron = "0 15 4 * * *";
 

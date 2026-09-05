@@ -185,10 +185,15 @@ public class AdminOrderService {
     }
 
     /**
-     * 사진 다운로드 링크를 내준다.
+     * 사진을 화면에 띄울 링크를 내준다.
      *
-     * 누가 언제 어느 주문의 사진을 가져갔는지 남긴다. 남기지 않으면 사진이
-     * 밖으로 나갔을 때 누구를 거쳐 나갔는지 알 방법이 없다.
+     * 누가 언제 어느 주문의 사진을 봤는지 남긴다. 개인정보처리시스템의
+     * 접속기록이라 화면 편의로 뺄 수 있는 것이 아니다.
+     *
+     * 파일로 가져가는 것(photoArchive)과 이름을 나눈다. 상세를 열면 사진이
+     * 바로 보이므로 이 기록은 훑어본 것까지 포함한다. 한 이름으로 남기면
+     * 훑어본 것과 실제로 가져간 것이 섞여, 사진이 밖으로 나갔을 때 누구를
+     * 봐야 하는지 알 수 없어진다.
      */
     @Transactional
     public AdminPhotoDownloadResponse photoLinks(AdminPrincipal principal, String orderNumber) {
@@ -210,7 +215,7 @@ public class AdminOrderService {
 
         accessLogRepository.save(AdminAccessLog.of(
                 principal.accountId(),
-                "PHOTO_DOWNLOAD",
+                "PHOTO_VIEW",
                 orderNumber,
                 now
         ));
