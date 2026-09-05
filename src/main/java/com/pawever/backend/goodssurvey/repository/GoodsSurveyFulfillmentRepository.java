@@ -74,6 +74,13 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     );
 
     /**
+     * 주문번호 여러 개를 한 번에 찾는다.
+     *
+     * 묶음 처리가 쓴다. 건마다 따로 찾으면 백 건이면 백 번 다녀온다.
+     */
+    List<GoodsSurveyFulfillment> findByOrderNumberIn(Collection<String> orderNumbers);
+
+    /**
      * 상태별 전체 건수.
      *
      * 목록 위 요약 카드가 쓴다. 목록과 달리 화면이 건 필터를 따라가지 않는다 —

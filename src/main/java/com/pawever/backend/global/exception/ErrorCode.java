@@ -103,6 +103,7 @@ public enum ErrorCode {
     // 택배 주문이거나 결제가 확인되기 전이다. 둘 다 "수령 완료"로 끝낼 수 없다.
     ORDER_NOT_PICKUP_COMPLETABLE(HttpStatus.CONFLICT, "수령 완료로 바꿀 수 있는 주문이 아닙니다."),
     ORDER_STATUS_TRANSITION_NOT_ALLOWED(HttpStatus.CONFLICT, "지금 상태에서는 그 상태로 바꿀 수 없습니다."),
+    ORDER_BULK_TOO_MANY(HttpStatus.BAD_REQUEST, "한 번에 처리할 수 있는 건수를 넘었습니다."),
 
     ADMIN_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "관리자 계정을 찾을 수 없습니다."),
     // 관리자 로그인이 열려 있지 않다는 사실 자체는 알려도 된다. 열려 있는데

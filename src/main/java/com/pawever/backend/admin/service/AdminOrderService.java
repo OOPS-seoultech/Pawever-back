@@ -38,6 +38,8 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -70,6 +72,14 @@ public class AdminOrderService {
             EnumSet.copyOf(Arrays.stream(GoodsOrderStatus.values())
                     .filter(GoodsOrderStatus::isVisibleToProduction)
                     .toList());
+
+    /**
+     * 한 요청에 묶을 수 있는 최대 건수.
+     *
+     * 한 번에 다 보내면 트랜잭션이 오래 열려 있고, 실패했을 때 어디까지
+     * 됐는지도 크다. 1차 체험단 100건이 한 번에 들어가고도 남는다.
+     */
+    private static final int MAX_BULK_SIZE = 500;
 
     /** 제작팀이 스스로 바꿀 수 있는 상태. 발송과 취소는 관리자만 한다. */
     private static final Set<GoodsOrderStatus> PRODUCTION_SETTABLE =
@@ -428,6 +438,77 @@ public class AdminOrderService {
     /** 결제 대행사 키가 붙어 있는지. 없으면 계좌이체거나 결제가 없던 주문이다. */
     private static boolean hasPaymentKey(GoodsSurveyFulfillment fulfillment) {
         return fulfillment.getPaymentKey() != null && !fulfillment.getPaymentKey().isBlank();
+    }
+
+    /**
+     * 고른 주문을 한 번에 제작 중으로 옮긴다.
+     *
+     * 제작은 낱개로 하는 일이 아니다. 모아서 만들고, 제작용 목록과 사진도
+     * 묶음으로 내보낸다. 상태만 한 건씩 눌러야 하면 100건이면 100번 누른다.
+     *
+     * 옮길 수 없는 건은 건너뛰고 어느 것인지 돌려준다. 하나가 막혔다고
+     * 전부 되돌리면, 방금 통과한 아흔아홉 건을 다시 눌러야 한다. 조용히
+     * 넘어가도 안 된다 — 눌렀는데 안 바뀐 것을 화면만 보고는 모른다.
+     *
+     * 이미 제작 중인 건은 건너뛰되 실패로 세지 않는다. 두 번 눌렀거나 남이
+     * 먼저 누른 것이고, 결과는 바라던 그대로다.
+     *
+     * 이력은 건마다 남는다. 묶어서 눌렀다고 한 줄로 합치면 어느 주문이
+     * 언제 제작에 들어갔는지 알 수 없다.
+     */
+    @Transactional
+    public BulkResult startProduction(AdminPrincipal principal, List<String> orderNumbers) {
+        if (orderNumbers.size() > MAX_BULK_SIZE) {
+            throw new CustomException(ErrorCode.ORDER_BULK_TOO_MANY);
+        }
+
+        List<GoodsSurveyFulfillment> found =
+                fulfillmentRepository.findByOrderNumberIn(orderNumbers);
+        Map<String, GoodsSurveyFulfillment> byNumber = found.stream()
+                .collect(Collectors.toMap(GoodsSurveyFulfillment::getOrderNumber, item -> item));
+
+        int changed = 0;
+        List<String> skipped = new ArrayList<>();
+        for (String orderNumber : orderNumbers) {
+            GoodsSurveyFulfillment fulfillment = byNumber.get(orderNumber);
+            if (fulfillment == null) {
+                skipped.add(orderNumber);
+                continue;
+            }
+            if (principal.role() == AdminRole.PRODUCTION
+                    && !fulfillment.getStatus().isVisibleToProduction()) {
+                // 제작팀에게 없는 것과 같은 주문이다. 묶음이라고 뚫리지 않는다.
+                skipped.add(orderNumber);
+                continue;
+            }
+            GoodsOrderStatus before = fulfillment.getStatus();
+            if (before == GoodsOrderStatus.IN_PRODUCTION) {
+                continue;
+            }
+            if (!before.canManuallyBecome(GoodsOrderStatus.IN_PRODUCTION)) {
+                skipped.add(orderNumber);
+                continue;
+            }
+            fulfillment.changeStatus(GoodsOrderStatus.IN_PRODUCTION);
+            orderService.recordManualChange(
+                    fulfillment.getResponseId(),
+                    before,
+                    GoodsOrderStatus.IN_PRODUCTION,
+                    String.valueOf(principal.accountId()),
+                    "묶음 제작 시작"
+            );
+            changed++;
+        }
+        return new BulkResult(changed, List.copyOf(skipped));
+    }
+
+    /**
+     * 묶음 처리 결과.
+     *
+     * @param changed 실제로 옮긴 건수
+     * @param skipped 옮기지 못한 주문번호. 화면이 그대로 보여 준다
+     */
+    public record BulkResult(int changed, List<String> skipped) {
     }
 
     @Transactional

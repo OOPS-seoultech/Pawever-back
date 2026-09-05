@@ -568,6 +568,106 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 여러_건을_한_번에_제작_중으로_옮긴다() {
+        // 제작은 모아서 한 번에 한다. 낱개로만 두면 100건이면 100번 누른다.
+        GoodsSurveyFulfillment first = order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED);
+        GoodsSurveyFulfillment second = order("PE-2026-000002", GoodsOrderStatus.LEGACY_FREE);
+        when(fulfillmentRepository.findByOrderNumberIn(List.of("PE-2026-000001", "PE-2026-000002")))
+                .thenReturn(List.of(first, second));
+
+        var result = service.startProduction(
+                ADMIN, List.of("PE-2026-000001", "PE-2026-000002"));
+
+        assertThat(first.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+        assertThat(second.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+        assertThat(result.changed()).isEqualTo(2);
+        assertThat(result.skipped()).isEmpty();
+        // 이력은 건마다 남는다. 묶어서 눌렀다고 한 줄로 합치면 어느 주문이
+        // 언제 제작에 들어갔는지 알 수 없다.
+        verify(orderService, org.mockito.Mockito.times(2))
+                .recordManualChange(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 옮길_수_없는_건은_건너뛰고_어느_것인지_알려준다() {
+        // 조용히 넘어가면 눌렀는데 안 바뀐 것을 화면만 보고는 모른다.
+        GoodsSurveyFulfillment ok = order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED);
+        GoodsSurveyFulfillment pending = order("PE-2026-000002", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumberIn(any()))
+                .thenReturn(List.of(ok, pending));
+
+        var result = service.startProduction(
+                ADMIN, List.of("PE-2026-000001", "PE-2026-000002"));
+
+        assertThat(ok.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+        // 돈을 받지 않은 건이 제작 대기열에 섞이면 안 된다.
+        assertThat(pending.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_PENDING);
+        assertThat(result.changed()).isEqualTo(1);
+        assertThat(result.skipped()).containsExactly("PE-2026-000002");
+    }
+
+    @Test
+    void 이미_제작_중인_건은_건너뛰되_실패로_세지_않는다() {
+        // 두 번 눌렀거나 남이 먼저 눌렀다. 오류로 돌려주면 나머지까지
+        // 안 된 줄 알고 다시 누른다.
+        GoodsSurveyFulfillment already = order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(already));
+
+        var result = service.startProduction(ADMIN, List.of("PE-2026-000001"));
+
+        assertThat(result.changed()).isZero();
+        assertThat(result.skipped()).isEmpty();
+        verify(orderService, never()).recordManualChange(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void 제작팀도_묶어서_제작_시작을_할_수_있다() {
+        // 제작 중으로 옮기는 것은 원래 제작팀이 하던 일이다.
+        GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(order));
+
+        var result = service.startProduction(PRODUCTION, List.of("PE-2026-000001"));
+
+        assertThat(result.changed()).isEqualTo(1);
+    }
+
+    @Test
+    void 제작팀이_볼_수_없는_건은_묶음에서도_빠진다() {
+        // 결제 전 주문은 제작팀에게 없는 것과 같다. 묶음이라고 뚫리면 안 된다.
+        GoodsSurveyFulfillment hidden = order("PE-2026-000002", GoodsOrderStatus.PAYMENT_PENDING);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(hidden));
+
+        var result = service.startProduction(PRODUCTION, List.of("PE-2026-000002"));
+
+        assertThat(result.changed()).isZero();
+        assertThat(result.skipped()).containsExactly("PE-2026-000002");
+        assertThat(hidden.getStatus()).isEqualTo(GoodsOrderStatus.PAYMENT_PENDING);
+    }
+
+    @Test
+    void 없는_주문번호는_건너뛴_것으로_알려준다() {
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of());
+
+        var result = service.startProduction(ADMIN, List.of("PE-9999-999999"));
+
+        assertThat(result.changed()).isZero();
+        assertThat(result.skipped()).containsExactly("PE-9999-999999");
+    }
+
+    @Test
+    void 한_번에_보낼_수_있는_건수를_넘으면_거절한다() {
+        // 한 요청이 너무 길면 트랜잭션이 오래 열려 있고, 실패했을 때
+        // 어디까지 됐는지도 크다.
+        List<String> tooMany = java.util.stream.IntStream.rangeClosed(1, 501)
+                .mapToObj("PE-2026-%06d"::formatted)
+                .toList();
+
+        assertThatThrownBy(() -> service.startProduction(ADMIN, tooMany))
+                .isInstanceOf(CustomException.class);
+        verify(fulfillmentRepository, never()).findByOrderNumberIn(any());
+    }
+
+    @Test
     void 제작팀은_발송_완료로_바꿀_수_없다() {
         // 송장을 넣고 보내는 일은 관리자가 한다.
         when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
