@@ -249,6 +249,80 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
     }
 
+    @Test
+    void 플리마켓은_입금_기한이_현장_기준으로_짧다() {
+        // 48시간은 택배로 받는 상시 판매의 기한이다. 현장은 QR 을 찍고 그
+        // 자리에서 내는 자리라, 내지 않을 사람이 이틀씩 70자리 중 하나를
+        // 잡고 있으면 실제로 낼 사람이 마감 화면을 본다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        properties.setFleaPaymentWindowMinutes(180);
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-window");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-window", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-window",
+                directApplication(tracking, "conversion-window", "photo-window")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getPaymentExpiresAt())
+                .isEqualTo(NOW.plus(java.time.Duration.ofMinutes(180)));
+    }
+
+    @Test
+    void 상시_판매는_기한이_그대로다() {
+        properties.setFleaPaymentWindowMinutes(180);
+
+        GoodsSurveyApplicationResponse response = submitDirect("window-online");
+
+        assertThat(response.paymentExpiresAt())
+                .isEqualTo(NOW.plus(java.time.Duration.ofMinutes(
+                        properties.getPaymentWindowMinutes())));
+    }
+
+    @Test
+    void 문자가_그_주문의_기한을_그대로_말한다() {
+        // 서버는 3시간을 기다리는데 문자가 "2일 안에"라고 하면, 그 사이에
+        // 받은 문의는 전부 우리 잘못이다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        properties.setFleaPaymentWindowMinutes(180);
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-sms");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-sms", draft.responseId()));
+
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-sms",
+                directApplication(tracking, "conversion-sms", "photo-sms")
+        );
+
+        com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent event =
+                publishedEvents.stream()
+                        .filter(com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent.class::isInstance)
+                        .map(com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent.class::cast)
+                        .reduce((first, second) -> second)
+                        .orElseThrow();
+        assertThat(event.paymentWindowMinutes()).isEqualTo(180);
+    }
+
     /** 직행으로 들어와 사진까지 갖춘 신청 하나. 접수 응답을 돌려준다. */
     private GoodsSurveyApplicationResponse submitDirect(String suffix) {
         ObjectMapper objectMapper = new ObjectMapper();

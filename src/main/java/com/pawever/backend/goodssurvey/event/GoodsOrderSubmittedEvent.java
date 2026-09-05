@@ -11,6 +11,12 @@ package com.pawever.backend.goodssurvey.event;
  * 싣기로 했고, 그래서 개인정보처리방침 제6조에 텔레그램 국외 처리를 적어
  * 두었다. 실을 항목을 늘리려면 방침도 같이 봐야 한다.
  */
+/**
+ * @param paymentWindowMinutes 이 주문이 입금을 기다리는 시간. 통로마다 다르므로
+ *                             설정을 다시 읽지 않고 주문이 쓴 값을 그대로 나른다.
+ *                             문자가 서버와 다른 기한을 말하면 그 사이 문의는
+ *                             전부 우리 잘못이 된다.
+ */
 public record GoodsOrderSubmittedEvent(
         String orderNumber,
         String guardianName,
@@ -19,6 +25,7 @@ public record GoodsOrderSubmittedEvent(
         String goodsLabel,
         int paymentAmountKrw,
         boolean surveyParticipant,
-        String trafficSource
+        String trafficSource,
+        int paymentWindowMinutes
 ) {
 }

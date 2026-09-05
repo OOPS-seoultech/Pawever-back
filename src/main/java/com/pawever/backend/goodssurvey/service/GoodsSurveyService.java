@@ -574,7 +574,7 @@ public class GoodsSurveyService {
                 ),
                 request.marketingAgreed(),
                 properties.getMarketingConsentVersion(),
-                properties.getPaymentWindowMinutes(),
+                paymentWindowMinutesFor(campaign.getChannel()),
                 properties.getContractRetentionDays()
         );
         fulfillmentRepository.save(fulfillment);
@@ -591,7 +591,8 @@ public class GoodsSurveyService {
                 goodsLabel(fulfillment),
                 fulfillment.getPaymentAmountKrw(),
                 fulfillment.isSurveyParticipant(),
-                TrafficSource.describe(request.tracking())
+                TrafficSource.describe(request.tracking()),
+                paymentWindowMinutesFor(campaign.getChannel())
         ));
         return applicationResponse(response, fulfillment);
     }
@@ -713,6 +714,19 @@ public class GoodsSurveyService {
      * 어느 모집을 열지는 설정이 고르고, 그 모집이 자기 통로를 들고 있다.
      * 둘이 어긋나면 값이 잘못 매겨지므로 통과시키지 않는다.
      */
+    /**
+     * 이 통로가 입금을 기다리는 시간.
+     *
+     * 현장은 그 자리에서 내는 자리라 짧게 잡는다. 상시 판매는 은행 앱을 열
+     * 시간이 필요해 48시간이다. 같은 값을 문자에도 실어 화면·서버·문자가
+     * 한 기한을 말하게 한다.
+     */
+    private int paymentWindowMinutesFor(GoodsSalesChannel channel) {
+        return channel == GoodsSalesChannel.FLEA
+                ? properties.getFleaPaymentWindowMinutes()
+                : properties.getPaymentWindowMinutes();
+    }
+
     private GoodsSurveyCampaign findCampaign(GoodsSalesChannel channel) {
         GoodsSurveyCampaign campaign = campaignRepository.findById(campaignIdOf(channel))
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_CAMPAIGN_NOT_FOUND));

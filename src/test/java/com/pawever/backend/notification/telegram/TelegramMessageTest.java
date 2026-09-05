@@ -28,7 +28,8 @@ class TelegramMessageTest {
                 goodsLabel,
                 26_900,
                 true,
-                "instagram / cpc"
+                "instagram / cpc",
+                2880
         );
     }
 
@@ -104,7 +105,7 @@ class TelegramMessageTest {
 
         GoodsOrderSubmittedEvent walkIn = new GoodsOrderSubmittedEvent(
                 "PW-1043", "황성욱", "010-1234-5678", "뭉치",
-                "피규어", 32_900, false, "직접 유입"
+                "피규어", 32_900, false, "직접 유입", 2880
         );
         assertThat(TelegramMessage.goodsOrderSubmitted(walkIn)).doesNotContain("설문 참여");
     }
