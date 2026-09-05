@@ -10,7 +10,9 @@ import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderPricing;
+import com.pawever.backend.admin.entity.AdminOrderView;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderStatusChange;
 import com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyPhoto;
@@ -32,6 +34,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -565,6 +568,125 @@ class AdminOrderServiceTest {
 
         assertThat(response.photos()).hasSize(1);
         verify(accessLogRepository).save(any(AdminAccessLog.class));
+    }
+
+    @Test
+    void 뷰마다_몇_건인지_함께_내려준다() {
+        // 탭에 숫자가 없으면 어느 일이 밀려 있는지 알려고 탭을 하나씩 눌러 봐야 한다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+        when(fulfillmentRepository.countByStatusIn(any())).thenReturn(0L);
+        when(fulfillmentRepository.countByStatusIn(
+                Set.of(GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.LEGACY_FREE)))
+                .thenReturn(100L);
+
+        AdminOrderListResponse response = service.list(ADMIN, Set.of(), null, null, 0, 20);
+
+        assertThat(response.viewCounts().get(AdminOrderView.PRODUCTION_QUEUE)).isEqualTo(100);
+    }
+
+    @Test
+    void 뷰는_상태를_일_단위로_묶는다() {
+        // 결제 완료와 1차 체험단은 돈을 받은 방식이 다르지만 다음에 할 일은 같다.
+        assertThat(AdminOrderView.PRODUCTION_QUEUE.statuses())
+                .containsExactlyInAnyOrder(
+                        GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.LEGACY_FREE);
+        assertThat(AdminOrderView.DONE.statuses())
+                .containsExactlyInAnyOrder(
+                        GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP);
+        // 어느 뷰에도 안 들어가는 상태가 있으면 그 주문은 화면에서 사라진다.
+        assertThat(Arrays.stream(AdminOrderView.values())
+                .flatMap(view -> view.statuses().stream())
+                .distinct()
+                .toList())
+                .containsExactlyInAnyOrderElementsOf(
+                        Arrays.asList(GoodsOrderStatus.values()));
+    }
+
+    @Test
+    void 조건에_맞는_전체를_한_번에_제작_시작한다() {
+        // 100건이 다섯 페이지에 걸쳐 있으면 페이지마다 골라야 한다. 보이는
+        // 것만이 아니라 조건에 맞는 전부를 옮긴다.
+        GoodsSurveyFulfillment first = order("PE-2026-000001", GoodsOrderStatus.LEGACY_FREE);
+        GoodsSurveyFulfillment second = order("PE-2026-000002", GoodsOrderStatus.PAYMENT_COMPLETED);
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(first, second));
+
+        var result = service.startProductionMatching(ADMIN, null, null);
+
+        assertThat(result.changed()).isEqualTo(2);
+        assertThat(first.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+        assertThat(second.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+        // 되돌리려면 무엇을 옮겼는지 알아야 한다.
+        assertThat(result.changedOrderNumbers())
+                .containsExactly("PE-2026-000001", "PE-2026-000002");
+    }
+
+    @Test
+    void 조건에_맞는_전체도_검색어를_따른다() {
+        // 필터를 걸어 둔 채 눌렀는데 전부가 옮겨지면 눈으로 본 것과 다르다.
+        GoodsSurveyFulfillment mine = order("PE-2026-000001", GoodsOrderStatus.LEGACY_FREE);
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(mine));
+
+        var none = service.startProductionMatching(ADMIN, "없는이름", null);
+
+        assertThat(none.changed()).isZero();
+        assertThat(mine.getStatus()).isEqualTo(GoodsOrderStatus.LEGACY_FREE);
+    }
+
+    @Test
+    void 되돌리면_제작_시작_직전_상태로_돌아간다() {
+        // 1차 체험단은 결제 완료로 돌아가면 안 된다. 받지도 않은 돈이
+        // 매출로 잡힌다. 이력에 적힌 직전 상태로 돌린다.
+        GoodsSurveyFulfillment legacy = order("PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(legacy));
+        when(statusChangeRepository.findByResponseIdOrderByChangedAtAsc("resp-1"))
+                .thenReturn(List.of(GoodsOrderStatusChange.of(
+                        "resp-1",
+                        GoodsOrderStatus.LEGACY_FREE,
+                        GoodsOrderStatus.IN_PRODUCTION,
+                        NOW,
+                        "1",
+                        "묶음 제작 시작")));
+
+        var result = service.undoStartProduction(ADMIN, List.of("PE-2026-000100"));
+
+        assertThat(result.changed()).isEqualTo(1);
+        assertThat(legacy.getStatus()).isEqualTo(GoodsOrderStatus.LEGACY_FREE);
+    }
+
+    @Test
+    void 묶음_제작_시작으로_옮긴_것이_아니면_되돌리지_않는다() {
+        // 사람이 따로 제작 중으로 옮긴 건까지 되돌리면 남의 일을 지운다.
+        GoodsSurveyFulfillment other = order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(other));
+        when(statusChangeRepository.findByResponseIdOrderByChangedAtAsc("resp-1"))
+                .thenReturn(List.of(GoodsOrderStatusChange.of(
+                        "resp-1",
+                        GoodsOrderStatus.PAYMENT_COMPLETED,
+                        GoodsOrderStatus.IN_PRODUCTION,
+                        NOW,
+                        "1",
+                        "착수")));
+
+        var result = service.undoStartProduction(ADMIN, List.of("PE-2026-000001"));
+
+        assertThat(result.changed()).isZero();
+        assertThat(result.skipped()).containsExactly("PE-2026-000001");
+        assertThat(other.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 이미_다음_단계로_넘어간_건은_되돌리지_않는다() {
+        // 송장까지 넣은 것을 되돌리면 보낸 물건이 제작 대기로 돌아온다.
+        GoodsSurveyFulfillment shipped = order("PE-2026-000001", GoodsOrderStatus.SHIPPED);
+        when(fulfillmentRepository.findByOrderNumberIn(any())).thenReturn(List.of(shipped));
+
+        var result = service.undoStartProduction(ADMIN, List.of("PE-2026-000001"));
+
+        assertThat(result.changed()).isZero();
+        assertThat(shipped.getStatus()).isEqualTo(GoodsOrderStatus.SHIPPED);
     }
 
     @Test

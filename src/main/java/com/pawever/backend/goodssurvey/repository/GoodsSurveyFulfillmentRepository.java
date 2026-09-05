@@ -81,6 +81,14 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     List<GoodsSurveyFulfillment> findByOrderNumberIn(Collection<String> orderNumbers);
 
     /**
+     * 여러 상태를 한 번에 센다.
+     *
+     * 뷰 하나가 상태 여럿을 묶는다. 상태마다 세어 더하면 뷰 다섯 개에
+     * 아홉 번을 다녀온다.
+     */
+    long countByStatusIn(Collection<GoodsOrderStatus> statuses);
+
+    /**
      * 상태별 전체 건수.
      *
      * 목록 위 요약 카드가 쓴다. 목록과 달리 화면이 건 필터를 따라가지 않는다 —

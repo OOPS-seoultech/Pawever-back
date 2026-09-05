@@ -5,6 +5,7 @@ import com.pawever.backend.admin.dto.AdminOrderListResponse;
 import com.pawever.backend.admin.dto.AdminOrderSummary;
 import com.pawever.backend.admin.dto.AdminPhotoDownloadResponse;
 import com.pawever.backend.admin.entity.AdminAccessLog;
+import com.pawever.backend.admin.entity.AdminOrderView;
 import com.pawever.backend.admin.entity.AdminRole;
 import com.pawever.backend.admin.repository.AdminAccessLogRepository;
 import com.pawever.backend.admin.security.AdminPrincipal;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -81,6 +83,14 @@ public class AdminOrderService {
      */
     private static final int MAX_BULK_SIZE = 500;
 
+    /**
+     * 묶음으로 옮겼다는 표시.
+     *
+     * 되돌리기가 이 값을 보고 자기가 옮긴 것만 손댄다. 사람이 따로 옮긴
+     * 건까지 되돌리면 남의 일을 지운다.
+     */
+    private static final String BULK_START_MEMO = "묶음 제작 시작";
+
     /** 제작팀이 스스로 바꿀 수 있는 상태. 발송과 취소는 관리자만 한다. */
     private static final Set<GoodsOrderStatus> PRODUCTION_SETTABLE =
             EnumSet.of(GoodsOrderStatus.IN_PRODUCTION);
@@ -117,7 +127,8 @@ public class AdminOrderService {
     ) {
         Set<GoodsOrderStatus> visible = visibleStatuses(principal, requestedStatuses);
         if (visible.isEmpty()) {
-            return new AdminOrderListResponse(List.of(), 0, page, size, summarize());
+            return new AdminOrderListResponse(
+                    List.of(), 0, page, size, summarize(), viewCounts());
         }
 
         List<GoodsSurveyFulfillment> found =
@@ -133,7 +144,8 @@ public class AdminOrderService {
                 .map(this::toSummary)
                 .toList();
 
-        return new AdminOrderListResponse(orders, matched.size(), page, size, summarize());
+        return new AdminOrderListResponse(
+                orders, matched.size(), page, size, summarize(), viewCounts());
     }
 
     /**
@@ -441,6 +453,129 @@ public class AdminOrderService {
     }
 
     /**
+     * 뷰마다 몇 건인지.
+     *
+     * 화면이 건 필터·검색어를 따르지 않는다. 탭은 "무엇이 남았나"를 보는
+     * 자리이지 "지금 보는 목록이 몇 건인가"가 아니다.
+     */
+    private Map<AdminOrderView, Long> viewCounts() {
+        Map<AdminOrderView, Long> counts = new EnumMap<>(AdminOrderView.class);
+        for (AdminOrderView view : AdminOrderView.values()) {
+            counts.put(view, fulfillmentRepository.countByStatusIn(view.statuses()));
+        }
+        return counts;
+    }
+
+    /**
+     * 지금 화면이 보고 있는 조건에 맞는 전부를 제작 중으로 옮긴다.
+     *
+     * 100건이 다섯 페이지에 걸쳐 있으면 페이지마다 골라야 한다. 보이는
+     * 스무 건이 아니라 조건에 맞는 전부를 옮긴다.
+     *
+     * 목록을 뽑을 때와 같은 조건으로 고른다. 필터를 걸어 둔 채 눌렀는데
+     * 전부가 옮겨지면 눈으로 본 것과 다른 일이 벌어진다.
+     *
+     * 무엇을 옮겼는지 주문번호로 돌려준다. 되돌리려면 그것이 있어야 한다.
+     */
+    @Transactional
+    public BulkResult startProductionMatching(
+            AdminPrincipal principal,
+            String query,
+            OrderFilter filter
+    ) {
+        Set<GoodsOrderStatus> visible = visibleStatuses(
+                principal, AdminOrderView.PRODUCTION_QUEUE.statuses());
+        if (visible.isEmpty()) {
+            return new BulkResult(0, List.of(), List.of());
+        }
+
+        List<GoodsSurveyFulfillment> matched = fulfillmentRepository
+                .findByStatusInOrderByCreatedAtDesc(visible).stream()
+                .filter(fulfillment -> matches(fulfillment, query, principal.role()))
+                .filter(fulfillment -> filter == null || filter.accepts(this, fulfillment))
+                .toList();
+        if (matched.size() > MAX_BULK_SIZE) {
+            throw new CustomException(ErrorCode.ORDER_BULK_TOO_MANY);
+        }
+        // 이미 손에 들고 있는 것을 주문번호로 바꿔 다시 찾아오지 않는다.
+        return applyStartProduction(
+                principal,
+                matched.stream().map(GoodsSurveyFulfillment::getOrderNumber).toList(),
+                matched.stream().collect(Collectors.toMap(
+                        GoodsSurveyFulfillment::getOrderNumber, item -> item))
+        );
+    }
+
+    /**
+     * 방금 한 묶음 제작 시작을 되돌린다.
+     *
+     * 잘못 눌렀을 때 100건을 한 건씩 되돌리게 두지 않는다.
+     *
+     * 이력에 적힌 직전 상태로 돌린다. 1차 체험단을 결제 완료로 돌리면 받지도
+     * 않은 돈이 매출로 잡히므로, 어디서 왔는지를 기록에서 읽어야 한다.
+     *
+     * 묶음으로 옮긴 것만 되돌린다. 사람이 따로 제작 중으로 옮긴 건까지 손대면
+     * 남의 일을 지운다. 이미 다음 단계로 넘어간 건도 두고 간다 — 송장까지 넣은
+     * 것을 되돌리면 보낸 물건이 제작 대기로 돌아온다.
+     */
+    @Transactional
+    public BulkResult undoStartProduction(AdminPrincipal principal, List<String> orderNumbers) {
+        if (orderNumbers.size() > MAX_BULK_SIZE) {
+            throw new CustomException(ErrorCode.ORDER_BULK_TOO_MANY);
+        }
+
+        Map<String, GoodsSurveyFulfillment> byNumber =
+                fulfillmentRepository.findByOrderNumberIn(orderNumbers).stream()
+                        .collect(Collectors.toMap(
+                                GoodsSurveyFulfillment::getOrderNumber, item -> item));
+
+        int changed = 0;
+        List<String> skipped = new ArrayList<>();
+        List<String> reverted = new ArrayList<>();
+        for (String orderNumber : orderNumbers) {
+            GoodsSurveyFulfillment fulfillment = byNumber.get(orderNumber);
+            if (fulfillment == null
+                    || fulfillment.getStatus() != GoodsOrderStatus.IN_PRODUCTION) {
+                skipped.add(orderNumber);
+                continue;
+            }
+            GoodsOrderStatus previous = bulkStartedFrom(fulfillment.getResponseId());
+            if (previous == null) {
+                skipped.add(orderNumber);
+                continue;
+            }
+            fulfillment.changeStatus(previous);
+            orderService.recordManualChange(
+                    fulfillment.getResponseId(),
+                    GoodsOrderStatus.IN_PRODUCTION,
+                    previous,
+                    String.valueOf(principal.accountId()),
+                    "제작 시작 되돌림"
+            );
+            reverted.add(orderNumber);
+            changed++;
+        }
+        return new BulkResult(changed, List.copyOf(skipped), List.copyOf(reverted));
+    }
+
+    /**
+     * 묶음 제작 시작으로 옮겨 온 것이면 그 직전 상태.
+     *
+     * 마지막 기록만 본다. 그 뒤에 다른 일이 있었다면 되돌릴 것이 아니다.
+     */
+    private GoodsOrderStatus bulkStartedFrom(String responseId) {
+        List<GoodsOrderStatusChange> history =
+                statusChangeRepository.findByResponseIdOrderByChangedAtAsc(responseId);
+        if (history.isEmpty()) {
+            return null;
+        }
+        GoodsOrderStatusChange last = history.get(history.size() - 1);
+        boolean bulkStarted = last.getToStatus() == GoodsOrderStatus.IN_PRODUCTION
+                && BULK_START_MEMO.equals(last.getMemo());
+        return bulkStarted ? last.getFromStatus() : null;
+    }
+
+    /**
      * 고른 주문을 한 번에 제작 중으로 옮긴다.
      *
      * 제작은 낱개로 하는 일이 아니다. 모아서 만들고, 제작용 목록과 사진도
@@ -466,9 +601,23 @@ public class AdminOrderService {
                 fulfillmentRepository.findByOrderNumberIn(orderNumbers);
         Map<String, GoodsSurveyFulfillment> byNumber = found.stream()
                 .collect(Collectors.toMap(GoodsSurveyFulfillment::getOrderNumber, item -> item));
+        return applyStartProduction(principal, orderNumbers, byNumber);
+    }
 
+    /**
+     * 찾아 둔 주문을 제작 중으로 옮긴다.
+     *
+     * 주문번호로 고르는 길과 조건으로 고르는 길이 같은 규칙을 쓰게 한 자리다.
+     * 두 벌로 두면 한쪽만 고쳐진다.
+     */
+    private BulkResult applyStartProduction(
+            AdminPrincipal principal,
+            List<String> orderNumbers,
+            Map<String, GoodsSurveyFulfillment> byNumber
+    ) {
         int changed = 0;
         List<String> skipped = new ArrayList<>();
+        List<String> moved = new ArrayList<>();
         for (String orderNumber : orderNumbers) {
             GoodsSurveyFulfillment fulfillment = byNumber.get(orderNumber);
             if (fulfillment == null) {
@@ -495,20 +644,26 @@ public class AdminOrderService {
                     before,
                     GoodsOrderStatus.IN_PRODUCTION,
                     String.valueOf(principal.accountId()),
-                    "묶음 제작 시작"
+                    BULK_START_MEMO
             );
+            moved.add(orderNumber);
             changed++;
         }
-        return new BulkResult(changed, List.copyOf(skipped));
+        return new BulkResult(changed, List.copyOf(skipped), List.copyOf(moved));
     }
 
     /**
      * 묶음 처리 결과.
      *
-     * @param changed 실제로 옮긴 건수
-     * @param skipped 옮기지 못한 주문번호. 화면이 그대로 보여 준다
+     * @param changed            실제로 옮긴 건수
+     * @param skipped            옮기지 못한 주문번호. 화면이 그대로 보여 준다
+     * @param changedOrderNumbers 옮긴 주문번호. 되돌리려면 이것이 있어야 한다
      */
-    public record BulkResult(int changed, List<String> skipped) {
+    public record BulkResult(
+            int changed,
+            List<String> skipped,
+            List<String> changedOrderNumbers
+    ) {
     }
 
     @Transactional
