@@ -72,6 +72,21 @@ public class GoodsSurveyProperties {
     private String surveyPromotionName = "설문 참여 할인";
     // 주문을 만든 뒤 결제를 기다리는 시간.
     private int paymentWindowMinutes = 30;
+
+    /**
+     * 플리마켓 주문이 입금을 기다리는 시간.
+     *
+     * 48시간은 택배로 받는 상시 판매의 기한이다. 은행 앱을 열 시간, 주말,
+     * 점검 시간까지 넉넉히 잡은 값이다.
+     *
+     * 현장은 다르다. QR 을 찍고 그 자리에서 내는 자리라, 내지 않을 사람이
+     * 이틀씩 70자리 중 하나를 잡고 있으면 실제로 낼 사람이 마감 화면을 본다.
+     * 만료된 자리는 스스로 돌아오지만 이틀 뒤에 돌아오는 자리는 행사가
+     * 끝난 뒤에 열린다.
+     *
+     * 값은 환경변수로 바꾼다. 행사 당일 줄이 길면 배포 없이 조절해야 한다.
+     */
+    private int fleaPaymentWindowMinutes = 180;
     // 광고성 정보 수신 동의 문구의 판. 문구를 고치면 이 값도 올린다.
     private String marketingConsentVersion = "marketing-v1";
     // 파기 작업이 도는 시각. 접속이 가장 적은 새벽에 한 번 돈다.

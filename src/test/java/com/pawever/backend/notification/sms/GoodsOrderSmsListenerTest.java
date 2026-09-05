@@ -36,7 +36,8 @@ class GoodsOrderSmsListenerTest {
             "3D 전신 피규어",
             11_900,
             false,
-            "qr"
+            "qr",
+            180
     );
 
     @Mock private SmsClient smsClient;

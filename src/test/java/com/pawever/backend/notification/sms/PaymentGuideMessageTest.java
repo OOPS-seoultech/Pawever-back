@@ -21,7 +21,8 @@ class PaymentGuideMessageTest {
             "3D 전신 피규어",
             32900,
             false,
-            "instagram"
+            "instagram",
+            2880
     );
 
     private static SmsProperties.Bank bank() {
@@ -114,6 +115,26 @@ class PaymentGuideMessageTest {
     }
 
     @Test
+    void 주문이_들고_온_기한을_그대로_적는다() {
+        // 통로마다 기한이 다르다. 설정 하나를 읽으면 플리마켓 주문에도
+        // 상시 판매의 48시간이 적힌다.
+        GoodsOrderSubmittedEvent flea = new GoodsOrderSubmittedEvent(
+                "PE-2026-000201",
+                "황성욱",
+                "01012345678",
+                "보리",
+                "3D 전신 피규어",
+                11_900,
+                false,
+                "qr",
+                180
+        );
+
+        assertThat(PaymentGuideMessage.of(flea, bank(), flea.paymentWindowMinutes()))
+                .contains("3시간 안에");
+    }
+
+    @Test
     void 결제_대기_시간이_바뀌면_문구도_따라간다() {
         // 설정값을 문장에 손으로 적으면 둘이 갈린다. 서버는 45분을 기다리는데
         // 문자는 30분이라고 하면, 그 15분 동안 받은 문의는 전부 우리 잘못이다.
@@ -153,7 +174,8 @@ class PaymentGuideMessageTest {
         // 계좌번호가 사라진다.
         GoodsOrderSubmittedEvent longName = new GoodsOrderSubmittedEvent(
                 ORDER.orderNumber(), "가".repeat(500), ORDER.phone(), ORDER.petName(),
-                ORDER.goodsLabel(), ORDER.paymentAmountKrw(), false, ORDER.trafficSource()
+                ORDER.goodsLabel(), ORDER.paymentAmountKrw(), false, ORDER.trafficSource(),
+                ORDER.paymentWindowMinutes()
         );
 
         String message = PaymentGuideMessage.of(longName, bank(), 30);
@@ -168,7 +190,8 @@ class PaymentGuideMessageTest {
         // 기록한 값과 문자로 안내한 값이 갈린다.
         GoodsOrderSubmittedEvent member = new GoodsOrderSubmittedEvent(
                 ORDER.orderNumber(), ORDER.guardianName(), ORDER.phone(), ORDER.petName(),
-                ORDER.goodsLabel(), 26900, true, ORDER.trafficSource()
+                ORDER.goodsLabel(), 26900, true, ORDER.trafficSource(),
+                ORDER.paymentWindowMinutes()
         );
 
         assertThat(PaymentGuideMessage.of(member, bank(), 30)).contains("26,900원");

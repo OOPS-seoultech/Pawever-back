@@ -40,10 +40,12 @@ public class GoodsOrderSmsListener {
     public void onGoodsOrderSubmitted(GoodsOrderSubmittedEvent event) {
         boolean sent = false;
         try {
+            // 기한은 주문이 들고 온다. 설정을 다시 읽으면 플리마켓 주문에도
+            // 상시 판매의 48시간이 적힌다.
             String message = PaymentGuideMessage.of(
                     event,
                     smsProperties.getBank(),
-                    goodsSurveyProperties.getPaymentWindowMinutes()
+                    event.paymentWindowMinutes()
             );
             sent = smsClient.sendLms(event.phone(), PaymentGuideMessage.TITLE, message);
             if (!sent) {
