@@ -121,6 +121,44 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 요약은_상태_필터를_따라가지_않는다() {
+        // 카드는 "오늘 몇 건 챙겨야 하는가"를 보라고 둔 것이다. 필터를 걸면
+        // 목록만 좁혀야 하는데 요약까지 좁혀져, 제작 중만 켜 두면 결제 완료가
+        // 0 으로 보였다 — 입금 확인할 것이 없다고 읽힌다.
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+        when(fulfillmentRepository.countByStatus(GoodsOrderStatus.PAYMENT_COMPLETED))
+                .thenReturn(12L);
+        when(fulfillmentRepository.countByStatus(GoodsOrderStatus.IN_PRODUCTION))
+                .thenReturn(30L);
+
+        AdminOrderListResponse response = service.list(
+                ADMIN, Set.of(GoodsOrderStatus.IN_PRODUCTION), null, null, 0, 20);
+
+        assertThat(response.orders()).hasSize(1);
+        assertThat(response.summary().paymentCompleted()).isEqualTo(12);
+        assertThat(response.summary().inProduction()).isEqualTo(30);
+        // 만들어 두고 아직 안 보낸 것.
+        assertThat(response.summary().readyToShip()).isEqualTo(42);
+    }
+
+    @Test
+    void 검색어로_좁혀도_요약은_그대로다() {
+        when(fulfillmentRepository.findByStatusInOrderByCreatedAtDesc(any()))
+                .thenReturn(List.of(order("PE-2026-000001", GoodsOrderStatus.PAYMENT_COMPLETED)));
+        when(fulfillmentRepository.countByStatus(GoodsOrderStatus.PAYMENT_COMPLETED))
+                .thenReturn(12L);
+        when(fulfillmentRepository.countByStatus(GoodsOrderStatus.IN_PRODUCTION))
+                .thenReturn(30L);
+
+        AdminOrderListResponse response =
+                service.list(ADMIN, Set.of(), "없는주문번호", null, 0, 20);
+
+        assertThat(response.orders()).isEmpty();
+        assertThat(response.summary().paymentCompleted()).isEqualTo(12);
+    }
+
+    @Test
     void 제작팀은_보호자_이름으로_찾을_수_없다() {
         // 목록에서 이름을 가리고 상세에서 비워 내려도, 검색이 이름에 걸리면
         // 이름을 넣어 보고 결과 수로 확인할 수 있다. 값을 못 보게 하는 것과

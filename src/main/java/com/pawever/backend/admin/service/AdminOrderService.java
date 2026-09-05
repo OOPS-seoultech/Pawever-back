@@ -107,7 +107,7 @@ public class AdminOrderService {
     ) {
         Set<GoodsOrderStatus> visible = visibleStatuses(principal, requestedStatuses);
         if (visible.isEmpty()) {
-            return new AdminOrderListResponse(List.of(), 0, page, size, emptySummary());
+            return new AdminOrderListResponse(List.of(), 0, page, size, summarize());
         }
 
         List<GoodsSurveyFulfillment> found =
@@ -123,7 +123,7 @@ public class AdminOrderService {
                 .map(this::toSummary)
                 .toList();
 
-        return new AdminOrderListResponse(orders, matched.size(), page, size, summarize(found));
+        return new AdminOrderListResponse(orders, matched.size(), page, size, summarize());
     }
 
     /**
@@ -692,21 +692,25 @@ public class AdminOrderService {
                 : fulfillment.getCreatedAt().atZone(KST).toInstant();
     }
 
-    private AdminOrderListResponse.Summary summarize(List<GoodsSurveyFulfillment> all) {
+    /**
+     * 목록 위 요약 카드.
+     *
+     * 화면이 건 필터·검색어와 무관하게 전체를 센다. 예전에는 목록을 뽑은
+     * 결과로 셌는데, 그러면 제작 중 필터를 켜는 것만으로 결제 완료가 0 이
+     * 되어 입금 확인할 것이 없다고 읽혔다.
+     *
+     * 두 상태 다 제작팀에게도 보이는 값이라 역할로 나누지 않는다.
+     */
+    private AdminOrderListResponse.Summary summarize() {
+        long paymentCompleted =
+                fulfillmentRepository.countByStatus(GoodsOrderStatus.PAYMENT_COMPLETED);
+        long inProduction =
+                fulfillmentRepository.countByStatus(GoodsOrderStatus.IN_PRODUCTION);
         return new AdminOrderListResponse.Summary(
-                count(all, GoodsOrderStatus.PAYMENT_COMPLETED),
-                count(all, GoodsOrderStatus.IN_PRODUCTION),
+                paymentCompleted,
+                inProduction,
                 // 만들어 두고 아직 안 보낸 것. 이것이 오늘 챙겨야 할 수다.
-                count(all, GoodsOrderStatus.IN_PRODUCTION)
-                        + count(all, GoodsOrderStatus.PAYMENT_COMPLETED)
+                inProduction + paymentCompleted
         );
-    }
-
-    private long count(List<GoodsSurveyFulfillment> all, GoodsOrderStatus status) {
-        return all.stream().filter(item -> item.getStatus() == status).count();
-    }
-
-    private AdminOrderListResponse.Summary emptySummary() {
-        return new AdminOrderListResponse.Summary(0, 0, 0);
     }
 }
