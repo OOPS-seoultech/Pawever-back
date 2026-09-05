@@ -756,6 +756,24 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 화면에_띄운_것과_파일로_가져간_것을_나눠_남긴다() {
+        // 사진을 열자마자 보여 주면 상세를 열 때마다 이력이 쌓인다. 한 이름으로
+        // 남기면 훑어본 것과 실제로 가져간 것이 섞여, 사진이 밖으로 나갔을 때
+        // 누구를 봐야 하는지 알 수 없어진다.
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
+                .thenReturn(Optional.of(order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION)));
+        when(photoRepository.findByResponseId("resp-1")).thenReturn(List.of(photo("p1")));
+        when(photoStorage.presignDownload(any(), any(Duration.class), any(Instant.class)))
+                .thenReturn(new GoodsSurveyPhotoStorage.PresignedDownload("https://x/1", NOW));
+
+        service.photoLinks(ADMIN, "PE-2026-000001");
+
+        ArgumentCaptor<AdminAccessLog> log = ArgumentCaptor.forClass(AdminAccessLog.class);
+        verify(accessLogRepository).save(log.capture());
+        assertThat(log.getValue().getAction()).isEqualTo("PHOTO_VIEW");
+    }
+
+    @Test
     void 사진을_한_번에_받으면_자리_번호가_파일_이름에_남는다() {
         // 압축을 풀면 순서가 섞인다. 제작 화면에서 부르는 번호와 맞아야
         // 어느 사진인지 알 수 있다.

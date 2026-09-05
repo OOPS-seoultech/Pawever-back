@@ -1,5 +1,6 @@
 package com.pawever.backend.goodssurvey.service;
 
+import com.pawever.backend.admin.repository.AdminAccessLogRepository;
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.entity.GoodsOrderStatus;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
@@ -57,6 +58,7 @@ public class GoodsSurveyRetentionService {
     private final GoodsSurveyPhotoRepository photoRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsOrderStatusChangeRepository statusChangeRepository;
+    private final AdminAccessLogRepository accessLogRepository;
     private final GoodsSurveyProperties properties;
     private final GoodsOrderService orderService;
 
@@ -109,6 +111,22 @@ public class GoodsSurveyRetentionService {
             );
         }
         return targets.size();
+    }
+
+    /**
+     * 보관 기간이 지난 담당자 접속기록.
+     *
+     * 개인정보처리시스템의 접속기록은 1년 이상 보관해야 한다. 요구하는 것은
+     * 최소 기간이지 영원히 두라는 것이 아니다. 지우는 자리가 없으면 이력만
+     * 끝없이 쌓인다.
+     *
+     * 다른 파기와 달리 건수를 세어 나눠 처리하지 않는다. 파일을 지우는 일이
+     * 없어 한 번의 삭제로 끝난다.
+     */
+    @Transactional
+    public int purgeExpiredAccessLogs(Instant now) {
+        return accessLogRepository.deleteByAccessedAtLessThan(
+                now.minus(properties.getAdminAccessLogRetentionDays(), ChronoUnit.DAYS));
     }
 
     /**

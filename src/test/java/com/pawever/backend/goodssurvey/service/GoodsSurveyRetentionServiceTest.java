@@ -53,6 +53,7 @@ class GoodsSurveyRetentionServiceTest {
     @Mock private GoodsSurveyPhotoRepository photoRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
     @Mock private GoodsOrderStatusChangeRepository statusChangeRepository;
+    @Mock private com.pawever.backend.admin.repository.AdminAccessLogRepository accessLogRepository;
     @Mock private GoodsOrderService orderService;
 
     private GoodsSurveyRetentionService retentionService;
@@ -68,6 +69,7 @@ class GoodsSurveyRetentionServiceTest {
                 photoRepository,
                 photoStorage,
                 statusChangeRepository,
+                accessLogRepository,
                 properties,
                 orderService
         );
@@ -265,6 +267,16 @@ class GoodsSurveyRetentionServiceTest {
                 eq(GoodsOrderStatus.PAYMENT_EXPIRED),
                 any()
         );
+    }
+
+    @Test
+    void 보관_기간이_지난_담당자_접속기록을_지운다() {
+        // 법이 요구하는 것은 1년 이상 보관이지 영원히 두라는 것이 아니다.
+        // 지우지 않으면 이력이 계속 쌓이기만 한다.
+        retentionService.purgeExpiredAccessLogs(NOW);
+
+        verify(accessLogRepository).deleteByAccessedAtLessThan(
+                NOW.minus(java.time.Duration.ofDays(365)));
     }
 
     @Test

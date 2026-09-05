@@ -135,6 +135,8 @@ survey:
     # 않을 사람이 이틀씩 70자리 중 하나를 잡고, 그 자리는 행사가 끝난 뒤에
     # 돌아온다. 당일 줄이 길면 배포 없이 이 값만 조절한다.
     flea-payment-window-minutes: ${GOODS_FLEA_PAYMENT_WINDOW_MINUTES:180}
+    # 담당자 접속기록 보관 기간. 법이 요구하는 최소가 1년이다.
+    admin-access-log-retention-days: 365
     # 보유 기간이 지난 개인정보를 지우는 작업. 한국 시각 기준 새벽 4시 15분.
     purge-cron: ${GOODS_SURVEY_PURGE_CRON:0 15 4 * * *}
     # 결제 대기는 30분짜리다. 새벽 파기만 믿으면 하루를 기다린다.
