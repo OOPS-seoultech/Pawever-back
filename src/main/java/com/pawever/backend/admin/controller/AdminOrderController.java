@@ -128,6 +128,39 @@ public class AdminOrderController {
                 orderService.startProduction(currentPrincipal(), request.orderNumbers()));
     }
 
+    /**
+     * 지금 조건에 맞는 전부를 제작 중으로 옮긴다.
+     *
+     * 목록과 같은 조건을 받는다. 화면이 보고 있는 것과 다른 것을 옮기면
+     * 눈으로 본 것과 다른 일이 벌어진다.
+     */
+    @PostMapping("/start-production/matching")
+    public ApiResponse<AdminOrderService.BulkResult> startProductionMatching(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String goodsType,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedFrom,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedTo,
+            @RequestParam(required = false) Integer minPhotoCount
+    ) {
+        return ApiResponse.ok(orderService.startProductionMatching(
+                currentPrincipal(),
+                q,
+                new AdminOrderService.OrderFilter(
+                        goodsType, submittedFrom, submittedTo, minPhotoCount)
+        ));
+    }
+
+    /** 방금 한 묶음 제작 시작을 되돌린다. */
+    @PostMapping("/start-production/undo")
+    public ApiResponse<AdminOrderService.BulkResult> undoStartProduction(
+            @Valid @RequestBody AdminBulkOrderRequest request
+    ) {
+        return ApiResponse.ok(
+                orderService.undoStartProduction(currentPrincipal(), request.orderNumbers()));
+    }
+
     @PostMapping("/{orderNumber}/tracking")
     public ApiResponse<Void> registerTracking(
             @PathVariable String orderNumber,
