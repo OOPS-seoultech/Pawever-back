@@ -55,6 +55,28 @@ public final class TelegramMessage {
         return clip(text.toString(), MAX_LENGTH);
     }
 
+    /**
+     * 입금 안내 문자가 못 나갔다는 알림.
+     *
+     * 신규 신청 알림과 나눠 둔다. 저쪽은 "주문이 들어왔다"이고 이쪽은 "이
+     * 사람은 낼 방법이 없다"이다. 한 문장으로 묶으면 읽는 사람이 급한 것을
+     * 골라내지 못한다.
+     *
+     * 연락처를 싣는다. 받는 사람이 이 알림 하나로 직접 안내할 수 있어야
+     * 하고, 신규 신청 알림도 대표님 판단으로 같은 값을 싣는다.
+     */
+    public static String paymentGuideFailed(GoodsOrderSubmittedEvent event) {
+        StringBuilder text = new StringBuilder()
+                .append("⚠️ <b>입금 안내 문자를 보내지 못했습니다</b>\n")
+                .append("- 주문번호: ").append(field(event.orderNumber())).append('\n')
+                .append("- 이름: ").append(field(event.guardianName())).append('\n')
+                .append("- 연락처: ").append(field(event.phone())).append('\n')
+                .append("- 결제: ").append(WON.format(event.paymentAmountKrw())).append("원\n")
+                .append("위 연락처로 계좌를 직접 안내해 주세요. ")
+                .append("안내하지 않으면 기한이 지나 주문이 사라집니다.");
+        return clip(text.toString(), MAX_LENGTH);
+    }
+
     private static String field(String value) {
         if (value == null || value.isBlank()) {
             return "-";
