@@ -128,6 +128,18 @@ public class AdminOrderController {
     }
 
     /**
+     * 현장에서 건넨 주문을 끝낸다.
+     *
+     * 송장을 받지 않는다. 현장 수령 주문에만 열리고, 그 외 주문은 서비스가
+     * 거절한다.
+     */
+    @PostMapping("/{orderNumber}/pickup-complete")
+    public ApiResponse<Void> completePickup(@PathVariable String orderNumber) {
+        orderService.completePickup(currentPrincipal(), orderNumber);
+        return ApiResponse.ok();
+    }
+
+    /**
      * 주문을 취소한다.
      *
      * 결제 취소가 성공해야 취소로 넘어간다. 실패하면 취소 처리 실패로 남고

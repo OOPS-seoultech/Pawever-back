@@ -40,11 +40,17 @@ public record AdminOrderDetail(
     ) {
     }
 
+    /**
+     * @param pgLinked 결제 대행사 결제 키가 붙어 있는지. 붙어 있으면 취소가 대행사
+     *                 환불까지 함께 하고, 없으면(계좌이체) 환불은 사람이 먼저 한다.
+     *                 화면이 어느 쪽 말을 할지가 여기서 갈린다.
+     */
     public record Payment(
             String method,
             Instant paidAt,
             Instant paymentExpiresAt,
-            String cancelReason
+            String cancelReason,
+            boolean pgLinked
     ) {
     }
 

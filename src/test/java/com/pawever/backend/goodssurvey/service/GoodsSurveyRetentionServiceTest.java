@@ -267,6 +267,26 @@ class GoodsSurveyRetentionServiceTest {
         );
     }
 
+    @Test
+    void 계약이_없어진_주문의_사진과_상세주소를_그_자리에서_지운다() {
+        // 관리자가 취소·만료·실패로 옮긴 주문이 부른다. 저절로 만료된 건과
+        // 같은 일을 같은 자리에서 한다 — 두 곳에 따로 적으면 한쪽만 고쳐진다.
+        GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
+        when(photoRepository.findByResponseId("resp-1"))
+                .thenReturn(List.of(
+                        photo("p1", "resp-1", "goods/resp-1/1.jpg"),
+                        photo("p2", "resp-1", "goods/resp-1/2.jpg")));
+
+        retentionService.discardVoidOrderData(fulfillment);
+
+        verify(photoStorage).delete("goods/resp-1/1.jpg");
+        verify(photoStorage).delete("goods/resp-1/2.jpg");
+        verify(photoRepository, org.mockito.Mockito.times(2)).delete(any());
+        assertThat(fulfillment.getAddressDetail()).isNull();
+        // 행은 남긴다. 무엇이 왜 취소됐는지 관리자가 볼 수 있어야 한다.
+        verify(fulfillmentRepository, never()).delete(any());
+    }
+
     private GoodsSurveyFulfillment fulfillment(String responseId) {
         return GoodsSurveyFulfillment.create(
                 responseId,

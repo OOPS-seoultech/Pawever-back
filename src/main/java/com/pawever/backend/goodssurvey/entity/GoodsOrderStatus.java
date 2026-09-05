@@ -1,5 +1,6 @@
 package com.pawever.backend.goodssurvey.entity;
 
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -20,6 +21,16 @@ public enum GoodsOrderStatus {
     IN_PRODUCTION("제작 중", true),
 
     SHIPPED("발송 완료", true),
+
+    /**
+     * 현장에서 직접 건넸다. 현장 수령(PICKUP) 주문의 끝이다.
+     *
+     * 발송 완료는 송장을 넣어야 넘어가는데, 현장 수령에는 택배사도 송장번호도
+     * 없다. 이 상태가 없으면 플리마켓 주문은 제작 중에 영원히 남거나 가짜
+     * 송장을 넣어 발송 완료로 꾸미게 된다. 제작팀에게 보인다 — 끝난 것을
+     * 걸러 봐야 아직 만들 것이 보인다.
+     */
+    PICKED_UP("수령 완료", true),
 
     /** 30분 안에 결제되지 않았다. 계약이 성립하지 않아 사진까지 파기한다. */
     PAYMENT_EXPIRED("결제 만료", false),
@@ -67,6 +78,42 @@ public enum GoodsOrderStatus {
     /** 선착순 자리를 놓는 상태들. 정원을 세는 쪽에서 제외 목록으로 쓴다. */
     public static Set<GoodsOrderStatus> releasesSlot() {
         return RELEASES_SLOT;
+    }
+
+    /**
+     * 사람이 손으로 옮길 수 있는 길.
+     *
+     * 여기 없는 길은 버튼이 아니라 사건으로만 간다 — 발송 완료는 송장 등록,
+     * 수령 완료는 현장 수령 버튼, 취소는 취소 절차. 그 사건이 함께 남겨야
+     * 하는 것(송장, 파기 기준일, 환불 확인)을 건너뛰지 못하게 하기 위해서다.
+     *
+     * 결제 대기에서 제작 중으로는 못 간다. 돈을 받지 않은 피규어가 제작
+     * 대기열에 들어간다. 결제 완료·제작 중에서 만료·실패로도 못 간다. 둘은
+     * 자리를 놓는 상태라, 돈은 받아 둔 채 같은 자리를 다른 사람에게 팔게 된다.
+     * 제작 중에서 결제 완료로는 한 단계 되돌릴 수 있다 — 잘못 누른 것을
+     * 고치는 길이다.
+     *
+     * 끝난 상태(발송·수령·취소·만료·실패)에서는 어디로도 못 간다. 만료는
+     * 사진이 이미 파기된 뒤라 되살려도 만들 수 없다. 늦게 입금한 사람은
+     * 새로 신청해야 한다.
+     *
+     * 1차 체험단은 결제가 없던 주문이라 제작 중으로만 간다. 결제 완료로
+     * 바꾸면 받지도 않은 돈이 매출로 잡히고, 만료·실패로 바꾸면 없던 결제가
+     * 실패한 것이 된다.
+     *
+     * 관리자 화면(adminOrderStatus.ts)이 같은 표를 들고 있다. 여기를 고치면
+     * 그쪽도 함께 고친다.
+     */
+    private static final Map<GoodsOrderStatus, Set<GoodsOrderStatus>> MANUAL_TRANSITIONS = Map.of(
+            PAYMENT_PENDING, Set.of(PAYMENT_COMPLETED, PAYMENT_EXPIRED, PAYMENT_FAILED),
+            PAYMENT_COMPLETED, Set.of(IN_PRODUCTION),
+            IN_PRODUCTION, Set.of(PAYMENT_COMPLETED),
+            LEGACY_FREE, Set.of(IN_PRODUCTION)
+    );
+
+    /** 이 상태에서 사람이 손으로 {@code next} 로 옮길 수 있는지. */
+    public boolean canManuallyBecome(GoodsOrderStatus next) {
+        return MANUAL_TRANSITIONS.getOrDefault(this, Set.of()).contains(next);
     }
 
     private final String label;
