@@ -2,6 +2,8 @@ package com.pawever.backend.notification.sms;
 
 import com.pawever.backend.goodssurvey.config.GoodsSurveyProperties;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
+import com.pawever.backend.notification.telegram.TelegramClient;
+import com.pawever.backend.notification.telegram.TelegramMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -31,24 +33,44 @@ public class GoodsOrderSmsListener {
     private final SmsClient smsClient;
     private final SmsProperties smsProperties;
     private final GoodsSurveyProperties goodsSurveyProperties;
+    private final TelegramClient telegramClient;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onGoodsOrderSubmitted(GoodsOrderSubmittedEvent event) {
+        boolean sent = false;
         try {
             String message = PaymentGuideMessage.of(
                     event,
                     smsProperties.getBank(),
                     goodsSurveyProperties.getPaymentWindowMinutes()
             );
-            boolean sent = smsClient.sendLms(event.phone(), PaymentGuideMessage.TITLE, message);
+            sent = smsClient.sendLms(event.phone(), PaymentGuideMessage.TITLE, message);
             if (!sent) {
-                // 결제 수단이 끊긴 것이라 알림 실패와 무게가 다르다. 사람이
-                // 주문번호로 찾아 직접 안내할 수 있도록 번호만 남긴다.
                 log.error("입금 안내를 보내지 못했다. 수동 안내 필요: 주문 {}", event.orderNumber());
             }
         } catch (RuntimeException e) {
             log.error("입금 안내 문자를 만들지 못했다: 주문 {}", event.orderNumber(), e);
+        }
+        if (!sent) {
+            // 로그만 남기면 아무도 모른다. 현장에서 서버 로그를 보는 사람은
+            // 없고, 이 사람은 계좌를 못 받아 기한이 지나면 주문이 사라진다.
+            // 팀 채널로 알려 그 자리에서 직접 안내할 수 있게 한다.
+            notifyTeam(event);
+        }
+    }
+
+    /**
+     * 팀 채널 알림까지 실패해도 여기서 끝낸다.
+     *
+     * 접수는 이미 커밋됐고, 문자도 팀 알림도 접수를 되돌리지 않는다.
+     * 텔레그램 쪽은 자기 실패를 스스로 로그에 남긴다.
+     */
+    private void notifyTeam(GoodsOrderSubmittedEvent event) {
+        try {
+            telegramClient.sendHtml(TelegramMessage.paymentGuideFailed(event));
+        } catch (RuntimeException e) {
+            log.error("입금 안내 실패를 팀 채널에 알리지 못했다: 주문 {}", event.orderNumber(), e);
         }
     }
 }

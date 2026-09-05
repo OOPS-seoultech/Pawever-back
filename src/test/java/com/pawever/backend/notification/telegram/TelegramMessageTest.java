@@ -43,6 +43,28 @@ class TelegramMessageTest {
     }
 
     @Test
+    void 입금_안내가_못_나갔으면_무엇을_해야_하는지_적는다() {
+        // 이 문자는 알림이 아니라 결제 수단이다. 못 나가면 신청자는 계좌를
+        // 못 받고 주문은 시간이 지나 사라진다. 받는 사람이 이 알림 하나로
+        // 직접 안내할 수 있어야 한다.
+        String text = TelegramMessage.paymentGuideFailed(event("황성욱", "3D 전신 피규어"));
+
+        assertThat(text).contains("입금 안내 문자");
+        assertThat(text).contains("PW-1042");
+        assertThat(text).contains("010-1234-5678");
+        assertThat(text).contains("황성욱");
+    }
+
+    @Test
+    void 실패_알림도_꺾쇠와_앰퍼샌드를_피해서_적는다() {
+        // 우리가 적은 <b> 는 태그로 두고, 사람이 적은 값만 글자로 만든다.
+        String text = TelegramMessage.paymentGuideFailed(event("A&B <b>", "피규어"));
+
+        assertThat(text).contains("A&amp;B &lt;b&gt;");
+        assertThat(text).doesNotContain("A&B");
+    }
+
+    @Test
     void 꺾쇠와_앰퍼샌드를_피해서_적는다() {
         // 이스케이프하지 않으면 텔레그램이 400 을 돌려주고 이 신청은
         // 알림이 통째로 안 간다.
