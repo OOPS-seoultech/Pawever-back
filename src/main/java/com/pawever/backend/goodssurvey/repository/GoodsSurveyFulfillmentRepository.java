@@ -73,6 +73,16 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
             Collection<GoodsOrderStatus> statuses
     );
 
+    /**
+     * 상태별 전체 건수.
+     *
+     * 목록 위 요약 카드가 쓴다. 목록과 달리 화면이 건 필터를 따라가지 않는다 —
+     * 카드는 "오늘 몇 건 챙겨야 하는가"이지 "지금 보고 있는 목록이 몇 건인가"가
+     * 아니다. 제작 중만 켜 뒀다고 결제 완료가 0 으로 보이면 입금 확인할 것이
+     * 없다고 읽힌다.
+     */
+    long countByStatus(GoodsOrderStatus status);
+
     /** 결제를 기다리다 시간이 지난 주문. */
     List<GoodsSurveyFulfillment> findByStatusAndPaymentExpiresAtLessThanEqual(
             GoodsOrderStatus status,
