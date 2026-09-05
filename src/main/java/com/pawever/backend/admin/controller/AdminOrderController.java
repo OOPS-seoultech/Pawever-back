@@ -1,5 +1,6 @@
 package com.pawever.backend.admin.controller;
 
+import com.pawever.backend.admin.dto.AdminBulkOrderRequest;
 import com.pawever.backend.admin.dto.AdminOrderCancelRequest;
 import com.pawever.backend.admin.dto.AdminOrderDetail;
 import com.pawever.backend.admin.dto.AdminOrderListResponse;
@@ -111,6 +112,20 @@ public class AdminOrderController {
         orderService.changeStatus(
                 currentPrincipal(), orderNumber, request.status(), request.memo());
         return ApiResponse.ok();
+    }
+
+    /**
+     * 고른 주문을 한 번에 제작 중으로 옮긴다.
+     *
+     * 옮기지 못한 건은 오류가 아니라 결과에 담아 돌려준다. 하나가 막혔다고
+     * 전부 되돌리면 방금 통과한 것까지 다시 눌러야 한다.
+     */
+    @PostMapping("/start-production")
+    public ApiResponse<AdminOrderService.BulkResult> startProduction(
+            @Valid @RequestBody AdminBulkOrderRequest request
+    ) {
+        return ApiResponse.ok(
+                orderService.startProduction(currentPrincipal(), request.orderNumbers()));
     }
 
     @PostMapping("/{orderNumber}/tracking")
