@@ -351,6 +351,43 @@ class AdminOrderServiceTest {
     }
 
     @Test
+    void 일차_체험단은_제작_중에서_다시_체험단으로_되돌린다() {
+        // 결제가 없던 주문이라 결제 완료로는 못 돌아간다. 그 길만 열어 두면
+        // 제작 중으로 한 번 옮긴 1차 체험단 100건이 앞으로만 갈 수 있게 된다.
+        GoodsSurveyFulfillment legacy = order("PE-2026-000100", GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000100"))
+                .thenReturn(Optional.of(legacy));
+
+        service.changeStatus(ADMIN, "PE-2026-000100", GoodsOrderStatus.LEGACY_FREE, "잘못 눌렀음");
+
+        assertThat(legacy.getStatus()).isEqualTo(GoodsOrderStatus.LEGACY_FREE);
+        // 되돌린 것이지 결제가 생긴 것이 아니다.
+        assertThat(legacy.getPaidAt()).isNull();
+    }
+
+    @Test
+    void 돈을_받은_주문은_체험단으로_되돌리지_않는다() {
+        // 결제한 주문을 무료 체험단으로 옮기면 받은 돈이 장부에서 사라진다.
+        GoodsSurveyFulfillment paid = bankTransferOrder(GoodsOrderStatus.IN_PRODUCTION);
+        when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
+                .thenReturn(Optional.of(paid));
+
+        assertThatThrownBy(() -> service.changeStatus(
+                ADMIN, "PE-2026-000201", GoodsOrderStatus.LEGACY_FREE, null))
+                .isInstanceOf(CustomException.class);
+        assertThat(paid.getStatus()).isEqualTo(GoodsOrderStatus.IN_PRODUCTION);
+    }
+
+    @Test
+    void 제작_중에서_되돌릴_곳은_결제_여부로_갈린다() {
+        // 화면이 무엇을 보여 줄지가 여기서 갈린다.
+        assertThat(GoodsOrderStatus.IN_PRODUCTION.canManuallyBecome(
+                GoodsOrderStatus.LEGACY_FREE)).isTrue();
+        assertThat(GoodsOrderStatus.IN_PRODUCTION.canManuallyBecome(
+                GoodsOrderStatus.PAYMENT_COMPLETED)).isTrue();
+    }
+
+    @Test
     void 제작_중은_잘못_눌렀을_때_결제_완료로_한_단계_되돌릴_수_있다() {
         GoodsSurveyFulfillment order = bankTransferOrder(GoodsOrderStatus.IN_PRODUCTION);
         when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))

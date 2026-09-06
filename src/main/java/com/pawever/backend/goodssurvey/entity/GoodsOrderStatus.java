@@ -107,7 +107,11 @@ public enum GoodsOrderStatus {
     private static final Map<GoodsOrderStatus, Set<GoodsOrderStatus>> MANUAL_TRANSITIONS = Map.of(
             PAYMENT_PENDING, Set.of(PAYMENT_COMPLETED, PAYMENT_EXPIRED, PAYMENT_FAILED),
             PAYMENT_COMPLETED, Set.of(IN_PRODUCTION),
-            IN_PRODUCTION, Set.of(PAYMENT_COMPLETED),
+            // 뒤로 갈 곳이 둘이다. 돈을 받은 주문은 결제 완료로, 1차 체험단은
+            // 다시 체험단으로 돌아간다. 결제 완료 하나만 두면 체험단은 제작
+            // 중에서 나올 길이 없어 앞으로만 갈 수 있게 된다.
+            // 어느 쪽인지는 결제 시각이 가른다(AdminOrderService.changeStatus).
+            IN_PRODUCTION, Set.of(PAYMENT_COMPLETED, LEGACY_FREE),
             LEGACY_FREE, Set.of(IN_PRODUCTION)
     );
 

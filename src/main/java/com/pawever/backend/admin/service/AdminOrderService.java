@@ -347,10 +347,17 @@ public class AdminOrderService {
             fulfillment.markPaid(clock.instant(), null, "MANUAL");
         } else if (next == GoodsOrderStatus.PAYMENT_COMPLETED) {
             // 제작 중에서 되돌리는 길이다. 되돌린 것이지 새로 받은 것이 아니라
-            // 결제 시각은 그대로 둔다. 결제가 없던 주문(1차 체험단이 제작 중으로
-            // 넘어온 건)은 되돌릴 결제도 없다 — 옮기면 받지도 않은 돈이 지금
-            // 받은 것으로 적힌다.
+            // 결제 시각은 그대로 둔다. 결제가 없던 주문은 되돌릴 결제도 없다 —
+            // 옮기면 받지도 않은 돈이 지금 받은 것으로 적힌다. 그쪽은 아래
+            // 1차 체험단으로 돌아간다.
             if (fulfillment.getPaidAt() == null) {
+                throw new CustomException(ErrorCode.ORDER_STATUS_TRANSITION_NOT_ALLOWED);
+            }
+            fulfillment.changeStatus(next);
+        } else if (next == GoodsOrderStatus.LEGACY_FREE) {
+            // 1차 체험단이 제작 중에서 돌아오는 길. 돈을 받은 주문을 여기로
+            // 옮기면 받은 돈이 장부에서 사라진다.
+            if (fulfillment.getPaidAt() != null) {
                 throw new CustomException(ErrorCode.ORDER_STATUS_TRANSITION_NOT_ALLOWED);
             }
             fulfillment.changeStatus(next);
