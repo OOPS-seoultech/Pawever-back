@@ -1,6 +1,7 @@
 package com.pawever.backend.global.config;
 
 import com.pawever.backend.admin.security.AdminAuthenticationFilter;
+import com.pawever.backend.global.security.ApiAuthenticationFailureHandlers;
 import com.pawever.backend.global.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -59,6 +60,13 @@ public class SecurityConfig {
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                // 로그인이 풀린 것과 권한이 없는 것을 다른 번호로 알린다.
+                // 이것을 두지 않으면 시큐리티는 로그인 통로가 없다는 이유로
+                // 토큰 없는 요청에도 403 을 주고, 화면은 여덟 시간 지난
+                // 토큰을 "당신에게는 안 열린 곳"과 구별하지 못한다.
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint(ApiAuthenticationFailureHandlers.unauthenticated())
+                        .accessDeniedHandler(ApiAuthenticationFailureHandlers.forbidden()))
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .addFilterBefore(adminAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
