@@ -4,6 +4,8 @@ import com.pawever.backend.global.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -54,6 +56,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(ErrorCode.FILE_TOO_LARGE.getHttpStatus())
                 .body(ApiResponse.error(ErrorCode.FILE_TOO_LARGE.name(), ErrorCode.FILE_TOO_LARGE.getMessage()));
+    }
+
+    /**
+     * 역할이 모자라 막힌 것.
+     *
+     * <p>@PreAuthorize 는 컨트롤러 안에서 터지므로 시큐리티 필터가 아니라 여기로
+     * 온다. 받아 주지 않으면 아래 모두잡이로 떨어져 500 이 나가고, 로그에는
+     * 서버가 깨진 것처럼 남는다. 실제로는 서버가 제대로 막은 것이다.
+     *
+     * <p>401 로 바꾸지 않는다. 다시 로그인해도 같은 곳이 막혀 있어, 화면이
+     * 로그인 화면으로 보내면 끝나지 않는 고리가 된다.
+     */
+    @ExceptionHandler({AuthorizationDeniedException.class, AccessDeniedException.class})
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception e) {
+        log.info("권한 없음: {}", e.getMessage());
+        return ResponseEntity
+                .status(ErrorCode.FORBIDDEN.getHttpStatus())
+                .body(ApiResponse.error(ErrorCode.FORBIDDEN.name(), ErrorCode.FORBIDDEN.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
