@@ -1,5 +1,6 @@
 package com.pawever.backend.notification.sms;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -32,6 +33,12 @@ public class SmsClient {
     /** 성공. 알리고는 이 값이 1 일 때만 접수된 것으로 본다. */
     private static final int RESULT_OK = 1;
 
+    /** 알리고 답을 읽는다. 아래 주석 참고 — 스프링 변환기로는 못 읽는다. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** 읽지 못한 답을 로그에 남길 때 자르는 길이. */
+    private static final int MAX_BODY_LOG = 200;
+
     private final RestTemplate restTemplate;
     private final SmsProperties properties;
 
@@ -63,18 +70,22 @@ public class SmsClient {
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         try {
-            ResponseEntity<AligoResponse> response = restTemplate.postForEntity(
+            // 글자로 받아 우리가 읽는다. 알리고는 JSON 을 보내면서 Content-Type 을
+            // text/html 로 적어, 스프링에게 맡기면 변환기를 못 찾아 예외가 난다.
+            // 그러면 실제로 나간 문자까지 실패로 세게 된다 — 2026-09-09 주문
+            // PE-2026-000104 가 그렇게 실패로 기록됐다.
+            ResponseEntity<String> response = restTemplate.postForEntity(
                     properties.getBaseUrl() + "/send/",
                     new HttpEntity<>(form, headers),
-                    AligoResponse.class
+                    String.class
             );
-            AligoResponse body = response.getBody();
+            AligoResponse body = read(response.getBody());
             if (body == null || body.resultCode() != RESULT_OK) {
                 // 받는 번호는 남기지 않는다. 실패를 남기려다 연락처를 로그에 흘린다.
                 log.error(
                         "입금 안내 문자 거절: code={} message={}",
-                        body == null ? "(없음)" : body.resultCode(),
-                        body == null ? "(응답 없음)" : body.message()
+                        body == null ? "(못 읽음)" : body.resultCode(),
+                        body == null ? clip(response.getBody()) : body.message()
                 );
                 return false;
             }
@@ -83,6 +94,32 @@ public class SmsClient {
             log.error("입금 안내 문자 전송 실패: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * 답을 읽는다. 읽지 못하면 null.
+     *
+     * 점검 안내 페이지처럼 JSON 이 아닌 것이 올 수 있다. 그때는 보냈는지
+     * 알 수 없으므로 성공으로 세지 않는다.
+     */
+    private AligoResponse read(String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(body, AligoResponse.class);
+        } catch (Exception notJson) {
+            return null;
+        }
+    }
+
+    /** 읽지 못한 답을 로그에 남긴다. 길면 자른다. */
+    private static String clip(String body) {
+        if (body == null || body.isBlank()) {
+            return "(응답 없음)";
+        }
+        String flat = body.replaceAll("\s+", " ").strip();
+        return flat.length() <= MAX_BODY_LOG ? flat : flat.substring(0, MAX_BODY_LOG) + "…";
     }
 
     /**

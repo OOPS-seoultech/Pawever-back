@@ -61,6 +61,40 @@ class SmsClientTest {
     }
 
     @Test
+    void 알리고가_text_html_로_답해도_읽는다() {
+        // 알리고는 JSON 을 보내면서 Content-Type 을 text/html 로 적는다.
+        // 그대로 두면 스프링이 JSON 변환기를 못 찾아 예외를 던지고, 실제로는
+        // 나간 문자를 실패로 세게 된다. 2026-09-09 주문 PE-2026-000104 가
+        // 이것으로 실패했다.
+        server.expect(requestTo("https://apis.aligo.in/send/"))
+                .andRespond(withSuccess(
+                        "{\"result_code\":1,\"message\":\"success\",\"msg_id\":\"123\"}",
+                        MediaType.TEXT_HTML));
+
+        assertThat(client.sendLms("01012345678", "제목", "본문")).isTrue();
+        server.verify();
+    }
+
+    @Test
+    void text_html_로_온_거절도_거절로_센다() {
+        server.expect(requestTo("https://apis.aligo.in/send/"))
+                .andRespond(withSuccess(
+                        "{\"result_code\":-101,\"message\":\"인증오류입니다.\"}",
+                        MediaType.TEXT_HTML));
+
+        assertThat(client.sendLms("01012345678", "제목", "본문")).isFalse();
+    }
+
+    @Test
+    void 아예_JSON_이_아닌_답도_실패로_센다() {
+        // 점검 안내 페이지 같은 것이 올 수 있다. 읽지 못하면 성공이 아니다.
+        server.expect(requestTo("https://apis.aligo.in/send/"))
+                .andRespond(withSuccess("<html><body>점검 중</body></html>", MediaType.TEXT_HTML));
+
+        assertThat(client.sendLms("01012345678", "제목", "본문")).isFalse();
+    }
+
+    @Test
     void 하이픈을_뗀_번호로_보낸다() {
         // 신청 화면 자리표시자가 010-0000-0000 이라 대부분 하이픈을 넣어 적는다.
         // 알리고는 하이픈 섞인 번호를 받아 주기도 하고 거절하기도 한다. 어긋나면
