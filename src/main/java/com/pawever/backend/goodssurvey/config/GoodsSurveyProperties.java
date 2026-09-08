@@ -86,7 +86,7 @@ public class GoodsSurveyProperties {
      *
      * 값은 환경변수로 바꾼다. 행사 당일 줄이 길면 배포 없이 조절해야 한다.
      */
-    private int fleaPaymentWindowMinutes = 180;
+    private int fleaPaymentWindowMinutes = 1440;
     // 광고성 정보 수신 동의 문구의 판. 문구를 고치면 이 값도 올린다.
     private String marketingConsentVersion = "marketing-v1";
     /**

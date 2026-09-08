@@ -323,6 +323,45 @@ class GoodsSurveyServiceTest {
         assertThat(event.paymentWindowMinutes()).isEqualTo(180);
     }
 
+    @Test
+    void 플리마켓은_같은_번호로_또_신청할_수_있다() {
+        // 현장에서 두 마리를 신청하거나 부부가 한 번호를 쓴다. 막아 두면
+        // 그 자리에서 팔 수 있는 것을 못 판다. 사재기 방지는 정원 70이 한다.
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        // 같은 번호로 살아 있는 주문이 이미 있어도 막지 않는다.
+        lenient().when(fulfillmentRepository.existsLiveByPhoneHash(any(), any())).thenReturn(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-twice");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-twice", draft.responseId()));
+
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-twice",
+                directApplication(tracking, "conversion-twice", "photo-twice")
+        );
+
+        verify(fulfillmentRepository).save(any());
+        // 아예 묻지 않는다. 물어보고 무시하면 규칙이 두 곳에 흩어진다.
+        verify(fulfillmentRepository, never()).existsLiveByPhoneHash(any(), any());
+    }
+
+    @Test
+    void 상시_판매는_같은_번호로_또_신청할_수_없다() {
+        // 온라인은 그 자리에서 확인할 사람이 없다. 한 사람이 여러 번 넣어
+        // 정원을 먹는 것을 막는다.
+        when(fulfillmentRepository.existsLiveByPhoneHash(any(), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> submitDirect("dup-online"))
+                .isInstanceOf(com.pawever.backend.global.exception.CustomException.class);
+    }
+
     /** 직행으로 들어와 사진까지 갖춘 신청 하나. 접수 응답을 돌려준다. */
     private GoodsSurveyApplicationResponse submitDirect(String suffix) {
         ObjectMapper objectMapper = new ObjectMapper();

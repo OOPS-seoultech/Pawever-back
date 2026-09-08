@@ -538,8 +538,15 @@ public class GoodsSurveyService {
 
         String normalizedPhone = normalizePhone(request.phone());
         String phoneHash = hmacHasher.hash(response.getCampaignId() + ":" + normalizedPhone);
-        if (fulfillmentRepository.existsLiveByPhoneHash(
-                phoneHash, GoodsOrderStatus.releasesSlot())) {
+        // 현장 판매에서는 같은 번호로 또 받는다. 두 마리를 신청하거나 부부가
+        // 한 번호를 쓰는 일이 그 자리에서 생기는데, 막으면 팔 수 있는 것을
+        // 못 판다. 사재기는 정원 70이 막고, 파는 사람이 앞에 서 있다.
+        //
+        // 상시 판매는 그대로 한 건이다. 온라인은 그 자리에서 확인할 사람이
+        // 없어 한 사람이 여러 번 넣어 정원을 먹을 수 있다.
+        if (campaign.getChannel() != GoodsSalesChannel.FLEA
+                && fulfillmentRepository.existsLiveByPhoneHash(
+                        phoneHash, GoodsOrderStatus.releasesSlot())) {
             throw new CustomException(ErrorCode.SURVEY_DUPLICATE_PHONE);
         }
         if (fulfillmentRepository.existsByIdempotencyKey(idempotencyKey)) {
