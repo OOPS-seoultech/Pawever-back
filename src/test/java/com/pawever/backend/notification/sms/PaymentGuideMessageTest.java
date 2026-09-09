@@ -3,6 +3,9 @@ package com.pawever.backend.notification.sms;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -55,18 +58,18 @@ class PaymentGuideMessageTest {
 
                 아래 계좌로 입금해주시면 제작이 진행됩니다.
 
-                ◼︎ 주문번호 : PE-2026-000123
-                ◼︎ 입금 금액 : 32,900원
+                ■ 주문번호 : PE-2026-000123
+                ■ 입금 금액 : 32,900원
 
-                ◼︎ 입금 계좌 : 국민은행 123456-78-901234 포에버
-                ◼︎ 입금자명 : 황성욱
+                ■ 입금 계좌 : 국민은행 123456-78-901234 포에버
+                ■ 입금자명 : 황성욱
 
-                2일 안에 입금이 확인되지 않으면 주문이 자동으로 취소되고 보내주신 사진도 함께 파기됩니다.
+                48시간 안에 입금이 확인되지 않으면 주문이 자동으로 취소되고 보내주신 사진도 함께 파기됩니다.
 
                 굿즈 신청 시 작성해주신 이름과 동일한 이름으로 입금 부탁드립니다.
                 다른 이름으로 입금하실 경우 확인이 늦어질 수 있습니다.
 
-                ◼︎ 문의는 문자 회신 대신 pawever01@gmail.com로 부탁드립니다!"""
+                ■ 문의는 문자 회신 대신 pawever01@gmail.com로 부탁드립니다!"""
         );
     }
 
@@ -84,7 +87,7 @@ class PaymentGuideMessageTest {
         moved.setHolder("이종무");
 
         assertThat(PaymentGuideMessage.of(ORDER, moved, 2880))
-                .contains("◼︎ 입금 계좌 : IBK기업은행 256-126343-04-019 이종무");
+                .contains("■ 입금 계좌 : IBK기업은행 256-126343-04-019 이종무");
     }
 
     @Test
@@ -92,7 +95,7 @@ class PaymentGuideMessageTest {
         String message = PaymentGuideMessage.of(ORDER, bank(), 30);
 
         assertThat(message)
-                .contains("◼︎ 입금 계좌 : 국민은행 123456-78-901234 포에버")
+                .contains("■ 입금 계좌 : 국민은행 123456-78-901234 포에버")
                 .contains("32,900원")
                 .contains("PE-2026-000123")
                 .contains("30분");
@@ -103,7 +106,7 @@ class PaymentGuideMessageTest {
         // 무통장 입금은 들어온 돈에 주문번호가 붙어 오지 않는다. 이름이
         // 어긋나면 어느 주문의 돈인지 사람이 찾아야 하고, 찾는 동안 만료된다.
         assertThat(PaymentGuideMessage.of(ORDER, bank(), 30))
-                .contains("◼︎ 입금자명 : 황성욱");
+                .contains("■ 입금자명 : 황성욱");
     }
 
     @Test
@@ -145,8 +148,10 @@ class PaymentGuideMessageTest {
     void 기다리는_시간을_사람이_읽는_말로_적는다() {
         // 설정은 분으로 들어온다. 그대로 적으면 "2880분 안에"가 되는데, 받는
         // 사람은 그게 언제까지인지 계산해야 한다.
-        assertThat(PaymentGuideMessage.humanWindow(2880)).isEqualTo("2일");
-        assertThat(PaymentGuideMessage.humanWindow(1440)).isEqualTo("1일");
+        // 일로 접지 않는다. 하루짜리 행사에서 "1일 안에"는 언제까지인지
+        // 되짚어야 하는 말이고, "24시간 안에"는 그대로 읽힌다.
+        assertThat(PaymentGuideMessage.humanWindow(2880)).isEqualTo("48시간");
+        assertThat(PaymentGuideMessage.humanWindow(1440)).isEqualTo("24시간");
         assertThat(PaymentGuideMessage.humanWindow(180)).isEqualTo("3시간");
         assertThat(PaymentGuideMessage.humanWindow(30)).isEqualTo("30분");
         // 딱 떨어지지 않으면 분 그대로 둔다. "1일 12시간"처럼 늘어놓는 것보다
@@ -155,8 +160,43 @@ class PaymentGuideMessageTest {
     }
 
     @Test
-    void 이틀로_설정하면_이틀이라고_말한다() {
-        assertThat(PaymentGuideMessage.of(ORDER, bank(), 2880)).contains("2일 안에");
+    void 이틀로_설정하면_마흔여덟_시간이라고_말한다() {
+        assertThat(PaymentGuideMessage.of(ORDER, bank(), 2880)).contains("48시간 안에");
+    }
+
+    /**
+     * 문자가 EUC-KR 로 옮겨질 수 있는 글자로만 되어 있는지.
+     *
+     * <p>국내 LMS 는 EUC-KR 로 실려 간다. 여기에 없는 글자는 받는 폰에서 물음표가
+     * 되거나 아예 사라진다. 계좌 안내 한가운데가 깨지면 낼 방법을 잃는다.
+     *
+     * <p>글자 하나를 고치는 대신 문장 전체를 재는 이유는, 다음에 누가 이모지나
+     * 다른 기호를 넣어도 여기서 걸리게 하기 위해서다. ■ 하나만 바꿔 두면 같은
+     * 일이 또 생긴다.
+     *
+     * <p>보내는 값에도 사람 이름이 들어간다. 이름은 우리가 정하지 않으므로 여기서
+     * 재지 않는다 — 재려면 신청을 막아야 하는데, 그것은 이 문제의 답이 아니다.
+     */
+    @Test
+    void 문자에_EUC_KR_로_못_보내는_글자가_없다() {
+        String message = PaymentGuideMessage.of(ORDER, bank(), 1440);
+        CharsetEncoder encoder = Charset.forName("EUC-KR").newEncoder();
+
+        for (int i = 0; i < message.length(); ) {
+            int codePoint = message.codePointAt(i);
+            String glyph = new String(Character.toChars(codePoint));
+            i += Character.charCount(codePoint);
+
+            // 이름과 계좌는 시험값이라 여기서 걸러도 뜻이 없다. 확정 문구에
+            // 박혀 있는 글자만 본다.
+            if (Character.isLetterOrDigit(codePoint) || Character.isWhitespace(codePoint)) {
+                continue;
+            }
+            assertThat(encoder.canEncode(glyph))
+                    .as("EUC-KR 에 없는 글자 U+%04X (%s) 는 받는 폰에서 깨진다",
+                            codePoint, glyph)
+                    .isTrue();
+        }
     }
 
     @Test
