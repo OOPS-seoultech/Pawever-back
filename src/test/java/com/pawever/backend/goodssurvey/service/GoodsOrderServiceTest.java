@@ -108,7 +108,7 @@ class GoodsOrderServiceTest {
                 GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.PICKUP);
 
         assertThat(pickup.shippingFeeKrw()).isZero();
-        assertThat(pickup.paymentAmountKrw()).isEqualTo(11_900);
+        assertThat(pickup.paymentAmountKrw()).isEqualTo(13_900);
     }
 
     @Test
@@ -119,10 +119,10 @@ class GoodsOrderServiceTest {
         GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.SHIPPING);
 
         assertThat(afterSurvey).isEqualTo(direct);
-        assertThat(direct.discountAmountKrw()).isEqualTo(18_000);
+        assertThat(direct.discountAmountKrw()).isEqualTo(16_000);
         assertThat(direct.promotionName()).isEqualTo("과기대 플리마켓 할인");
-        // 제작비 11,900 + 배송비 3,000
-        assertThat(direct.paymentAmountKrw()).isEqualTo(14_900);
+        // 제작비 13,900 + 배송비 3,000
+        assertThat(direct.paymentAmountKrw()).isEqualTo(16_900);
     }
 
     @Test
