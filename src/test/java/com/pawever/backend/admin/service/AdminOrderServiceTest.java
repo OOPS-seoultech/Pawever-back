@@ -1350,7 +1350,7 @@ class AdminOrderServiceTest {
                 NOW,
                 false,
                 "PE-2026-000201",
-                GoodsOrderPricing.discounted(29_900, 18_000, "과기대 플리마켓 할인", 0),
+                GoodsOrderPricing.discounted(29_900, 16_000, "과기대 플리마켓 할인", 0),
                 false,
                 "marketing-v1",
                 2880,
