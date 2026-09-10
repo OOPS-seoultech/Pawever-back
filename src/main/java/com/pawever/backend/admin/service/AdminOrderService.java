@@ -183,6 +183,7 @@ public class AdminOrderService {
                         fulfillment.getDiscountAmountKrw(),
                         fulfillment.getPromotionName(),
                         fulfillment.getShippingFeeKrw(),
+                        fulfillment.getKeyringFeeKrw(),
                         fulfillment.getPaymentAmountKrw()
                 ),
                 canSeeShipping
@@ -929,6 +930,7 @@ public class AdminOrderService {
                 fulfillment.getPaymentAmountKrw(),
                 fulfillment.getPaidAt(),
                 fulfillment.getDeliveryMethod().name(),
+                fulfillment.isKeyringAdded(),
                 fulfillment.getTrackingNumber()
         );
     }

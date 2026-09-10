@@ -115,6 +115,8 @@ survey:
     # 올렸고, 같은 밤 회의 끝에 14,900 으로 한 번 더 올렸다. 화면이 적는
     # 할인율은 이 값에서 끌어내므로 여기만 고치면 된다.
     flea-discount-krw: ${GOODS_FLEA_DISCOUNT_KRW:15000}
+    # 키링 부자재값. 신청 화면에서 고르면 이 값이 붙는다.
+    keyring-fee-krw: ${GOODS_KEYRING_FEE_KRW:2000}
     flea-promotion-name: 과기대 플리마켓 할인
     # 화면에는 따로 보여 주고 결제는 한 번에 받는다.
     shipping-fee-krw: ${GOODS_SHIPPING_FEE_KRW:3000}

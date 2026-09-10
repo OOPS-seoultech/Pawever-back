@@ -59,12 +59,15 @@ public class GoodsOrderService {
     public GoodsOrderPricing priceFor(
             GoodsSalesChannel channel,
             boolean surveyParticipant,
-            GoodsDeliveryMethod deliveryMethod
+            GoodsDeliveryMethod deliveryMethod,
+            boolean keyringAdded
     ) {
         // 부치지 않으면 배송비도 없다.
         int shippingFeeKrw = deliveryMethod == GoodsDeliveryMethod.PICKUP
                 ? 0
                 : properties.getShippingFeeKrw();
+        // 부자재는 깎는 것이 아니라 더하는 것이라 할인 계산 뒤에 붙인다.
+        int keyringFeeKrw = keyringAdded ? properties.getKeyringFeeKrw() : 0;
         if (channel == GoodsSalesChannel.FLEA) {
             // 현장 한정가다. 설문을 거치지 않는 자리라 누가 오든 같은 값이고,
             // 설문 참여 할인과 겹쳐 쓰지 않는다.
@@ -73,17 +76,19 @@ public class GoodsOrderService {
                     properties.getFleaDiscountKrw(),
                     properties.getFleaPromotionName(),
                     shippingFeeKrw
-            );
+            ).withKeyring(keyringFeeKrw);
         }
         if (!surveyParticipant) {
-            return GoodsOrderPricing.listPrice(properties.getListPriceKrw(), shippingFeeKrw);
+            return GoodsOrderPricing
+                    .listPrice(properties.getListPriceKrw(), shippingFeeKrw)
+                    .withKeyring(keyringFeeKrw);
         }
         return GoodsOrderPricing.discounted(
                 properties.getListPriceKrw(),
                 properties.getSurveyDiscountKrw(),
                 properties.getSurveyPromotionName(),
                 shippingFeeKrw
-        );
+        ).withKeyring(keyringFeeKrw);
     }
 
     /** 주문이 만들어졌다는 첫 기록. 이전 상태가 없다. */

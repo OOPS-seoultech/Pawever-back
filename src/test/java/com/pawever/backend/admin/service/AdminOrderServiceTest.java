@@ -1352,6 +1352,7 @@ class AdminOrderServiceTest {
                 "PE-2026-000201",
                 GoodsOrderPricing.discounted(29_900, 15_000, "과기대 플리마켓 할인", 0),
                 false,
+                false,
                 "marketing-v1",
                 2880,
                 1825
@@ -1384,6 +1385,7 @@ class AdminOrderServiceTest {
                 true,
                 orderNumber,
                 GoodsOrderPricing.discounted(29_900, 5_000, "설문 참여 할인", 3_000),
+                false,
                 false,
                 "marketing-v1",
                 30,

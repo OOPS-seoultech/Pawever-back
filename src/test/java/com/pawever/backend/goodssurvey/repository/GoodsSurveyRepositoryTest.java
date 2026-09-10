@@ -225,8 +225,8 @@ class GoodsSurveyRepositoryTest {
                 // 주문번호 칸은 20자이고 값은 유일해야 한다. 접미사 길이가
                 // 제각각이라 뒤를 0으로 채워 길이를 고정한다.
                 String.format("PE-%-13s", suffix).replace(' ', '0'),
-                new GoodsOrderPricing(29900, 0, null, 3000, 32900),
-                false, null, 30, 1825
+                new GoodsOrderPricing(29900, 0, null, 3000, 0, 32900),
+                false, false, null, 30, 1825
         );
         fulfillment.changeStatus(status);
         fulfillmentRepository.save(fulfillment);
