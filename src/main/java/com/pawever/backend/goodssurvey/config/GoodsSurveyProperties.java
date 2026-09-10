@@ -58,7 +58,7 @@ public class GoodsSurveyProperties {
      * 설문 참여 할인과 겹쳐 쓰지 않는다. 플리마켓은 설문을 거치지 않는 자리라
      * 누가 오든 같은 값이다.
      */
-    private int fleaDiscountKrw = 16_000;
+    private int fleaDiscountKrw = 15_000;
     private String fleaPromotionName = "과기대 플리마켓 할인";
 
     /**
