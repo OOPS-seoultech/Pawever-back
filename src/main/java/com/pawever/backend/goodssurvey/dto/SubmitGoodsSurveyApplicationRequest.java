@@ -33,6 +33,13 @@ public record SubmitGoodsSurveyApplicationRequest(
         @Size(max = 5) List<@NotBlank @Size(max = 36) String> publicPhotoIds,
         @NotBlank @Size(max = 80) String conversionEventId,
         @NotNull JsonNode tracking,
+        /**
+         * 키링 부자재를 붙일지.
+         *
+         * 고르면 값이 올라간다. 화면이 보낸 금액을 쓰지 않고 서버가 다시
+         * 계산하므로, 여기서 참이라고 보내도 낼 돈은 서버가 정한다.
+         */
+        boolean keyringAdded,
         @AssertTrue boolean privacyAgreed,
         @AssertTrue boolean shippingConfirmed,
         /**

@@ -68,6 +68,14 @@ public class GoodsSurveyProperties {
      * 주문의 금액은 그대로여야 한다.
      */
     private int shippingFeeKrw = 3_000;
+
+    /**
+     * 키링 부자재값.
+     *
+     * 현장에서 "2,000원 추가하면 키링으로 만들어 준다"를 받기로 했다. 배송비와
+     * 같이, 주문을 만들 때 한 번 읽어 주문에 적는다.
+     */
+    private int keyringFeeKrw = 2_000;
     // 그 할인의 이름. 관리자 화면과 주문 기록에 그대로 남는다.
     private String surveyPromotionName = "설문 참여 할인";
     // 주문을 만든 뒤 결제를 기다리는 시간.

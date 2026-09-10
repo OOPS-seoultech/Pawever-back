@@ -249,6 +249,72 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(17_900);
     }
 
+    /**
+     * 키링을 고르면 값이 올라가고, 어느 주문이 키링인지 남는다.
+     *
+     * <p>제작팀이 고리를 달아야 하므로 값만 올리고 끝내면 안 된다. 값에서
+     * 되읽지 않고 따로 적는 이유는, 언젠가 그냥 달아 주는 날 값이 0 이어도
+     * 고리는 달아야 하기 때문이다.
+     */
+    @Test
+    void 키링을_고르면_부자재값이_붙는다() {
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-keyring");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-keyring", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-keyring",
+                withKeyring(directApplication(tracking, "conversion-keyring", "photo-keyring"))
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().isKeyringAdded()).isTrue();
+        assertThat(saved.getValue().getKeyringFeeKrw()).isEqualTo(2_000);
+        // 제작비 14,900 + 배송비 3,000 + 부자재 2,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(19_900);
+        // 깎아 준 값은 그대로다. 부자재를 할인에서 빼면 할인율이 거짓이 된다.
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(15_000);
+    }
+
+    @Test
+    void 키링을_안_고르면_값도_표시도_그대로다() {
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-plain");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea")
+        );
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-plain", draft.responseId()));
+
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-plain",
+                directApplication(tracking, "conversion-plain", "photo-plain")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().isKeyringAdded()).isFalse();
+        assertThat(saved.getValue().getKeyringFeeKrw()).isZero();
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(17_900);
+    }
+
     @Test
     void 플리마켓은_입금_기한이_현장_기준으로_짧다() {
         // 48시간은 택배로 받는 상시 판매의 기한이다. 현장은 QR 을 찍고 그
@@ -452,6 +518,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-pickup",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -499,6 +566,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-pickup-online",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -537,6 +605,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-no-address",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -827,6 +896,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-unselected",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -891,6 +961,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-switch-off",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1065,6 +1136,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-too-few",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1116,6 +1188,7 @@ class GoodsSurveyServiceTest {
                         List.of("photo-public"),
                         "conversion-photo-consent",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1223,6 +1296,7 @@ class GoodsSurveyServiceTest {
                 List.of(),
                 "conversion-notify",
                 tracking,
+                false,
                 true,
                 true,
                 false
@@ -1273,6 +1347,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-late",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1330,6 +1405,7 @@ class GoodsSurveyServiceTest {
                         List.of(),
                         "conversion-slow",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1383,6 +1459,7 @@ class GoodsSurveyServiceTest {
                         null,
                         "conversion-legacy-photo",
                         tracking,
+                        false,
                         true,
                         true,
                         false
@@ -1478,6 +1555,31 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getPromotionName()).isEqualTo("설문 참여 할인");
     }
 
+    /** 같은 신청에 키링만 켠 것. 나머지 값이 달라지면 무엇 때문인지 알 수 없다. */
+    private SubmitGoodsSurveyApplicationRequest withKeyring(
+            SubmitGoodsSurveyApplicationRequest request
+    ) {
+        return new SubmitGoodsSurveyApplicationRequest(
+                request.goodsType(),
+                request.customGoods(),
+                request.petName(),
+                request.guardianName(),
+                request.phone(),
+                request.deliveryMethod(),
+                request.postalCode(),
+                request.address(),
+                request.addressDetail(),
+                request.photoIds(),
+                request.publicPhotoIds(),
+                request.conversionEventId(),
+                request.tracking(),
+                true,
+                request.privacyAgreed(),
+                request.shippingConfirmed(),
+                request.marketingAgreed()
+        );
+    }
+
     private SubmitGoodsSurveyApplicationRequest directApplication(
             JsonNode tracking,
             String conversionEventId,
@@ -1497,6 +1599,7 @@ class GoodsSurveyServiceTest {
                 List.of(),
                 conversionEventId,
                 tracking,
+                false,
                 true,
                 true,
                 false

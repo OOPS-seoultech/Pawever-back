@@ -24,6 +24,8 @@ public record GoodsSurveyApplicationResponse(
         int discountAmountKrw,
         /** 배송비. 화면은 따로 보여 주고 청구는 위 금액에 합쳐져 있다. */
         int shippingFeeKrw,
+        /** 키링 부자재값. 안 붙였으면 0. 배송비와 같이 청구액에 합쳐져 있다. */
+        int keyringFeeKrw,
         BankAccount bank,
         Instant paymentExpiresAt
 ) {

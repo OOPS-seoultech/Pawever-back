@@ -205,7 +205,7 @@ class GoodsPaymentServiceTest {
                 "01234", "서울특별시 노원구 공릉로 232", "101호",
                 "2026-07-23", NOW, true, ORDER,
                 GoodsOrderPricing.discounted(29_900, 6_000, "설문 참여 할인", 3_000),
-                false, "marketing-v1", expiresInMinutes, 1825
+                false, false, "marketing-v1", expiresInMinutes, 1825
         );
         fulfillment.changeStatus(status);
         return fulfillment;

@@ -90,7 +90,7 @@ class GoodsOrderServiceTest {
 
     @Test
     void 설문에_답하고_왔으면_할인가를_적용한다() {
-        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, true, GoodsDeliveryMethod.SHIPPING);
+        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, true, GoodsDeliveryMethod.SHIPPING, false);
 
         assertThat(pricing.listPriceKrw()).isEqualTo(29_900);
         assertThat(pricing.discountAmountKrw()).isEqualTo(6_000);
@@ -105,7 +105,7 @@ class GoodsOrderServiceTest {
         // 부치지 않으니 받을 이유가 없다. 디자인도 "방문수령 외 택배 시"라고
         // 적어 두었다(5472:1482).
         GoodsOrderPricing pickup = orderService.priceFor(
-                GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.PICKUP);
+                GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.PICKUP, false);
 
         assertThat(pickup.shippingFeeKrw()).isZero();
         assertThat(pickup.paymentAmountKrw()).isEqualTo(14_900);
@@ -115,8 +115,8 @@ class GoodsOrderServiceTest {
     void 플리마켓은_설문을_거쳤든_아니든_같은_값이다() {
         // 현장에서 QR 을 찍고 바로 주문하는 자리라 설문을 거칠 길이 없다.
         // 설문 참여 할인과 겹쳐 쓰면 같은 현장가가 두 갈래로 갈린다.
-        GoodsOrderPricing afterSurvey = orderService.priceFor(GoodsSalesChannel.FLEA, true, GoodsDeliveryMethod.SHIPPING);
-        GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.SHIPPING);
+        GoodsOrderPricing afterSurvey = orderService.priceFor(GoodsSalesChannel.FLEA, true, GoodsDeliveryMethod.SHIPPING, false);
+        GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.SHIPPING, false);
 
         assertThat(afterSurvey).isEqualTo(direct);
         assertThat(direct.discountAmountKrw()).isEqualTo(15_000);
@@ -129,7 +129,7 @@ class GoodsOrderServiceTest {
     void 설문을_건너뛰었으면_정상가를_적용한다() {
         // 답하는 수고와 값의 차이가 이 서비스가 설문을 받는 이유다.
         // 여기서 깎아 주면 설문을 끝까지 답할 까닭이 없어진다.
-        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, false, GoodsDeliveryMethod.SHIPPING);
+        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, false, GoodsDeliveryMethod.SHIPPING, false);
 
         // 제작비 29,900 + 배송비 3,000
         assertThat(pricing.paymentAmountKrw()).isEqualTo(32_900);

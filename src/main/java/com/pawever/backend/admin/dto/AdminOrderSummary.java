@@ -33,6 +33,13 @@ public record AdminOrderSummary(
          * 포장하는 동안 한 건은 반드시 섞인다.
          */
         String deliveryMethod,
+        /**
+         * 키링 부자재를 붙이는 주문인지.
+         *
+         * 목록에 없으면 제작팀이 한 건씩 상세를 열어 확인해야 한다. 스무 건을
+         * 만드는 동안 한 건은 반드시 고리 없이 나간다.
+         */
+        boolean keyringAdded,
         String trackingNumber
 ) {
 }

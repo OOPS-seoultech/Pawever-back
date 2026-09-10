@@ -143,6 +143,24 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     private int shippingFeeKrw;
 
     /**
+     * 키링 부자재를 붙이는 주문인지.
+     *
+     * 제작팀이 고리를 달아야 하므로 값과 따로 둔다. 값으로만 판단하면, 언젠가
+     * 부자재를 그냥 달아 주는 날 그 주문이 키링이 아닌 것으로 읽힌다.
+     */
+    @Column(nullable = false)
+    private boolean keyringAdded;
+
+    /**
+     * 키링 부자재값.
+     *
+     * 배송비와 같다 — 청구액에 이미 더해져 있지만, 얼마가 부자재값이었는지
+     * 나중에 알아야 해서 따로 적는다.
+     */
+    @Column(nullable = false)
+    private int keyringFeeKrw;
+
+    /**
      * 실제 청구할 금액.
      *
      * 주문을 만든 시점의 값이다. 이후 가격이나 프로모션이 바뀌어도 이 값은 그대로
@@ -221,6 +239,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
             boolean surveyParticipant,
             String orderNumber,
             GoodsOrderPricing pricing,
+            boolean keyringAdded,
             boolean marketingConsent,
             String marketingConsentVersion,
             int paymentWindowMinutes,
@@ -250,6 +269,10 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         fulfillment.discountAmountKrw = pricing.discountAmountKrw();
         fulfillment.promotionName = pricing.promotionName();
         fulfillment.shippingFeeKrw = pricing.shippingFeeKrw();
+        // 붙였는지는 값에서 되읽지 않는다. 0원에 달아 주는 날이 오면 값만
+        // 보고는 알 수 없다.
+        fulfillment.keyringAdded = keyringAdded;
+        fulfillment.keyringFeeKrw = pricing.keyringFeeKrw();
         fulfillment.paymentAmountKrw = pricing.paymentAmountKrw();
         fulfillment.paymentExpiresAt =
                 privacyConsentedAt.plus(paymentWindowMinutes, ChronoUnit.MINUTES);

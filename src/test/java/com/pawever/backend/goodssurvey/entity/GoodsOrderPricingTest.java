@@ -24,8 +24,34 @@ class GoodsOrderPricingTest {
     @Test
     void 청구액은_정상가에서_할인을_빼고_배송비를_더한_값이어야_한다() {
         assertThatThrownBy(() ->
-                new GoodsOrderPricing(LIST, DISCOUNT, "설문 참여 할인", SHIPPING, 20_000))
+                new GoodsOrderPricing(LIST, DISCOUNT, "설문 참여 할인", SHIPPING, 0, 20_000))
                 .hasMessageContaining("청구액");
+    }
+
+    /**
+     * 부자재는 깎는 것이 아니라 더하는 것이다.
+     *
+     * <p>키링 고리를 달아 주면 그만큼 더 받는다. 할인액에 음수로 넣거나
+     * 배송비에 섞으면 나중에 얼마가 무엇이었는지 가릴 근거가 없어진다.
+     */
+    @Test
+    void 키링을_더하면_그만큼_더_청구한다() {
+        GoodsOrderPricing pricing = GoodsOrderPricing
+                .discounted(LIST, 15_000, "과기대 플리마켓 할인", 0)
+                .withKeyring(2_000);
+
+        assertThat(pricing.keyringFeeKrw()).isEqualTo(2_000);
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(16_900);
+        // 깎아 준 값은 그대로다. 부자재를 할인에서 빼면 할인율이 거짓이 된다.
+        assertThat(pricing.discountAmountKrw()).isEqualTo(15_000);
+    }
+
+    @Test
+    void 키링을_안_붙이면_아무것도_달라지지_않는다() {
+        GoodsOrderPricing plain = GoodsOrderPricing.discounted(LIST, 15_000, "과기대 플리마켓 할인", 0);
+
+        assertThat(plain.withKeyring(0)).isEqualTo(plain);
+        assertThat(plain.keyringFeeKrw()).isZero();
     }
 
     @Test

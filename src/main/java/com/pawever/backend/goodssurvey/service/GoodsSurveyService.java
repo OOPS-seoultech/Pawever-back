@@ -577,8 +577,10 @@ public class GoodsSurveyService {
                 orderService.priceFor(
                         campaign.getChannel(),
                         response.isSurveyParticipant(),
-                        deliveryMethod
+                        deliveryMethod,
+                        request.keyringAdded()
                 ),
+                request.keyringAdded(),
                 request.marketingAgreed(),
                 properties.getMarketingConsentVersion(),
                 paymentWindowMinutesFor(campaign.getChannel()),
@@ -656,6 +658,7 @@ public class GoodsSurveyService {
                 fulfillment.getListPriceKrw(),
                 fulfillment.getDiscountAmountKrw(),
                 fulfillment.getShippingFeeKrw(),
+                fulfillment.getKeyringFeeKrw(),
                 bankAccount(),
                 fulfillment.getPaymentExpiresAt()
         );
