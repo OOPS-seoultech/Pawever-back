@@ -243,10 +243,10 @@ class GoodsSurveyServiceTest {
         );
 
         verify(fulfillmentRepository).save(saved.capture());
-        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(15_000);
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(11_000);
         assertThat(saved.getValue().getPromotionName()).isEqualTo("과기대 플리마켓 할인");
-        // 제작비 14,900 + 배송비 3,000
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(17_900);
+        // 제작비 18,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(21_900);
     }
 
     /**
@@ -281,10 +281,10 @@ class GoodsSurveyServiceTest {
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isKeyringAdded()).isTrue();
         assertThat(saved.getValue().getKeyringFeeKrw()).isEqualTo(2_000);
-        // 제작비 14,900 + 배송비 3,000 + 부자재 2,000
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(19_900);
+        // 제작비 18,900 + 배송비 3,000 + 부자재 2,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(23_900);
         // 깎아 준 값은 그대로다. 부자재를 할인에서 빼면 할인율이 거짓이 된다.
-        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(15_000);
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(11_000);
     }
 
     @Test
@@ -312,7 +312,7 @@ class GoodsSurveyServiceTest {
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isKeyringAdded()).isFalse();
         assertThat(saved.getValue().getKeyringFeeKrw()).isZero();
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(17_900);
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(21_900);
     }
 
     @Test
@@ -529,7 +529,7 @@ class GoodsSurveyServiceTest {
         assertThat(saved.getValue().getDeliveryMethod())
                 .isEqualTo(GoodsDeliveryMethod.PICKUP);
         assertThat(saved.getValue().getShippingFeeKrw()).isZero();
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(14_900);
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(18_900);
         assertThat(saved.getValue().getPostalCode()).isNull();
         assertThat(saved.getValue().getAddress()).isNull();
         assertThat(saved.getValue().getAddressDetail()).isNull();
