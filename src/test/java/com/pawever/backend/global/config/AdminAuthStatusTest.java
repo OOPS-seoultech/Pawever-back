@@ -36,6 +36,7 @@ class AdminAuthStatusTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private AdminTokenProvider adminTokens;
+    @Autowired private com.pawever.backend.admin.repository.AdminAccountRepository accounts;
 
     @Test
     void 토큰이_없으면_401_이다() throws Exception {
@@ -59,7 +60,12 @@ class AdminAuthStatusTest {
      */
     @Test
     void 역할이_모자라면_403_이다() throws Exception {
-        String token = adminTokens.createToken(1L, AdminRole.PRODUCTION);
+        var account = com.pawever.backend.admin.entity.AdminAccount.invite(
+                java.util.UUID.randomUUID()+"@example.test", "제작 담당자", AdminRole.PRODUCTION,
+                "test-invite", java.time.Instant.now().plusSeconds(3600));
+        account.activate("test-hash");
+        accounts.saveAndFlush(account);
+        String token = adminTokens.createToken(account.getId(), AdminRole.PRODUCTION);
 
         mockMvc.perform(get("/api/admin/accounts")
                         .header("Authorization", "Bearer " + token))

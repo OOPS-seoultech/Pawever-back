@@ -7,6 +7,9 @@ package com.pawever.backend.admin.entity;
  * 주소를 직접 치거나 요청을 그대로 보내는 것으로 넘어간다.
  */
 public enum AdminRole {
+    OWNER,
+    MARKETING,
+    SUPPORT,
 
     /** 주문·결제·배송·취소 전반. 주소와 연락처를 본다. */
     ADMIN,

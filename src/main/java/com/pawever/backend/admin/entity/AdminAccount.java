@@ -30,6 +30,20 @@ import java.time.Instant;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AdminAccount extends BaseTimeEntity {
+    @jakarta.persistence.Version
+    private long version;
+
+    private java.time.Instant permissionsChangedAt;
+    public void touchPermissions(java.time.Instant at) { permissionsChangedAt = at; }
+
+    @jakarta.persistence.ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
+    @jakarta.persistence.CollectionTable(name="staff_work_roles", joinColumns=@jakarta.persistence.JoinColumn(name="account_id"))
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    @jakarta.persistence.Column(name="work_role", nullable=false, length=30)
+    private java.util.Set<WorkRole> workRoles = new java.util.HashSet<>();
+
+    public void setWorkRoles(java.util.Set<WorkRole> roles) { workRoles = new java.util.HashSet<>(roles); }
+    public void changeRole(AdminRole role) { this.role = role; }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

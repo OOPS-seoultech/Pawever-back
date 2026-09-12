@@ -5,6 +5,7 @@ import com.pawever.backend.admin.entity.AdminRole;
 import com.pawever.backend.admin.config.AdminProperties;
 import com.pawever.backend.admin.repository.AdminAccountRepository;
 import com.pawever.backend.admin.security.AdminTokenProvider;
+import com.pawever.backend.admin.security.AdminPrincipal;
 import com.pawever.backend.global.exception.CustomException;
 import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.global.security.HmacHasher;
@@ -86,7 +87,7 @@ public class AdminAccountService {
             String name
     ) {
         requireBootstrapToken(bootstrapToken);
-        if (accountRepository.existsByRole(AdminRole.ADMIN)) {
+        if (accountRepository.existsByRole(AdminRole.ADMIN) || accountRepository.existsByRole(AdminRole.OWNER)) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
         return createInvite(email, name, AdminRole.ADMIN);
@@ -95,6 +96,10 @@ public class AdminAccountService {
     /** 계정을 만들고 초대 값을 돌려준다. 이 값은 지금 한 번만 볼 수 있다. */
     @Transactional
     public String invite(String email, String name, AdminRole role) {
+        accountRepository.lockAccounts();
+        if (role == AdminRole.OWNER && (AdminPrincipal.current() == null || AdminPrincipal.current().role() != AdminRole.OWNER)) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
         String normalized = normalizeEmail(email);
         if (accountRepository.findByEmail(normalized).isPresent()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
@@ -105,8 +110,10 @@ public class AdminAccountService {
     /** 초대를 다시 보낸다. 앞서 보낸 링크는 그 순간 쓸 수 없게 된다. */
     @Transactional
     public String reinvite(Long accountId) {
+        accountRepository.lockAccounts();
         AdminAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
+        requireEditable(account);
         String inviteToken = randomToken();
         account.reinvite(hmacHasher.hash(inviteToken), inviteExpiry());
         return inviteToken;
@@ -165,9 +172,23 @@ public class AdminAccountService {
 
     @Transactional
     public void disable(Long accountId) {
+        accountRepository.lockAccounts();
         AdminAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
+        requireEditable(account);
         account.disable();
+    }
+
+    private void requireEditable(AdminAccount target) {
+        AdminPrincipal actor = AdminPrincipal.current();
+        if (actor != null && actor.accountId().equals(target.getId())) throw new CustomException(ErrorCode.FORBIDDEN);
+        if (target.getRole() == AdminRole.OWNER) {
+            if (actor == null || actor.role() != AdminRole.OWNER) throw new CustomException(ErrorCode.FORBIDDEN);
+            if (target.canSignIn() && accountRepository.findAll().stream()
+                    .filter(a -> a.getRole() == AdminRole.OWNER && a.canSignIn()).count() <= 1) {
+                throw new CustomException(ErrorCode.FORBIDDEN);
+            }
+        }
     }
 
     private String createInvite(String email, String name, AdminRole role) {
