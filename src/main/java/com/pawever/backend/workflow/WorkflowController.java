@@ -12,6 +12,33 @@ import org.springframework.web.bind.annotation.*;
 public class WorkflowController {
   private final WorkflowService service;
 
+  @GetMapping("/api/admin/filaments")
+  public Object filaments() {
+    return ApiResponse.ok(service.filaments());
+  }
+
+  @PostMapping("/api/admin/filaments")
+  public Object createFilament(
+      @RequestHeader("Idempotency-Key") String key, @RequestBody Map<String, Object> b) {
+    return ApiResponse.ok(service.saveFilament(null, key, b));
+  }
+
+  @PostMapping("/api/admin/filaments/{id}")
+  public Object updateFilament(
+      @PathVariable Long id,
+      @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> b) {
+    return ApiResponse.ok(service.saveFilament(id, key, b));
+  }
+
+  @PostMapping("/api/production/tasks/{taskId}/filament-mappings")
+  public Object filamentMapping(
+      @PathVariable Long taskId,
+      @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> b) {
+    return ApiResponse.ok(service.saveFilamentMapping(taskId, key, b));
+  }
+
   @GetMapping("/api/admin/me")
   public Object me() {
     return ApiResponse.ok(service.me());

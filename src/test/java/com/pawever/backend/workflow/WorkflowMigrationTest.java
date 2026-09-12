@@ -122,7 +122,7 @@ class WorkflowMigrationTest {
               + " production_artifacts(id,order_number,task_id,uploader_id,kind,file_name,content_type,object_key,expected_size,confirmed,expires_at)"
               + " VALUES('existing-model','PE-MIG-2',7001,11,'MODEL_SOURCE','model.blend','application/octet-stream','existing/model.blend',1234,1,NOW())");
     }
-    var latest = Flyway.configure().dataSource(url, user, password).load();
+    var latest = Flyway.configure().dataSource(url, user, password).target("18").load();
     assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
     assertThat(latest.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
@@ -150,6 +150,29 @@ class WorkflowMigrationTest {
         assertThat(rows.getLong(3)).isEqualTo(1234);
         assertThat(rows.getBoolean(4)).isTrue();
       }
+      s.execute(
+          "INSERT INTO"
+              + " model_reviews(order_number,review_task_id,modeling_task_id,modeling_attempt,reviewer_id,decision,note,approved_checks,reviewed_at)"
+              + " VALUES"
+              + " ('PE-MIG-2',7002,7001,1,12,'APPROVED','','BASE_CUT,FEATURES,LIKENESS,PRINTABILITY',NOW())");
+    }
+    var filamentVersion = Flyway.configure().dataSource(url, user, password).load();
+    assertThat(filamentVersion.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(filamentVersion.migrate().migrationsExecuted).isZero();
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement();
+        var rows =
+            s.executeQuery(
+                "SELECT (SELECT COUNT(*) FROM filaments),(SELECT COUNT(*) FROM"
+                    + " order_filament_mappings),(SELECT COUNT(*) FROM model_reviews WHERE"
+                    + " review_task_id=7002 AND decision='APPROVED'),(SELECT COUNT(*) FROM"
+                    + " production_tasks),(SELECT COUNT(*) FROM goods_survey_fulfillments)")) {
+      rows.next();
+      assertThat(rows.getLong(1)).isZero();
+      assertThat(rows.getLong(2)).isZero();
+      assertThat(rows.getLong(3)).isEqualTo(1);
+      assertThat(rows.getLong(4)).isEqualTo(2);
+      assertThat(rows.getLong(5)).isEqualTo(10);
     }
   }
 }
