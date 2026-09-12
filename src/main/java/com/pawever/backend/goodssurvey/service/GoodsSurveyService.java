@@ -727,9 +727,8 @@ public class GoodsSurveyService {
     /**
      * 이 통로가 입금을 기다리는 시간.
      *
-     * 현장은 그 자리에서 내는 자리라 짧게 잡는다. 상시 판매는 은행 앱을 열
-     * 시간이 필요해 48시간이다. 같은 값을 문자에도 실어 화면·서버·문자가
-     * 한 기한을 말하게 한다.
+     * 기본값은 두 통로 모두 7일이다. 같은 값을 문자에도 실어
+     * 화면·서버·문자가 한 기한을 말하게 한다.
      */
     private int paymentWindowMinutesFor(GoodsSalesChannel channel) {
         return channel == GoodsSalesChannel.FLEA

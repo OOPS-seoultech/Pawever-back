@@ -52,6 +52,9 @@ class ApplicationYamlBindsToPropertiesTest {
         assertThat(properties.getSurveyRetentionDays()).isEqualTo(730);
         assertThat(properties.getContractRetentionDays()).isEqualTo(1825);
         assertThat(properties.getListPriceKrw()).isEqualTo(29_900);
+        // 수동 입금 확인이 늦어져도 신청 후 7일 전에는 사진을 파기하지 않는다.
+        assertThat(properties.getPaymentWindowMinutes()).isEqualTo(10_080);
+        assertThat(properties.getFleaPaymentWindowMinutes()).isEqualTo(10_080);
     }
 
     @Test
