@@ -35,6 +35,260 @@ class WorkflowIntegrationTest {
   @Autowired AdminTokenProvider tokens;
   @MockitoBean GoodsSurveyPhotoStorage storage;
   String owner, modeler, stranger, number;
+
+  @Test
+  void filamentMappingRetainsAllPartsAndHonorsPermissionRevocation() throws Exception {
+    var row = readyForMapping();
+    var f = createFilament();
+    String path = "/api/production/tasks/" + row.get("taskId") + "/filament-mappings";
+    var entries = new ArrayList<Map<String, Object>>();
+    for (int i = 0; i < 64; i++)
+      entries.add(Map.of("partName", "부위" + i, "filamentId", f.get("id").asLong()));
+    String body =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .writeValueAsString(
+                Map.of(
+                    "version",
+                    row.get("version").asLong(),
+                    "complete",
+                    false,
+                    "mappings",
+                    entries));
+    var saved = send(stranger, path, body, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(saved.get("filamentMappings").size()).isEqualTo(64);
+    overrides.saveAndFlush(
+        StaffPermissionOverride.of(
+            reviewerId, PermissionKey.VIEW_FILAMENT, false, null, "조회 차단 테스트"));
+    mvc.perform(
+            get("/api/admin/orders/" + number + "/workflow")
+                .header("Authorization", "Bearer " + stranger))
+        .andExpect(jsonPath("$.data.filamentMappings").isEmpty())
+        .andExpect(jsonPath("$.data.allowedActions").isEmpty());
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + stranger)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(mappingBody(saved, f, true)))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void filamentCatalogRequiresPermissionAndPreservesSpoolIdentity() throws Exception {
+    String body = filamentBody("SP-" + UUID.randomUUID(), "크림", 0, true);
+    String key = UUID.randomUUID().toString();
+    var f = send(owner, "/api/admin/filaments", body, key);
+    org.assertj.core.api.Assertions.assertThat(send(owner, "/api/admin/filaments", body, key))
+        .isEqualTo(f);
+    for (String token : List.of(modeler, stranger))
+      mvc.perform(
+              post("/api/admin/filaments")
+                  .header("Authorization", "Bearer " + token)
+                  .header("Idempotency-Key", UUID.randomUUID().toString())
+                  .contentType("application/json")
+                  .content(body))
+          .andExpect(status().isForbidden());
+    mvc.perform(get("/api/admin/filaments").header("Authorization", "Bearer " + stranger))
+        .andExpect(status().isOk());
+    mvc.perform(get("/api/admin/filaments").header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            post("/api/admin/filaments")
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(body))
+        .andExpect(status().isConflict());
+    String path = "/api/admin/filaments/" + f.get("id").asLong();
+    send(
+        owner,
+        path,
+        filamentBody(f.get("spoolId").asText(), "흰색", f.get("version").asLong(), false),
+        UUID.randomUUID().toString());
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(body))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  void filamentMappingSavesResumesAndCompletesExactlyOnceWithSnapshot() throws Exception {
+    var row = readyForMapping();
+    var f = createFilament();
+    String path = "/api/production/tasks/" + row.get("taskId") + "/filament-mappings";
+    row = send(stranger, path, mappingBody(row, f, false), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("COLOR_MAPPING");
+    mvc.perform(
+            get("/api/admin/orders/" + number + "/workflow")
+                .header("Authorization", "Bearer " + stranger))
+        .andExpect(jsonPath("$.data.filamentMappings[0].partName").value("몸통"))
+        .andExpect(jsonPath("$.data.filamentMappings[0].spoolId").value(f.get("spoolId").asText()));
+    String body = mappingBody(row, f, true), key = UUID.randomUUID().toString();
+    var done = send(stranger, path, body, key);
+    org.assertj.core.api.Assertions.assertThat(send(stranger, path, body, key)).isEqualTo(done);
+    org.assertj.core.api.Assertions.assertThat(done.get("productionStage").asText())
+        .isEqualTo("PLATE_PREPARATION");
+    org.assertj.core.api.Assertions.assertThat(done.get("assignee").get("id").asLong())
+        .isEqualTo(reviewerId);
+    org.assertj.core.api.Assertions.assertThat(
+            tasks.findByOrderNumberOrderByIdAsc(number).stream()
+                .filter(t -> t.getStage() == ProductionStage.PLATE_PREPARATION)
+                .count())
+        .isEqualTo(1);
+    send(
+        owner,
+        "/api/admin/filaments/" + f.get("id"),
+        filamentBody(f.get("spoolId").asText(), "색상명 수정", f.get("version").asLong(), false),
+        UUID.randomUUID().toString());
+    mvc.perform(
+            get("/api/admin/orders/" + number + "/workflow")
+                .header("Authorization", "Bearer " + stranger))
+        .andExpect(jsonPath("$.data.filamentMappings[0].colorName").value("크림"))
+        .andExpect(jsonPath("$.data.filamentMappings[0].completedAt").isNotEmpty());
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + stranger)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(mappingBody(done, f, false)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void filamentMappingRejectsColorOnlyDuplicatesInactiveSpoolsAndWrongActor() throws Exception {
+    var row = readyForMapping();
+    var f = createFilament();
+    String path = "/api/production/tasks/" + row.get("taskId") + "/filament-mappings";
+    for (String token :
+        List.of(owner, modeler, account(AdminRole.PRODUCTION, Set.of(WorkRole.DESIGN_QC))))
+      mvc.perform(
+              post(path)
+                  .header("Authorization", "Bearer " + token)
+                  .header("Idempotency-Key", UUID.randomUUID().toString())
+                  .contentType("application/json")
+                  .content(mappingBody(row, f, true)))
+          .andExpect(status().isForbidden());
+    for (String entries :
+        List.of(
+            "[]",
+            "[{\"partName\":\"몸통\",\"colorName\":\"크림\"}]",
+            "[{\"partName\":\"몸통\",\"filamentId\":"
+                + f.get("id")
+                + "},{\"partName\":\" 몸통 \",\"filamentId\":"
+                + f.get("id")
+                + "}]"))
+      mvc.perform(
+              post(path)
+                  .header("Authorization", "Bearer " + stranger)
+                  .header("Idempotency-Key", UUID.randomUUID().toString())
+                  .contentType("application/json")
+                  .content(
+                      "{\"version\":"
+                          + row.get("version")
+                          + ",\"complete\":true,\"mappings\":"
+                          + entries
+                          + "}"))
+          .andExpect(status().isBadRequest());
+    send(
+        owner,
+        "/api/admin/filaments/" + f.get("id"),
+        filamentBody(f.get("spoolId").asText(), "크림", f.get("version").asLong(), false),
+        UUID.randomUUID().toString());
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + stranger)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(mappingBody(row, f, true)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void concurrentFilamentCompletionCreatesOnlyOnePlateTask() throws Exception {
+    var row = readyForMapping();
+    var f = createFilament();
+    String path = "/api/production/tasks/" + row.get("taskId") + "/filament-mappings";
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var gate = new java.util.concurrent.CountDownLatch(1);
+      var results = new ArrayList<java.util.concurrent.Future<Integer>>();
+      for (int i = 0; i < 2; i++)
+        results.add(
+            pool.submit(
+                () -> {
+                  gate.await();
+                  return mvc.perform(
+                          post(path)
+                              .header("Authorization", "Bearer " + stranger)
+                              .header("Idempotency-Key", UUID.randomUUID().toString())
+                              .contentType("application/json")
+                              .content(mappingBody(row, f, true)))
+                      .andReturn()
+                      .getResponse()
+                      .getStatus();
+                }));
+      gate.countDown();
+      var statuses = new ArrayList<Integer>();
+      for (var result : results)
+        statuses.add(result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+      org.assertj.core.api.Assertions.assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+    } finally {
+      pool.shutdownNow();
+    }
+    org.assertj.core.api.Assertions.assertThat(
+            tasks.findByOrderNumberOrderByIdAsc(number).stream()
+                .filter(t -> t.getStage() == ProductionStage.PLATE_PREPARATION)
+                .count())
+        .isEqualTo(1);
+  }
+
+  com.fasterxml.jackson.databind.JsonNode readyForMapping() throws Exception {
+    var row = readyForReview();
+    return send(
+        stranger,
+        reviewPath(row),
+        reviewBody(row, "APPROVED", null, ""),
+        UUID.randomUUID().toString());
+  }
+
+  com.fasterxml.jackson.databind.JsonNode createFilament() throws Exception {
+    return send(
+        owner,
+        "/api/admin/filaments",
+        filamentBody("SP-" + UUID.randomUUID(), "크림", 0, true),
+        UUID.randomUUID().toString());
+  }
+
+  String filamentBody(String spool, String color, long version, boolean active) {
+    return "{\"spoolId\":\""
+        + spool
+        + "\",\"colorName\":\""
+        + color
+        + "\",\"material\":\"PLA\",\"finish\":\"무광\",\"manufacturer\":\"Test\",\"source\":\"테스트"
+        + " 구매처\",\"priceKrw\":20000,\"remainingGrams\":800,\"active\":"
+        + active
+        + ",\"version\":"
+        + version
+        + "}";
+  }
+
+  String mappingBody(
+      com.fasterxml.jackson.databind.JsonNode row,
+      com.fasterxml.jackson.databind.JsonNode f,
+      boolean complete) {
+    return "{\"version\":"
+        + row.get("version")
+        + ",\"complete\":"
+        + complete
+        + ",\"mappings\":[{\"partName\":\"몸통\",\"filamentId\":"
+        + f.get("id")
+        + "}]}";
+  }
+
   Long modelerId;
   Long reviewerId;
   Long ownerId;

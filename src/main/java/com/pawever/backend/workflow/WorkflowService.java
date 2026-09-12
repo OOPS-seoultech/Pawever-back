@@ -25,6 +25,8 @@ public class WorkflowService {
   private final GoodsSurveyFulfillmentRepository orders;
   private final ProductionTaskRepository tasks;
   private final ModelReviewRepository reviews;
+  private final FilamentRepository filaments;
+  private final OrderFilamentMappingRepository filamentMappings;
   private final ProductionArtifactRepository artifacts;
   private final WorkflowIssueRepository issues;
   private final WorkflowCommandRepository commands;
@@ -116,7 +118,9 @@ public class WorkflowService {
   }
 
   private WorkRole workRole(ProductionStage stage) {
-    return stage == ProductionStage.MODEL_REVIEW || stage == ProductionStage.COLOR_MAPPING
+    return stage == ProductionStage.MODEL_REVIEW
+            || stage == ProductionStage.COLOR_MAPPING
+            || stage == ProductionStage.PLATE_PREPARATION
         ? WorkRole.DESIGN_QC
         : WorkRole.MODELING;
   }
@@ -253,6 +257,222 @@ public class WorkflowService {
         access.effective(a));
   }
 
+  private Map<String, Object> filamentView(Filament f) {
+    return map(
+        "id",
+        f.getId(),
+        "spoolId",
+        f.getSpoolId(),
+        "version",
+        f.getVersion(),
+        "colorName",
+        f.getColorName(),
+        "material",
+        f.getMaterial(),
+        "finish",
+        f.getFinish(),
+        "manufacturer",
+        f.getManufacturer(),
+        "source",
+        f.getSource(),
+        "priceKrw",
+        f.getPriceKrw(),
+        "remainingGrams",
+        f.getRemainingGrams(),
+        "active",
+        f.isActive());
+  }
+
+  private Map<String, Object> mappingView(OrderFilamentMapping m) {
+    return map(
+        "id",
+        m.getId(),
+        "taskId",
+        m.getTaskId(),
+        "modelingAttempt",
+        m.getModelingAttempt(),
+        "partName",
+        m.getPartName(),
+        "filamentId",
+        m.getFilamentId(),
+        "spoolId",
+        m.getSpoolId(),
+        "colorName",
+        m.getColorName(),
+        "material",
+        m.getMaterial(),
+        "finish",
+        m.getFinish(),
+        "savedAt",
+        m.getSavedAt().toString(),
+        "savedBy",
+        m.getSavedBy(),
+        "completedAt",
+        m.getCompletedAt() == null ? null : m.getCompletedAt().toString());
+  }
+
+  public List<Map<String, Object>> filaments() {
+    access.require(VIEW_FILAMENT);
+    return filaments.findAllByOrderBySpoolIdAsc().stream().map(this::filamentView).toList();
+  }
+
+  private String requiredText(Map<String, Object> b, String name, int max) {
+    String value = text(b, name, max);
+    if (value.isBlank()) throw bad(name + " 값을 입력해 주세요.");
+    return value;
+  }
+
+  private boolean bool(Map<String, Object> b, String name) {
+    if (!(b.get(name) instanceof Boolean value)) throw bad(name + " 값을 확인해 주세요.");
+    return value;
+  }
+
+  private String snapshot(Object value) {
+    try {
+      return json.writeValueAsString(value);
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  public Map<String, Object> saveFilament(Long filamentId, String key, Map<String, Object> b) {
+    access.require(MANAGE_FILAMENT);
+    return command(
+        "filament:" + filamentId,
+        key,
+        b,
+        () -> {
+          access.require(MANAGE_FILAMENT);
+          String spool = requiredText(b, "spoolId", 64).toUpperCase(Locale.ROOT);
+          if (!spool.matches("[A-Z0-9][A-Z0-9._-]{0,63}"))
+            throw bad("스풀 ID는 영문·숫자·점·밑줄·하이픈으로 입력해 주세요.");
+          Filament f;
+          String before = null;
+          if (filamentId == null) {
+            if (filaments.existsBySpoolId(spool))
+              throw new WorkflowException(409, "DUPLICATE_SPOOL", "이미 등록된 스풀 ID입니다.");
+            f = Filament.create(spool);
+          } else {
+            f =
+                filaments
+                    .findById(filamentId)
+                    .orElseThrow(() -> new WorkflowException(404, "NOT_FOUND", "필라멘트를 찾을 수 없습니다."));
+            entityManager.refresh(f);
+            if (f.getVersion() != number(b, "version")) throw conflict(filamentView(f));
+            if (!f.getSpoolId().equals(spool)) throw bad("실제 스풀 ID는 변경할 수 없습니다. 새 스풀을 등록해 주세요.");
+            before = snapshot(filamentView(f));
+          }
+          long remaining = number(b, "remainingGrams");
+          Long price = id(b, "priceKrw");
+          if (remaining > 1_000_000 || price != null && price > 100_000_000)
+            throw bad("잔량 또는 가격 범위를 확인해 주세요.");
+          f.update(
+              requiredText(b, "colorName", 80),
+              requiredText(b, "material", 40),
+              requiredText(b, "finish", 40),
+              text(b, "manufacturer", 100),
+              text(b, "source", 300),
+              price,
+              remaining,
+              bool(b, "active"),
+              clock.instant());
+          filaments.saveAndFlush(f);
+          var result = filamentView(f);
+          audit(
+              "filament:" + f.getId(),
+              filamentId == null ? "CREATE_FILAMENT" : "UPDATE_FILAMENT",
+              before,
+              snapshot(result),
+              null);
+          return result;
+        });
+  }
+
+  private void ownMapping(ProductionTask t) {
+    var actor = access.require(MAP_FILAMENT);
+    if (!Objects.equals(t.getAssigneeId(), actor.getId())
+        || access.eligible(actor.getId(), WorkRole.DESIGN_QC) == null)
+      throw new WorkflowException(403, "FORBIDDEN", "배정된 색상 담당자만 지정할 수 있습니다.");
+    access.read(t.getOrderNumber());
+  }
+
+  public Map<String, Object> saveFilamentMapping(Long taskId, String key, Map<String, Object> b) {
+    var t = task(taskId);
+    ownMapping(t);
+    return command(
+        "filament-mapping:" + taskId,
+        key,
+        b,
+        () -> {
+          entityManager.refresh(t);
+          ownMapping(t);
+          var o = locked(t.getOrderNumber());
+          version(o, b);
+          var current = currentTask(o.getOrderNumber());
+          if (!active(o)
+              || !paid(o)
+              || o.getProductionStage() != ProductionStage.COLOR_MAPPING
+              || t.getStage() != ProductionStage.COLOR_MAPPING
+              || !t.getStatus().equals("WAITING")
+              || current == null
+              || !current.getId().equals(taskId)) throw bad("현재 색상 지정 작업만 저장할 수 있습니다.");
+          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          boolean complete = bool(b, "complete");
+          if (!(b.get("mappings") instanceof List<?> entries)
+              || entries.isEmpty()
+              || entries.size() > 64) throw bad("부위와 실제 필라멘트를 1개 이상, 64개 이하로 지정해 주세요.");
+          var saved = new ArrayList<OrderFilamentMapping>();
+          var parts = new HashSet<String>();
+          for (Object entry : entries) {
+            if (!(entry instanceof Map<?, ?> raw)) throw bad("부위별 필라멘트 형식을 확인해 주세요.");
+            var item = new LinkedHashMap<String, Object>();
+            raw.forEach((k, v) -> item.put(String.valueOf(k), v));
+            String part =
+                java.text.Normalizer.normalize(
+                        requiredText(item, "partName", 60), java.text.Normalizer.Form.NFKC)
+                    .replaceAll("(?U)\\s+", " ")
+                    .strip();
+            String partKey = part.toLowerCase(Locale.ROOT);
+            if (part.isBlank()
+                || part.length() > 60
+                || partKey.length() > 60
+                || !parts.add(partKey)) throw bad("부위 이름이 비어 있거나 중복됐습니다.");
+            var f =
+                filaments
+                    .findById(number(item, "filamentId"))
+                    .orElseThrow(() -> bad("등록된 실제 필라멘트를 선택해 주세요."));
+            entityManager.refresh(f);
+            if (!f.isActive()) throw bad("사용 중지된 필라멘트입니다. 사용 가능한 스풀을 선택해 주세요.");
+            saved.add(
+                OrderFilamentMapping.record(
+                    t, part, partKey, f, access.current().getId(), clock.instant(), complete));
+          }
+          var previous = filamentMappings.findByTaskIdOrderByIdAsc(taskId);
+          String before = snapshot(previous.stream().map(this::mappingView).toList());
+          filamentMappings.deleteAll(previous);
+          filamentMappings.flush();
+          filamentMappings.saveAllAndFlush(saved);
+          if (complete) {
+            t.complete(clock.instant());
+            tasks.saveAndFlush(
+                ProductionTask.create(
+                    o.getOrderNumber(),
+                    ProductionStage.PLATE_PREPARATION,
+                    t.getAssigneeId(),
+                    t.getAttempt()));
+            o.moveProduction(ProductionStage.PLATE_PREPARATION);
+          }
+          touch(o);
+          audit(
+              o.getOrderNumber(),
+              complete ? "COMPLETE_FILAMENT_MAPPING" : "SAVE_FILAMENT_MAPPING",
+              before,
+              snapshot(saved.stream().map(this::mappingView).toList()),
+              null);
+          return view(o);
+        });
+  }
+
   public Map<String, Object> detail(String number) {
     access.read(number);
     return view(order(number));
@@ -274,6 +494,15 @@ public class WorkflowService {
         && access.eligible(t.getAssigneeId(), workRole(t.getStage())) == null
         && !block.contains("UNASSIGNED")) block.add("UNASSIGNED");
     var actions = new ArrayList<String>();
+    if (active(o)
+        && paid(o)
+        && block.isEmpty()
+        && t != null
+        && t.getStage() == ProductionStage.COLOR_MAPPING
+        && t.getStatus().equals("WAITING")
+        && Objects.equals(t.getAssigneeId(), actor.getId())
+        && access.eligible(actor.getId(), WorkRole.DESIGN_QC) != null
+        && permissions.contains(MAP_FILAMENT)) actions.add("MAP_FILAMENT");
     if (active(o)) {
       if (o.getStatus() == GoodsOrderStatus.PAYMENT_PENDING
           && permissions.contains(CONFIRM_PAYMENT)) actions.add("CONFIRM_PAYMENT");
@@ -406,6 +635,12 @@ public class WorkflowService {
             : List.of(),
         "assignee",
         assignee,
+        "filamentMappings",
+        permissions.contains(VIEW_FILAMENT)
+            ? filamentMappings.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .map(this::mappingView)
+                .toList()
+            : List.of(),
         "blockingIssues",
         block,
         "allowedActions",

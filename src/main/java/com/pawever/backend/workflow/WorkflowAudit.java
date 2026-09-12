@@ -22,10 +22,10 @@ public class WorkflowAudit {
   @Column(nullable = false, length = 80)
   private String action;
 
-  @Column(length = 500)
+  @Column(columnDefinition = "longtext")
   private String beforeValue;
 
-  @Column(length = 500)
+  @Column(columnDefinition = "longtext")
   private String afterValue;
 
   @Column(length = 300)

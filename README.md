@@ -69,6 +69,7 @@ src/main/java/com/pawever/backend/
 실행 후 다음 주소에서 확인할 수 있습니다.
 - **Swagger UI**: `/swagger-ui.html`
 - **굿즈 설문 운영**: [`docs/goods-survey.md`](docs/goods-survey.md)
+- **필라멘트 등록·부위별 지정**: [요구사항·API·완료 경계](docs/operations/2026-09-12-filament-mapping.md)
 <br><br>
 
 ## 🚀 배포

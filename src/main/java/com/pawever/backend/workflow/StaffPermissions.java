@@ -44,7 +44,9 @@ public class StaffPermissions {
               VIEW_PRODUCTION_FILES,
               DOWNLOAD_PRODUCTION_FILES));
       if (a.getWorkRoles().contains(WorkRole.MODELING)) p.add(COMPLETE_MODELING);
-      if (a.getWorkRoles().contains(WorkRole.DESIGN_QC)) p.add(REVIEW_MODEL);
+      if (a.getWorkRoles().contains(WorkRole.DESIGN_QC))
+        p.addAll(EnumSet.of(REVIEW_MODEL, VIEW_FILAMENT, MAP_FILAMENT));
+      if (a.getWorkRoles().contains(WorkRole.PRINT_FINISHING)) p.add(VIEW_FILAMENT);
     }
     for (var o : overrides.findByAccountId(a.getId()))
       if (o.getExpiresAt() == null || o.getExpiresAt().isAfter(clock.instant())) {
@@ -59,6 +61,11 @@ public class StaffPermissions {
         || !p.contains(VIEW_PRODUCTION_FILES)) {
       p.remove(COMPLETE_MODELING);
       p.remove(REVIEW_MODEL);
+      p.remove(MAP_FILAMENT);
+    }
+    if (!p.contains(VIEW_FILAMENT)) {
+      p.remove(MAP_FILAMENT);
+      p.remove(MANAGE_FILAMENT);
     }
     if (!p.contains(VIEW_PAYMENT) || !p.contains(VIEW_ORDER_BASIC)) p.remove(CONFIRM_PAYMENT);
     if (!p.contains(VIEW_ORDER_BASIC) || !p.contains(VIEW_SHIPMENT))
