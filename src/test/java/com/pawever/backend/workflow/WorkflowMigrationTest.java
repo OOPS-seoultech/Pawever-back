@@ -13,7 +13,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
     matches = "jdbc:mariadb://127\\.0\\.0\\.1:[0-9]+/workflow_validation[a-zA-Z0-9_]*")
 class WorkflowMigrationTest {
   @Test
-  void v17PreservesHistoricalOrdersAndDoesNotInventTasksOrOwners() throws Exception {
+  void v17AndV18PreserveHistoricalOrdersAndExistingReviewTasks() throws Exception {
     String base = System.getenv("WORKFLOW_JDBC_URL"),
         user = System.getenv("WORKFLOW_DB_USER"),
         password = System.getenv("WORKFLOW_DB_PASSWORD");
@@ -83,7 +83,7 @@ class WorkflowMigrationTest {
                 + ",1)");
       }
     }
-    var flyway = Flyway.configure().dataSource(url, user, password).load();
+    var flyway = Flyway.configure().dataSource(url, user, password).target("17").load();
     assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
     assertThat(flyway.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
@@ -113,6 +113,42 @@ class WorkflowMigrationTest {
                   + " WHERE role='OWNER')")) {
         rows.next();
         assertThat(rows.getInt(1)).isZero();
+      }
+      s.execute(
+          "INSERT INTO production_tasks(id,order_number,stage,attempt,assignee_id,status) VALUES"
+              + "(7001,'PE-MIG-2','MODELING',1,11,'COMPLETED'),(7002,'PE-MIG-2','MODEL_REVIEW',1,12,'WAITING')");
+      s.execute(
+          "INSERT INTO"
+              + " production_artifacts(id,order_number,task_id,uploader_id,kind,file_name,content_type,object_key,expected_size,confirmed,expires_at)"
+              + " VALUES('existing-model','PE-MIG-2',7001,11,'MODEL_SOURCE','model.blend','application/octet-stream','existing/model.blend',1234,1,NOW())");
+    }
+    var latest = Flyway.configure().dataSource(url, user, password).load();
+    assertThat(latest.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(latest.migrate().migrationsExecuted).isZero();
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      try (var rows =
+          s.executeQuery(
+              "SELECT stage,attempt,assignee_id,status FROM production_tasks ORDER BY id")) {
+        rows.next();
+        assertThat(rows.getString("stage")).isEqualTo("MODELING");
+        assertThat(rows.getString("status")).isEqualTo("COMPLETED");
+        rows.next();
+        assertThat(rows.getString("stage")).isEqualTo("MODEL_REVIEW");
+        assertThat(rows.getInt("attempt")).isEqualTo(1);
+        assertThat(rows.getLong("assignee_id")).isEqualTo(12);
+        assertThat(rows.getString("status")).isEqualTo("WAITING");
+        assertThat(rows.next()).isFalse();
+      }
+      try (var rows =
+          s.executeQuery(
+              "SELECT (SELECT COUNT(*) FROM model_reviews),task_id,expected_size,confirmed FROM"
+                  + " production_artifacts WHERE id='existing-model'")) {
+        rows.next();
+        assertThat(rows.getLong(1)).isZero();
+        assertThat(rows.getLong(2)).isEqualTo(7001);
+        assertThat(rows.getLong(3)).isEqualTo(1234);
+        assertThat(rows.getBoolean(4)).isTrue();
       }
     }
   }

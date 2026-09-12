@@ -34,10 +34,16 @@ public class ProductionTask {
   private Instant completedAt;
 
   public static ProductionTask create(String number, ProductionStage stage, Long assignee) {
+    return create(number, stage, assignee, 1);
+  }
+
+  public static ProductionTask create(
+      String number, ProductionStage stage, Long assignee, int attempt) {
     var t = new ProductionTask();
     t.orderNumber = number;
     t.stage = stage;
     t.assigneeId = assignee;
+    t.attempt = attempt;
     return t;
   }
 

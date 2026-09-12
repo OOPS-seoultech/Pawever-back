@@ -77,6 +77,14 @@ public class WorkflowController {
     return ApiResponse.ok(service.complete(taskId, key, b));
   }
 
+  @PostMapping("/api/production/tasks/{taskId}/review")
+  public Object review(
+      @PathVariable Long taskId,
+      @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> b) {
+    return ApiResponse.ok(service.review(taskId, key, b));
+  }
+
   @GetMapping("/api/admin/workflow/default-assignees")
   public Object defaults() {
     return ApiResponse.ok(service.defaults());
