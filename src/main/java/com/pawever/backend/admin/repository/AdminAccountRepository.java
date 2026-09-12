@@ -9,6 +9,10 @@ import java.util.Optional;
 
 public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from AdminAccount a order by a.id")
+    List<AdminAccount> lockAccounts();
+
     Optional<AdminAccount> findByEmail(String email);
 
     Optional<AdminAccount> findByInviteTokenHash(String inviteTokenHash);

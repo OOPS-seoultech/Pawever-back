@@ -55,7 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/auth/**").permitAll()
                         // 나머지 관리자 통로는 역할까지 본다. 화면에서 메뉴만 숨기면
                         // 주소를 직접 치거나 요청을 그대로 보내는 것으로 넘어간다.
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "PRODUCTION")
+                        .requestMatchers("/api/admin/**", "/api/production/**").hasAnyRole("OWNER", "ADMIN", "PRODUCTION", "MARKETING", "SUPPORT")
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated()
@@ -85,6 +85,7 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/public/goods-survey/**", publicSurveyCors());
         source.registerCorsConfiguration("/api/admin/**", adminCors());
+        source.registerCorsConfiguration("/api/production/**", adminCors());
         return source;
     }
 
@@ -111,8 +112,8 @@ public class SecurityConfig {
      */
     private CorsConfiguration adminCors() {
         CorsConfiguration configuration = baseCors();
-        configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Content-Type", "Authorization", "Idempotency-Key"));
         return configuration;
     }
 

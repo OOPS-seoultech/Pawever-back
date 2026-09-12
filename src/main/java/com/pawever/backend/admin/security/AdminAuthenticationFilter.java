@@ -30,10 +30,12 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
     private static final String ADMIN_PATH_PREFIX = "/api/admin/";
 
     private final AdminTokenProvider tokenProvider;
+    private final com.pawever.backend.admin.repository.AdminAccountRepository accounts;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(ADMIN_PATH_PREFIX);
+        return !request.getRequestURI().startsWith(ADMIN_PATH_PREFIX)
+                && !request.getRequestURI().startsWith("/api/production/");
     }
 
     @Override
@@ -45,6 +47,11 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
         if (token != null) {
             AdminPrincipal principal = tokenProvider.parse(token);
+            if (principal != null) {
+                var account = accounts.findById(principal.accountId()).orElse(null);
+                principal = account != null && account.canSignIn()
+                        ? new AdminPrincipal(account.getId(), account.getRole()) : null;
+            }
             if (principal != null) {
                 SecurityContextHolder.getContext().setAuthentication(
                         new UsernamePasswordAuthenticationToken(

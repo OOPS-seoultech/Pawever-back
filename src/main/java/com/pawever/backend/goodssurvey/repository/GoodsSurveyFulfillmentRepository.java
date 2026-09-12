@@ -14,6 +14,10 @@ import java.util.Optional;
 
 public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSurveyFulfillment, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select f from GoodsSurveyFulfillment f where f.orderNumber=:number")
+    Optional<GoodsSurveyFulfillment> lockByOrderNumber(@Param("number") String number);
+
     Optional<GoodsSurveyFulfillment> findByResponseId(String responseId);
 
     /**

@@ -109,6 +109,10 @@ public class AdminOrderController {
             @PathVariable String orderNumber,
             @Valid @RequestBody AdminOrderStatusRequest request
     ) {
+        if (request.status() == GoodsOrderStatus.PAYMENT_COMPLETED) {
+            throw new com.pawever.backend.workflow.WorkflowException(409, "WORKFLOW_ACTION_REQUIRED",
+                    "입금·제작 관리에서 실제 입금액을 대조해 주세요.");
+        }
         orderService.changeStatus(
                 currentPrincipal(), orderNumber, request.status(), request.memo());
         return ApiResponse.ok();

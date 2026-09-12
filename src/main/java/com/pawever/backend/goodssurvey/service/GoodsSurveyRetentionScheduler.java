@@ -22,6 +22,7 @@ public class GoodsSurveyRetentionScheduler {
 
     private final GoodsSurveyRetentionService retentionService;
     private final Clock goodsSurveyClock;
+    private final com.pawever.backend.workflow.WorkflowArtifactRetention workflowRetention;
 
     @Scheduled(cron = "${survey.goods.purge-cron}", zone = "Asia/Seoul")
     public void purge() {
@@ -33,6 +34,7 @@ public class GoodsSurveyRetentionScheduler {
         int surveys = run("설문 응답", () -> retentionService.purgeExpiredSurveys(now));
         int contracts = run("계약 기록", () -> retentionService.purgeExpiredContracts(now));
         int accessLogs = run("담당자 접속기록", () -> retentionService.purgeExpiredAccessLogs(now));
+        run("모델링 자료", () -> workflowRetention.purge(now));
 
         if (expired + fulfillments + subscriptions + surveys + contracts + accessLogs > 0) {
             log.info(

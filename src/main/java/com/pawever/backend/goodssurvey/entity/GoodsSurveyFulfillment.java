@@ -25,6 +25,66 @@ import java.time.temporal.ChronoUnit;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GoodsSurveyFulfillment extends BaseTimeEntity {
 
+    @jakarta.persistence.Version
+    private long version;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length=30)
+    private com.pawever.backend.workflow.ProductionStage productionStage;
+
+    private Long paymentConfirmedBy;
+    private Integer confirmedAmountKrw;
+    private Instant workflowTouchedAt;
+    public void touchWorkflow(Instant at) { workflowTouchedAt=workflowTouchedAt!=null&&!at.isAfter(workflowTouchedAt)?workflowTouchedAt.plusNanos(1000):at; }
+
+    @Column(length=20) private String lifecycleOrderStatus;
+    @Column(length=20) private String lifecyclePaymentStatus;
+    @Column(length=40) private String lifecycleShipmentStatus;
+
+    /** All existing writers go through this aggregate; status remains a compatibility projection. */
+    private void synchronizeLifecycle() {
+        lifecycleOrderStatus = switch(status) { case CANCELED,PAYMENT_FAILED -> "CANCELED";
+            case PAYMENT_EXPIRED -> "EXPIRED"; case PICKED_UP -> "COMPLETED"; default -> "ACTIVE"; };
+        lifecyclePaymentStatus = switch(status) { case PAYMENT_PENDING -> "PENDING";
+            case PAYMENT_FAILED -> "FAILED"; case PAYMENT_EXPIRED -> "EXPIRED"; case CANCEL_FAILED -> "REFUND_PENDING";
+            case CANCELED -> paidAt == null ? "NOT_REQUIRED" : "REFUNDED";
+            default -> paidAt == null ? "NOT_REQUIRED" : "CONFIRMED"; };
+        lifecycleShipmentStatus = switch(status) { case SHIPPED -> "ACCEPTED"; case PICKED_UP -> "PICKED_UP"; default -> "NOT_READY"; };
+    }
+
+    public void confirmManually(Long actor, int amount, Instant at) {
+        markPaid(at, null, "MANUAL"); paymentConfirmedBy=actor; confirmedAmountKrw=amount;
+        if (productionStage == null) productionStage=com.pawever.backend.workflow.ProductionStage.MODELING_QUEUE;
+    }
+
+    public void moveProduction(com.pawever.backend.workflow.ProductionStage stage) {
+        productionStage=stage;
+        if(stage != com.pawever.backend.workflow.ProductionStage.MODELING_QUEUE && stage != com.pawever.backend.workflow.ProductionStage.BLOCKED)
+            status=GoodsOrderStatus.IN_PRODUCTION;
+        // Production progression must not reset payment, contract or shipment facts.
+    }
+
+    public String paymentStatus() {
+        if (lifecyclePaymentStatus != null) return lifecyclePaymentStatus;
+        return switch(status) {
+            case PAYMENT_PENDING -> "PENDING";
+            case PAYMENT_FAILED -> "FAILED";
+            case PAYMENT_EXPIRED -> "EXPIRED";
+            case CANCEL_FAILED -> "REFUND_PENDING";
+            case CANCELED -> paidAt == null ? "NOT_REQUIRED" : "REFUNDED";
+            default -> paidAt == null ? "NOT_REQUIRED" : "CONFIRMED";
+        };
+    }
+    public String orderStatus() {
+        if (lifecycleOrderStatus != null) return lifecycleOrderStatus;
+        return switch(status) {case CANCELED,PAYMENT_FAILED -> "CANCELED"; case PAYMENT_EXPIRED -> "EXPIRED";
+            case PICKED_UP -> "COMPLETED"; default -> "ACTIVE";};
+    }
+    public String shipmentStatus() {
+        if (lifecycleShipmentStatus != null) return lifecycleShipmentStatus;
+        return switch(status) {case SHIPPED -> "ACCEPTED"; case PICKED_UP -> "PICKED_UP"; default -> "NOT_READY";};
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -265,6 +325,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         fulfillment.surveyParticipant = surveyParticipant;
         fulfillment.orderNumber = orderNumber;
         fulfillment.status = GoodsOrderStatus.PAYMENT_PENDING;
+        fulfillment.synchronizeLifecycle();
         fulfillment.listPriceKrw = pricing.listPriceKrw();
         fulfillment.discountAmountKrw = pricing.discountAmountKrw();
         fulfillment.promotionName = pricing.promotionName();
@@ -302,6 +363,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         this.paymentKey = paymentKey;
         this.paymentMethod = paymentMethod;
         this.status = GoodsOrderStatus.PAYMENT_COMPLETED;
+        synchronizeLifecycle();
         return true;
     }
 
@@ -319,10 +381,17 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
      */
     public void changeStatus(GoodsOrderStatus next) {
         this.status = next;
+        synchronizeLifecycle();
+        if (productionStage != null) {
+            if (next == GoodsOrderStatus.SHIPPED || next == GoodsOrderStatus.PICKED_UP)
+                productionStage = com.pawever.backend.workflow.ProductionStage.COMPLETE;
+            else if (next == GoodsOrderStatus.CANCELED || next == GoodsOrderStatus.PAYMENT_EXPIRED || next == GoodsOrderStatus.PAYMENT_FAILED || next == GoodsOrderStatus.CANCEL_FAILED)
+                productionStage = com.pawever.backend.workflow.ProductionStage.BLOCKED;
+        }
     }
 
     public void cancel(GoodsOrderStatus next, String reason) {
-        this.status = next;
+        changeStatus(next);
         this.cancelReason = reason;
     }
 

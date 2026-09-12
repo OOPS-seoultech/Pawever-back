@@ -160,7 +160,7 @@ public class AdminOrderService {
         List<GoodsSurveyPhoto> photos =
                 photoRepository.findByResponseId(fulfillment.getResponseId());
 
-        boolean canSeeShipping = principal.role() == AdminRole.ADMIN;
+        boolean canSeeShipping = (principal.role() == AdminRole.ADMIN || principal.role() == AdminRole.OWNER);
         if (canSeeShipping) {
             // 제작팀에게는 주소가 내려가지 않으니 남길 것도 없다.
             accessLogRepository.save(AdminAccessLog.of(
@@ -324,6 +324,10 @@ public class AdminOrderService {
         }
 
         GoodsOrderStatus before = fulfillment.getStatus();
+        if (fulfillment.getProductionStage() != null && next != before) {
+            throw new com.pawever.backend.workflow.WorkflowException(409, "WORKFLOW_ACTION_REQUIRED",
+                    "입금·제작 관리의 작업 버튼을 이용해 주세요.");
+        }
         if (next == before) {
             // 두 번 누른 것이다. "결제 완료 → 결제 완료" 가 이력에 남으면 읽는
             // 사람이 무슨 일이 있었는지 찾게 된다.
@@ -542,7 +546,7 @@ public class AdminOrderService {
         List<String> reverted = new ArrayList<>();
         for (String orderNumber : orderNumbers) {
             GoodsSurveyFulfillment fulfillment = byNumber.get(orderNumber);
-            if (fulfillment == null
+            if (fulfillment == null || fulfillment.getProductionStage() != null
                     || fulfillment.getStatus() != GoodsOrderStatus.IN_PRODUCTION) {
                 skipped.add(orderNumber);
                 continue;
@@ -628,7 +632,7 @@ public class AdminOrderService {
         List<String> moved = new ArrayList<>();
         for (String orderNumber : orderNumbers) {
             GoodsSurveyFulfillment fulfillment = byNumber.get(orderNumber);
-            if (fulfillment == null) {
+            if (fulfillment == null || fulfillment.getProductionStage() != null) {
                 skipped.add(orderNumber);
                 continue;
             }
@@ -801,7 +805,10 @@ public class AdminOrderService {
     }
 
     private GoodsSurveyFulfillment findVisible(AdminPrincipal principal, String orderNumber) {
-        GoodsSurveyFulfillment fulfillment = fulfillmentRepository.findByOrderNumber(orderNumber)
+        var found = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                && !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                ? fulfillmentRepository.lockByOrderNumber(orderNumber) : fulfillmentRepository.findByOrderNumber(orderNumber);
+        GoodsSurveyFulfillment fulfillment = found
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND));
         if (principal.role() == AdminRole.PRODUCTION
                 && !fulfillment.getStatus().isVisibleToProduction()) {
@@ -812,7 +819,7 @@ public class AdminOrderService {
     }
 
     private void requireAdmin(AdminPrincipal principal) {
-        if (principal.role() != AdminRole.ADMIN) {
+        if ((principal.role() != AdminRole.ADMIN && principal.role() != AdminRole.OWNER)) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
     }
@@ -821,7 +828,7 @@ public class AdminOrderService {
             AdminPrincipal principal,
             Set<GoodsOrderStatus> requested
     ) {
-        Set<GoodsOrderStatus> allowed = principal.role() == AdminRole.ADMIN
+        Set<GoodsOrderStatus> allowed = (principal.role() == AdminRole.ADMIN || principal.role() == AdminRole.OWNER)
                 ? EnumSet.allOf(GoodsOrderStatus.class)
                 : EnumSet.copyOf(PRODUCTION_VISIBLE);
         if (requested == null || requested.isEmpty()) {
