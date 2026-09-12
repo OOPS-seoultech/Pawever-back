@@ -347,6 +347,41 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
+    void 상시_판매의_기본_입금_기한은_신청_후_7일이다() {
+        GoodsSurveyApplicationResponse response = submitDirect("seven-days-online");
+
+        assertThat(response.paymentExpiresAt()).isEqualTo(NOW.plus(java.time.Duration.ofDays(7)));
+        GoodsOrderSubmittedEvent event = publishedEvents.stream()
+                .filter(GoodsOrderSubmittedEvent.class::isInstance)
+                .map(GoodsOrderSubmittedEvent.class::cast)
+                .reduce((first, second) -> second).orElseThrow();
+        assertThat(event.paymentWindowMinutes()).isEqualTo(10_080);
+    }
+
+    @Test
+    void 플리마켓의_기본_입금_기한은_신청_후_7일이다() {
+        properties.setFleaCampaignId("goods-2026-09-flea");
+        useFleaCampaign(true);
+        JsonNode tracking = new ObjectMapper().createObjectNode().put("visitId", "seven-days-flea");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, "flea"));
+        service.startDirectPurchase(draft.responseId(), draft.editToken());
+        when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(confirmedPhotos("photo-seven-days", draft.responseId()));
+
+        GoodsSurveyApplicationResponse response = service.submitApplication(
+                draft.responseId(), draft.editToken(), "idempotency-seven-days",
+                directApplication(tracking, "conversion-seven-days", "photo-seven-days"));
+
+        assertThat(response.paymentExpiresAt()).isEqualTo(NOW.plus(java.time.Duration.ofDays(7)));
+        GoodsOrderSubmittedEvent event = publishedEvents.stream()
+                .filter(GoodsOrderSubmittedEvent.class::isInstance)
+                .map(GoodsOrderSubmittedEvent.class::cast)
+                .reduce((first, second) -> second).orElseThrow();
+        assertThat(event.paymentWindowMinutes()).isEqualTo(10_080);
+    }
+
+    @Test
     void 상시_판매는_기한이_그대로다() {
         properties.setFleaPaymentWindowMinutes(180);
 
