@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorkflowService {
   private final GoodsSurveyFulfillmentRepository orders;
   private final ProductionTaskRepository tasks;
+  private final ModelReviewRepository reviews;
   private final ProductionArtifactRepository artifacts;
   private final WorkflowIssueRepository issues;
   private final WorkflowCommandRepository commands;
@@ -38,6 +39,10 @@ public class WorkflowService {
   private final jakarta.persistence.EntityManager entityManager;
   private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
   private static final Set<String> KINDS = Set.of("MULTIVIEW", "MODEL_SOURCE", "PRINT_MODEL");
+  private static final Set<String> REVIEW_REASONS =
+      Set.of("SHAPE", "EARS", "TAIL", "POSE", "BASE_CUT", "PRINTABILITY", "COLOR_SEPARATION");
+  private static final Set<String> REVIEW_CHECKS =
+      Set.of("LIKENESS", "FEATURES", "BASE_CUT", "PRINTABILITY");
 
   private Map<String, Object> map(Object... args) {
     var m = new LinkedHashMap<String, Object>();
@@ -108,6 +113,46 @@ public class WorkflowService {
     return tasks
         .findById(id)
         .orElseThrow(() -> new WorkflowException(404, "NOT_FOUND", "작업을 찾을 수 없습니다."));
+  }
+
+  private WorkRole workRole(ProductionStage stage) {
+    return stage == ProductionStage.MODEL_REVIEW || stage == ProductionStage.COLOR_MAPPING
+        ? WorkRole.DESIGN_QC
+        : WorkRole.MODELING;
+  }
+
+  private List<String> actionableBlockers(ProductionTask t, List<String> codes) {
+    return codes.stream()
+        .filter(
+            code ->
+                !(code.equals("QC_FAILED")
+                    && t.getStage() == ProductionStage.MODELING
+                    && t.getAttempt() > 1))
+        .toList();
+  }
+
+  private ProductionTask submittedModeling(List<ProductionTask> history, ProductionTask next) {
+    if (next == null) return null;
+    return history.stream()
+        .filter(
+            t ->
+                t.getStage() == ProductionStage.MODELING
+                    && t.getStatus().equals("COMPLETED")
+                    && t.getId() < next.getId())
+        .reduce((a, b) -> b)
+        .orElse(null);
+  }
+
+  private void requireModelFiles(Long taskId, String number) {
+    var present = new HashSet<String>();
+    artifacts.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(a -> a.isConfirmed() && a.getTaskId().equals(taskId))
+        .forEach(a -> present.add(a.getKind()));
+    var missing = new TreeSet<>(KINDS);
+    missing.removeAll(present);
+    if (!missing.isEmpty())
+      throw new WorkflowException(
+          422, "ARTIFACT_MISSING", "이번 모델링 작업의 필수 파일을 등록해 주세요: " + String.join(", ", missing));
   }
 
   private void version(GoodsSurveyFulfillment o, Map<String, Object> b) {
@@ -216,15 +261,17 @@ public class WorkflowService {
   private Map<String, Object> view(GoodsSurveyFulfillment o) {
     var actor = access.current();
     var permissions = access.effective(actor);
-    var t = currentTask(o.getOrderNumber());
+    var history = tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber());
+    var t =
+        history.stream()
+            .filter(item -> !item.getStatus().equals("COMPLETED"))
+            .reduce((a, b) -> b)
+            .orElse(null);
+    var modeling =
+        t != null && t.getStage() == ProductionStage.MODELING ? t : submittedModeling(history, t);
     var block = new ArrayList<>(codes(o.getOrderNumber()));
     if (t != null
-        && access.eligible(
-                t.getAssigneeId(),
-                t.getStage() == ProductionStage.MODEL_REVIEW
-                    ? WorkRole.DESIGN_QC
-                    : WorkRole.MODELING)
-            == null
+        && access.eligible(t.getAssigneeId(), workRole(t.getStage())) == null
         && !block.contains("UNASSIGNED")) block.add("UNASSIGNED");
     var actions = new ArrayList<String>();
     if (active(o)) {
@@ -241,12 +288,22 @@ public class WorkflowService {
           && t.getStage() == ProductionStage.MODELING
           && permissions.contains(COMPLETE_MODELING)
           && paid(o)
-          && block.isEmpty()) {
+          && actionableBlockers(t, block).isEmpty()) {
         if (t.getStatus().equals("WAITING")) actions.add("START_TASK");
         if (t.getStatus().equals("IN_PROGRESS")) {
           actions.add("UPLOAD_ARTIFACT");
           actions.add("COMPLETE_MODELING");
         }
+      }
+      if (t != null
+          && t.getStage() == ProductionStage.MODEL_REVIEW
+          && t.getStatus().equals("WAITING")
+          && Objects.equals(t.getAssigneeId(), actor.getId())
+          && permissions.contains(REVIEW_MODEL)
+          && paid(o)
+          && block.isEmpty()) {
+        actions.add("APPROVE_MODEL");
+        actions.add("REQUEST_MODEL_CHANGES");
       }
     }
     var assignee =
@@ -269,6 +326,14 @@ public class WorkflowService {
                             a.getKind(),
                             "fileName",
                             a.getFileName(),
+                            "taskId",
+                            a.getTaskId(),
+                            "modelingAttempt",
+                            history.stream()
+                                .filter(item -> item.getId().equals(a.getTaskId()))
+                                .findFirst()
+                                .map(ProductionTask::getAttempt)
+                                .orElse(1),
                             "size",
                             a.getExpectedSize()))
                 .toList()
@@ -302,6 +367,43 @@ public class WorkflowService {
         t == null ? null : t.getId(),
         "taskStatus",
         t == null ? null : t.getStatus(),
+        "taskAttempt",
+        t == null ? null : t.getAttempt(),
+        "modelingTaskId",
+        modeling == null ? null : modeling.getId(),
+        "reviews",
+        permissions.contains(VIEW_PRODUCTION_FILES)
+            ? reviews.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .map(
+                    r ->
+                        map(
+                            "id",
+                            r.getId(),
+                            "reviewTaskId",
+                            r.getReviewTaskId(),
+                            "modelingTaskId",
+                            r.getModelingTaskId(),
+                            "modelingAttempt",
+                            r.getModelingAttempt(),
+                            "decision",
+                            r.getDecision(),
+                            "reasonCode",
+                            r.getReasonCode(),
+                            "note",
+                            r.getNote(),
+                            "reviewerName",
+                            accounts
+                                .findById(r.getReviewerId())
+                                .map(AdminAccount::getName)
+                                .orElse("이전 담당자"),
+                            "reviewedAt",
+                            r.getReviewedAt().toString(),
+                            "checks",
+                            r.getApprovedChecks() == null
+                                ? List.of()
+                                : List.of(r.getApprovedChecks().split(","))))
+                .toList()
+            : List.of(),
         "assignee",
         assignee,
         "blockingIssues",
@@ -427,7 +529,8 @@ public class WorkflowService {
               || t.getStage() != ProductionStage.MODELING
               || !t.getStatus().equals("WAITING")) throw bad("시작할 수 없는 작업입니다.");
           issue(o.getOrderNumber(), "PHOTO_INSUFFICIENT", !enoughPhotos(o));
-          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          if (!actionableBlockers(t, codes(o.getOrderNumber())).isEmpty())
+            throw bad("차단 문제를 먼저 해결해 주세요.");
           t.start(clock.instant());
           o.moveProduction(ProductionStage.MODELING);
           touch(o);
@@ -452,24 +555,112 @@ public class WorkflowService {
               || !paid(o)
               || !t.getStatus().equals("IN_PROGRESS")
               || t.getStage() != ProductionStage.MODELING) throw bad("완료할 수 없는 작업입니다.");
-          var present = new HashSet<String>();
-          artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
-              .filter(a -> a.isConfirmed() && a.getTaskId().equals(taskId))
-              .forEach(a -> present.add(a.getKind()));
-          var missing = new TreeSet<>(KINDS);
-          missing.removeAll(present);
-          if (!missing.isEmpty())
-            throw new WorkflowException(
-                422, "ARTIFACT_MISSING", "필수 파일을 등록해 주세요: " + String.join(", ", missing));
-          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          requireModelFiles(taskId, o.getOrderNumber());
+          if (!actionableBlockers(t, codes(o.getOrderNumber())).isEmpty())
+            throw bad("차단 문제를 먼저 해결해 주세요.");
           t.complete(clock.instant());
           Long reviewer = access.eligible(config().getReview(), WorkRole.DESIGN_QC);
           tasks.saveAndFlush(
-              ProductionTask.create(o.getOrderNumber(), ProductionStage.MODEL_REVIEW, reviewer));
+              ProductionTask.create(
+                  o.getOrderNumber(), ProductionStage.MODEL_REVIEW, reviewer, t.getAttempt()));
           o.moveProduction(ProductionStage.MODEL_REVIEW);
+          issue(o.getOrderNumber(), "QC_FAILED", false);
           issue(o.getOrderNumber(), "UNASSIGNED", reviewer == null);
           touch(o);
           audit(o.getOrderNumber(), "COMPLETE_MODELING", "MODELING", "MODEL_REVIEW", null);
+          return view(o);
+        });
+  }
+
+  private void ownReview(ProductionTask t) {
+    var actor = access.require(REVIEW_MODEL);
+    if (!Objects.equals(t.getAssigneeId(), actor.getId())
+        || access.eligible(actor.getId(), WorkRole.DESIGN_QC) == null)
+      throw new WorkflowException(403, "FORBIDDEN", "배정된 검수 담당자만 결정할 수 있습니다.");
+    access.read(t.getOrderNumber());
+  }
+
+  public Map<String, Object> review(Long taskId, String key, Map<String, Object> b) {
+    var t = task(taskId);
+    ownReview(t);
+    return command(
+        "review:" + taskId,
+        key,
+        b,
+        () -> {
+          entityManager.refresh(t);
+          ownReview(t);
+          var o = locked(t.getOrderNumber());
+          version(o, b);
+          if (!active(o)
+              || !paid(o)
+              || o.getProductionStage() != ProductionStage.MODEL_REVIEW
+              || t.getStage() != ProductionStage.MODEL_REVIEW
+              || !t.getStatus().equals("WAITING")
+              || !t.getId().equals(currentTask(o.getOrderNumber()).getId()))
+            throw bad("현재 검수 대기 작업만 결정할 수 있습니다.");
+          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          if (!enoughPhotos(o)) throw bad("고객 사진이 3장 이상 필요합니다.");
+          var history = tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber());
+          var source = submittedModeling(history, t);
+          if (source == null) throw bad("검수할 모델링 제출 자료가 없습니다.");
+          requireModelFiles(source.getId(), o.getOrderNumber());
+          String decision = text(b, "decision", 30),
+              reason = text(b, "reasonCode", 30),
+              note = text(b, "note", 300);
+          if (!Set.of("APPROVED", "CHANGES_REQUESTED").contains(decision))
+            throw bad("검수 결정을 선택해 주세요.");
+          boolean approved = decision.equals("APPROVED");
+          if (approved) {
+            if (!(b.get("checks") instanceof List<?> checks)
+                || checks.size() != REVIEW_CHECKS.size()
+                || !new HashSet<>(checks).equals(REVIEW_CHECKS)) throw bad("검수 항목을 모두 확인해 주세요.");
+          } else if (!REVIEW_REASONS.contains(reason) || note.isBlank()) {
+            throw bad("수정 사유와 구체적인 검수 메모를 입력해 주세요.");
+          }
+          reviews.saveAndFlush(
+              ModelReview.record(
+                  t,
+                  source,
+                  access.current().getId(),
+                  decision,
+                  approved ? null : reason,
+                  note,
+                  approved ? String.join(",", new TreeSet<>(REVIEW_CHECKS)) : null,
+                  clock.instant()));
+          t.complete(clock.instant());
+          if (approved) {
+            tasks.saveAndFlush(
+                ProductionTask.create(
+                    o.getOrderNumber(),
+                    ProductionStage.COLOR_MAPPING,
+                    t.getAssigneeId(),
+                    source.getAttempt()));
+            o.moveProduction(ProductionStage.COLOR_MAPPING);
+            issue(o.getOrderNumber(), "QC_FAILED", false);
+          } else {
+            Long modeler = access.eligible(source.getAssigneeId(), WorkRole.MODELING);
+            int attempt =
+                history.stream()
+                        .filter(item -> item.getStage() == ProductionStage.MODELING)
+                        .mapToInt(ProductionTask::getAttempt)
+                        .max()
+                        .orElse(0)
+                    + 1;
+            tasks.saveAndFlush(
+                ProductionTask.create(
+                    o.getOrderNumber(), ProductionStage.MODELING, modeler, attempt));
+            o.moveProduction(ProductionStage.MODELING_QUEUE);
+            issue(o.getOrderNumber(), "QC_FAILED", true);
+            issue(o.getOrderNumber(), "UNASSIGNED", modeler == null);
+          }
+          touch(o);
+          audit(
+              o.getOrderNumber(),
+              approved ? "APPROVE_MODEL" : "REQUEST_MODEL_CHANGES",
+              "MODEL_REVIEW",
+              o.getProductionStage().name(),
+              note);
           return view(o);
         });
   }
@@ -489,8 +680,7 @@ public class WorkflowService {
           var t = currentTask(number);
           if (t == null || !active(o) || !paid(o)) throw bad("배정할 활성 작업이 없습니다.");
           Long target = id(b, "assigneeId");
-          WorkRole role =
-              t.getStage() == ProductionStage.MODEL_REVIEW ? WorkRole.DESIGN_QC : WorkRole.MODELING;
+          WorkRole role = workRole(t.getStage());
           if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
           String before = String.valueOf(t.getAssigneeId());
           t.assign(target);
