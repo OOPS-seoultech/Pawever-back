@@ -156,7 +156,7 @@ class WorkflowMigrationTest {
               + " VALUES"
               + " ('PE-MIG-2',7002,7001,1,12,'APPROVED','','BASE_CUT,FEATURES,LIKENESS,PRINTABILITY',NOW())");
     }
-    var filamentVersion = Flyway.configure().dataSource(url, user, password).load();
+    var filamentVersion = Flyway.configure().dataSource(url, user, password).target("19").load();
     assertThat(filamentVersion.migrate().migrationsExecuted).isEqualTo(1);
     assertThat(filamentVersion.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
@@ -173,6 +173,37 @@ class WorkflowMigrationTest {
       assertThat(rows.getLong(3)).isEqualTo(1);
       assertThat(rows.getLong(4)).isEqualTo(2);
       assertThat(rows.getLong(5)).isEqualTo(10);
+    }
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      s.execute(
+          "INSERT INTO"
+              + " filaments(id,version,spool_id,color_name,material,finish,manufacturer,source,remaining_grams,active,updated_at)"
+              + " VALUES(901,0,'MIG-SPOOL','cream','PLA','matte','','',800,1,NOW())");
+      s.execute(
+          "INSERT INTO"
+              + " order_filament_mappings(order_number,task_id,modeling_attempt,part_name,part_key,filament_id,spool_id,color_name,material,finish,saved_by,saved_at,completed_at)"
+              + " VALUES('PE-MIG-2',7003,1,'body','body',901,'MIG-SPOOL','cream','PLA','matte',12,NOW(),NOW())");
+    }
+    var plateVersion = Flyway.configure().dataSource(url, user, password).load();
+    assertThat(plateVersion.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(plateVersion.migrate().migrationsExecuted).isZero();
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement();
+        var rows =
+            s.executeQuery(
+                "SELECT (SELECT COUNT(*) FROM print_batches),(SELECT COUNT(*) FROM"
+                    + " print_batch_items),(SELECT COUNT(*) FROM print_batch_artifacts),(SELECT"
+                    + " COUNT(*) FROM filaments WHERE id=901 AND remaining_grams=800),(SELECT"
+                    + " COUNT(*) FROM order_filament_mappings WHERE filament_id=901 AND"
+                    + " completed_at IS NOT NULL),(SELECT COUNT(*) FROM model_reviews),(SELECT"
+                    + " COUNT(*) FROM production_tasks),(SELECT COUNT(*) FROM workflow_settings"
+                    + " WHERE printing IS NOT NULL)")) {
+      rows.next();
+      for (int i = 1; i <= 3; i++) assertThat(rows.getLong(i)).isZero();
+      for (int i = 4; i <= 6; i++) assertThat(rows.getLong(i)).isEqualTo(1);
+      assertThat(rows.getLong(7)).isEqualTo(2);
+      assertThat(rows.getLong(8)).isZero();
     }
   }
 }

@@ -70,6 +70,7 @@ src/main/java/com/pawever/backend/
 - **Swagger UI**: `/swagger-ui.html`
 - **굿즈 설문 운영**: [`docs/goods-survey.md`](docs/goods-survey.md)
 - **필라멘트 등록·부위별 지정**: [요구사항·API·완료 경계](docs/operations/2026-09-12-filament-mapping.md)
+- **플레이트 구성·출력 대기 인계**: [요구사항·API·완료 경계](docs/operations/2026-09-12-print-plate-preparation.md)
 <br><br>
 
 ## 🚀 배포
