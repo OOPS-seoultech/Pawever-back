@@ -27,6 +27,8 @@ public class WorkflowService {
   private final ModelReviewRepository reviews;
   private final FilamentRepository filaments;
   private final OrderFilamentMappingRepository filamentMappings;
+  private final PrintBatchItemRepository printBatchItems;
+  private final PrintBatchRepository printBatches;
   private final ProductionArtifactRepository artifacts;
   private final WorkflowIssueRepository issues;
   private final WorkflowCommandRepository commands;
@@ -85,7 +87,7 @@ public class WorkflowService {
         .orElseThrow(() -> new WorkflowException(404, "NOT_FOUND", "주문을 찾을 수 없습니다."));
   }
 
-  private GoodsSurveyFulfillment locked(String number) {
+  GoodsSurveyFulfillment locked(String number) {
     var o =
         orders
             .lockByOrderNumber(number)
@@ -94,17 +96,17 @@ public class WorkflowService {
     return o;
   }
 
-  private boolean active(GoodsSurveyFulfillment o) {
+  boolean active(GoodsSurveyFulfillment o) {
     return o.orderStatus().equals("ACTIVE")
         && o.shipmentStatus().equals("NOT_READY")
         && !o.paymentStatus().equals("REFUND_PENDING");
   }
 
-  private boolean paid(GoodsSurveyFulfillment o) {
+  boolean paid(GoodsSurveyFulfillment o) {
     return Set.of("CONFIRMED", "NOT_REQUIRED").contains(o.paymentStatus());
   }
 
-  private ProductionTask currentTask(String number) {
+  ProductionTask currentTask(String number) {
     return tasks.findByOrderNumberOrderByIdAsc(number).stream()
         .filter(t -> !t.getStatus().equals("COMPLETED"))
         .reduce((a, b) -> b)
@@ -118,6 +120,12 @@ public class WorkflowService {
   }
 
   private WorkRole workRole(ProductionStage stage) {
+    if (Set.of(
+            ProductionStage.PRINT_QUEUE,
+            ProductionStage.PRINTING,
+            ProductionStage.POST_PROCESSING,
+            ProductionStage.QC)
+        .contains(stage)) return WorkRole.PRINT_FINISHING;
     return stage == ProductionStage.MODEL_REVIEW
             || stage == ProductionStage.COLOR_MAPPING
             || stage == ProductionStage.PLATE_PREPARATION
@@ -159,16 +167,16 @@ public class WorkflowService {
           422, "ARTIFACT_MISSING", "이번 모델링 작업의 필수 파일을 등록해 주세요: " + String.join(", ", missing));
   }
 
-  private void version(GoodsSurveyFulfillment o, Map<String, Object> b) {
+  void version(GoodsSurveyFulfillment o, Map<String, Object> b) {
     if (o.getVersion() != number(b, "version")) throw conflict(view(o));
   }
 
-  private void touch(GoodsSurveyFulfillment o) {
+  void touch(GoodsSurveyFulfillment o) {
     o.touchWorkflow(clock.instant());
     orders.saveAndFlush(o);
   }
 
-  private List<String> codes(String number) {
+  List<String> codes(String number) {
     return issues.findByOrderNumber(number).stream().map(WorkflowIssue::getCode).toList();
   }
 
@@ -189,7 +197,7 @@ public class WorkflowService {
         >= 3;
   }
 
-  private void audit(String resource, String action, String before, String after, String reason) {
+  void audit(String resource, String action, String before, String after, String reason) {
     audits.save(
         WorkflowAudit.of(
             resource, access.current().getId(), action, before, after, reason, clock.instant()));
@@ -199,7 +207,7 @@ public class WorkflowService {
     return settings.findById(1L).orElseGet(() -> settings.saveAndFlush(new WorkflowSettings()));
   }
 
-  private Map<String, Object> command(
+  Map<String, Object> command(
       String resource, String key, Map<String, Object> body, Supplier<Map<String, Object>> action) {
     // Five-person operations: account-row lock orders all staff mutations, including duplicate
     // keys.
@@ -478,7 +486,7 @@ public class WorkflowService {
     return view(order(number));
   }
 
-  private Map<String, Object> view(GoodsSurveyFulfillment o) {
+  Map<String, Object> view(GoodsSurveyFulfillment o) {
     var actor = access.current();
     var permissions = access.effective(actor);
     var history = tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber());
@@ -535,6 +543,16 @@ public class WorkflowService {
         actions.add("REQUEST_MODEL_CHANGES");
       }
     }
+    var batchItem =
+        printBatchItems.findByOrderNumberOrderByIdDesc(o.getOrderNumber()).stream()
+            .findFirst()
+            .orElse(null);
+    var batch =
+        batchItem == null ? null : printBatches.findById(batchItem.getBatchId()).orElse(null);
+    if (batch != null
+        && (batch.getStatus().equals("DRAFT")
+            || t != null && t.getStage() == ProductionStage.PRINT_QUEUE))
+      actions.remove("ASSIGN_TASK");
     var assignee =
         t == null || t.getAssigneeId() == null
             ? null
@@ -641,6 +659,10 @@ public class WorkflowService {
                 .map(this::mappingView)
                 .toList()
             : List.of(),
+        "printBatch",
+        permissions.contains(MANAGE_PRINT_BATCH) && batch != null
+            ? map("id", batch.getId(), "status", batch.getStatus())
+            : null,
         "blockingIssues",
         block,
         "allowedActions",
@@ -914,6 +936,9 @@ public class WorkflowService {
           version(o, b);
           var t = currentTask(number);
           if (t == null || !active(o) || !paid(o)) throw bad("배정할 활성 작업이 없습니다.");
+          if (printBatchItems.findByPlateTaskId(t.getId()).isPresent()
+              || t.getStage() == ProductionStage.PRINT_QUEUE)
+            throw bad("플레이트에 연결된 작업입니다. 플레이트 담당자를 변경하거나 임시 구성을 취소한 뒤 배정해 주세요.");
           Long target = id(b, "assigneeId");
           WorkRole role = workRole(t.getStage());
           if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
@@ -933,7 +958,15 @@ public class WorkflowService {
   public Map<String, Object> defaults() {
     access.require(MANAGE_OPERATION_SETTINGS);
     var c = config();
-    return map("modeling", c.getModeling(), "review", c.getReview(), "version", c.getVersion());
+    return map(
+        "modeling",
+        c.getModeling(),
+        "review",
+        c.getReview(),
+        "printing",
+        c.getPrinting(),
+        "version",
+        c.getVersion());
   }
 
   public Map<String, Object> setDefaults(String key, Map<String, Object> b) {
@@ -947,13 +980,16 @@ public class WorkflowService {
           var c = config();
           if (c.getVersion() != number(b, "version")) throw conflict(defaults());
           Long m = id(b, "modeling"), r = id(b, "review");
+          Long p = b.containsKey("printing") ? id(b, "printing") : c.getPrinting();
           if (m != null && access.eligible(m, WorkRole.MODELING) == null
-              || r != null && access.eligible(r, WorkRole.DESIGN_QC) == null)
+              || r != null && access.eligible(r, WorkRole.DESIGN_QC) == null
+              || p != null && access.eligible(p, WorkRole.PRINT_FINISHING) == null)
             throw bad("역할에 맞는 활성 담당자를 선택해 주세요.");
-          String before = c.getModeling() + "/" + c.getReview();
+          String before = c.getModeling() + "/" + c.getReview() + "/" + c.getPrinting();
           c.change(m, r);
+          c.changePrinting(p);
           settings.saveAndFlush(c);
-          audit("settings", "DEFAULT_ASSIGNEES", before, m + "/" + r, null);
+          audit("settings", "DEFAULT_ASSIGNEES", before, m + "/" + r + "/" + p, null);
           return defaults();
         });
   }

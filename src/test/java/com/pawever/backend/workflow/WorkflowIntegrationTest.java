@@ -37,6 +37,399 @@ class WorkflowIntegrationTest {
   String owner, modeler, stranger, number;
 
   @Test
+  void plateConfirmsTwoOrdersWithOneFileAndHandsOffExactlyOnce() throws Exception {
+    var first = readyForPlate();
+    String designerToken = stranger;
+    Long designer = reviewerId;
+    setup();
+    var second = readyForPlate();
+    second =
+        send(
+            owner,
+            "/api/admin/orders/" + number + "/workflow/assign",
+            jsonBody(Map.of("version", second.get("version").asLong(), "assigneeId", designer)),
+            UUID.randomUUID().toString());
+    stranger = designerToken;
+    reviewerId = designer;
+    var plate = createPlate(List.of(first, second));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    expectPlateStatus(path + "/confirm", confirmation(plate), 422);
+    plate = uploadPlate(plate);
+    String body = confirmation(plate), key = UUID.randomUUID().toString();
+    var done = send(stranger, path + "/confirm", body, key);
+    org.assertj.core.api.Assertions.assertThat(send(stranger, path + "/confirm", body, key))
+        .isEqualTo(done);
+    org.assertj.core.api.Assertions.assertThat(done.get("status").asText()).isEqualTo("CONFIRMED");
+    for (var row : done.get("orders")) {
+      org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+          .isEqualTo("PRINT_QUEUE");
+      org.assertj.core.api.Assertions.assertThat(row.get("assignee").get("id").asLong())
+          .isEqualTo(plate.get("printingAssigneeId").asLong());
+      org.assertj.core.api.Assertions.assertThat(
+              tasks.findByOrderNumberOrderByIdAsc(row.get("orderNumber").asText()).stream()
+                  .filter(t -> t.getStage() == ProductionStage.PRINT_QUEUE)
+                  .count())
+          .isEqualTo(1);
+    }
+    mvc.perform(get(path).header("Authorization", "Bearer " + printerToken))
+        .andExpect(status().isOk());
+    org.mockito.Mockito.when(
+            storage.presignDownload(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+        .thenReturn(
+            new GoodsSurveyPhotoStorage.PresignedDownload(
+                "https://storage.example.test/plate.3mf", Instant.now().plusSeconds(300)));
+    mvc.perform(
+            post(path
+                    + "/artifacts/"
+                    + done.get("artifacts").get(0).get("id").asText()
+                    + "/download-link")
+                .header("Authorization", "Bearer " + printerToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"));
+  }
+
+  @Test
+  void plateLayoutChangeInvalidatesFileAndCancellationReleasesOrder() throws Exception {
+    var plate = uploadPlate(createPlate(List.of(readyForPlate())));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    var body = plateConfig(plate.get("orders"), plate.get("printingAssigneeId").asLong());
+    body.put("version", plate.get("version").asLong());
+    body.put("printerName", "다른 프린터");
+    plate = send(stranger, path, jsonBody(body), UUID.randomUUID().toString());
+    expectPlateStatus(path + "/confirm", confirmation(plate), 422);
+    org.assertj.core.api.Assertions.assertThat(
+            plate.get("artifacts").get(0).get("currentLayout").asBoolean())
+        .isFalse();
+    var row = plate.get("orders").get(0);
+    mvc.perform(
+            post("/api/admin/orders/" + number + "/workflow/assign")
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(
+                    jsonBody(
+                        Map.of("version", row.get("version").asLong(), "assigneeId", reviewerId))))
+        .andExpect(status().isBadRequest());
+    send(stranger, path + "/cancel", versionBody(plate), UUID.randomUUID().toString());
+    var available = readJson(stranger, "/api/production/print-batches/candidates");
+    var restored =
+        java.util.stream.StreamSupport.stream(available.spliterator(), false)
+            .filter(r -> r.get("orderNumber").asText().equals(number))
+            .findFirst()
+            .orElseThrow();
+    createPlate(List.of(restored));
+  }
+
+  @Test
+  void plateRejectsMissingSlotsRevokedPermissionAndChangedOrderAtomically() throws Exception {
+    var plate = uploadPlate(createPlate(List.of(readyForPlate())));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    var body = plateConfig(plate.get("orders"), plate.get("printingAssigneeId").asLong());
+    body.put("version", plate.get("version").asLong());
+    body.put("slots", List.of());
+    var draft = send(stranger, path, jsonBody(body), UUID.randomUUID().toString());
+    expectPlateStatus(path + "/confirm", confirmation(draft), 400);
+    overrides.saveAndFlush(
+        StaffPermissionOverride.of(reviewerId, PermissionKey.VIEW_FILAMENT, false, null, "권한 회수"));
+    mvc.perform(get(path).header("Authorization", "Bearer " + stranger))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            post(path + "/confirm")
+                .header("Authorization", "Bearer " + stranger)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(confirmation(draft)))
+        .andExpect(status().isForbidden());
+    // Administrative cancellation must recover reservations even when the creator lost permission.
+    send(owner, path + "/cancel", versionBody(draft), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(
+            orders.findByOrderNumber(number).orElseThrow().getProductionStage())
+        .isEqualTo(ProductionStage.PLATE_PREPARATION);
+  }
+
+  @Test
+  void plateRejectsCanceledMemberWithoutAdvancingOtherOrders() throws Exception {
+    var first = readyForPlate();
+    String original = stranger;
+    Long designer = reviewerId;
+    setup();
+    var second = readyForPlate();
+    second =
+        send(
+            owner,
+            "/api/admin/orders/" + number + "/workflow/assign",
+            jsonBody(Map.of("version", second.get("version").asLong(), "assigneeId", designer)),
+            UUID.randomUUID().toString());
+    stranger = original;
+    reviewerId = designer;
+    var plate = uploadPlate(createPlate(List.of(first, second)));
+    var canceled = orders.findByOrderNumber(number).orElseThrow();
+    canceled.cancel(GoodsOrderStatus.CANCELED, "테스트 취소");
+    orders.saveAndFlush(canceled);
+    expectPlateStatus(
+        "/api/production/print-batches/" + plate.get("id") + "/confirm", confirmation(plate), 409);
+    org.assertj.core.api.Assertions.assertThat(
+            orders
+                .findByOrderNumber(first.get("orderNumber").asText())
+                .orElseThrow()
+                .getProductionStage())
+        .isEqualTo(ProductionStage.PLATE_PREPARATION);
+  }
+
+  @Test
+  void plateReservationIsExclusiveAndForeignWorkersCannotRead() throws Exception {
+    var row = readyForPlate();
+    var plate = createPlate(List.of(row));
+    expectPlateStatus(
+        "/api/production/print-batches",
+        jsonBody(plateConfig(List.of(row), plate.get("printingAssigneeId").asLong())),
+        409);
+    mvc.perform(get("/api/production/print-batches").header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isForbidden());
+    String other = account(AdminRole.PRODUCTION, Set.of(WorkRole.DESIGN_QC));
+    mvc.perform(
+            get("/api/production/print-batches/" + plate.get("id"))
+                .header("Authorization", "Bearer " + other))
+        .andExpect(status().isNotFound());
+    expectPlateStatus(
+        "/api/production/print-batches/" + plate.get("id") + "/artifacts/upload-requests",
+        jsonBody(
+            Map.of(
+                "version", plate.get("version").asLong(), "fileName", "../plate.exe", "size", 10)),
+        400);
+  }
+
+  String printerToken;
+
+  @Test
+  void plateConcurrentConfirmCreatesOnlyOneTaskPerOrder() throws Exception {
+    var plate = uploadPlate(createPlate(List.of(readyForPlate())));
+    String path = "/api/production/print-batches/" + plate.get("id") + "/confirm",
+        body = confirmation(plate);
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var gate = new java.util.concurrent.CountDownLatch(1);
+      var results = new ArrayList<java.util.concurrent.Future<Integer>>();
+      for (int i = 0; i < 2; i++)
+        results.add(
+            pool.submit(
+                () -> {
+                  gate.await();
+                  return mvc.perform(
+                          post(path)
+                              .header("Authorization", "Bearer " + stranger)
+                              .header("Idempotency-Key", UUID.randomUUID().toString())
+                              .contentType("application/json")
+                              .content(body))
+                      .andReturn()
+                      .getResponse()
+                      .getStatus();
+                }));
+      gate.countDown();
+      var statuses = new ArrayList<Integer>();
+      for (var result : results)
+        statuses.add(result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+      org.assertj.core.api.Assertions.assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+    } finally {
+      pool.shutdownNow();
+    }
+    org.assertj.core.api.Assertions.assertThat(
+            tasks.findByOrderNumberOrderByIdAsc(number).stream()
+                .filter(t -> t.getStage() == ProductionStage.PRINT_QUEUE)
+                .count())
+        .isEqualTo(1);
+  }
+
+  @Test
+  void plateRejectsWrongFileMetadataAndTransfersWholeBatchToReplacementWorker() throws Exception {
+    var plate = createPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    org.mockito.Mockito.when(
+            storage.presignUpload(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+        .thenReturn(
+            new GoodsSurveyPhotoStorage.PresignedUpload(
+                "https://storage.example.test/put", Map.of(), Instant.now().plusSeconds(600)));
+    var request =
+        send(
+            stranger,
+            path + "/artifacts/upload-requests",
+            jsonBody(
+                Map.of(
+                    "version", plate.get("version").asLong(), "fileName", "plate.3mf", "size", 10)),
+            UUID.randomUUID().toString());
+    org.mockito.Mockito.when(storage.head(org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(
+            new GoodsSurveyPhotoStorage.StoredObject(
+                9, "application/octet-stream", new byte[] {80, 75, 3, 4}));
+    expectPlateStatus(
+        path + "/artifacts/" + request.get("artifactId").asText() + "/confirm",
+        versionBody(request),
+        400);
+    plate = readJson(stranger, path);
+    plate = uploadPlate(plate);
+    plate = send(stranger, path + "/confirm", confirmation(plate), UUID.randomUUID().toString());
+    String replacement = account(AdminRole.PRODUCTION, Set.of(WorkRole.PRINT_FINISHING));
+    Long replacementId = readJson(replacement, "/api/admin/me").get("id").asLong();
+    var input = plateConfig(plate.get("orders"), replacementId);
+    input.put("version", plate.get("version").asLong());
+    plate = send(owner, path + "/assign", jsonBody(input), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(
+            plate.get("orders").get(0).get("assignee").get("id").asLong())
+        .isEqualTo(replacementId);
+    readJson(replacement, path);
+    mvc.perform(get(path).header("Authorization", "Bearer " + printerToken))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void printingDefaultIsOptionalAndOlderSettingsClientsPreserveIt() throws Exception {
+    String worker = account(AdminRole.PRODUCTION, Set.of(WorkRole.PRINT_FINISHING));
+    Long workerId = readJson(worker, "/api/admin/me").get("id").asLong();
+    var defaults = readJson(owner, "/api/admin/workflow/default-assignees");
+    var payload = new LinkedHashMap<String, Object>();
+    payload.put("version", defaults.get("version").asLong());
+    payload.put("modeling", modelerId);
+    payload.put("review", reviewerId);
+    payload.put("printing", workerId);
+    mvc.perform(
+            patch("/api/admin/workflow/default-assignees")
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(jsonBody(payload)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.printing").value(workerId));
+    defaults = readJson(owner, "/api/admin/workflow/default-assignees");
+    payload.remove("printing");
+    payload.put("version", defaults.get("version").asLong());
+    mvc.perform(
+            patch("/api/admin/workflow/default-assignees")
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(jsonBody(payload)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.printing").value(workerId));
+  }
+
+  com.fasterxml.jackson.databind.JsonNode readyForPlate() throws Exception {
+    var row = readyForMapping();
+    var f = createFilament();
+    return send(
+        stranger,
+        "/api/production/tasks/" + row.get("taskId") + "/filament-mappings",
+        mappingBody(row, f, true),
+        UUID.randomUUID().toString());
+  }
+
+  String jsonBody(Object value) throws Exception {
+    return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value);
+  }
+
+  com.fasterxml.jackson.databind.JsonNode readJson(String token, String path) throws Exception {
+    var result =
+        mvc.perform(get(path).header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn();
+    return new com.fasterxml.jackson.databind.ObjectMapper()
+        .readTree(result.getResponse().getContentAsString())
+        .get("data");
+  }
+
+  Map<String, Object> plateConfig(
+      Iterable<com.fasterxml.jackson.databind.JsonNode> rows, Long printer) {
+    var selected = new ArrayList<Map<String, Object>>();
+    var spools = new LinkedHashSet<Long>();
+    for (var row : rows) {
+      selected.add(
+          Map.of(
+              "orderNumber",
+              row.get("orderNumber").asText(),
+              "version",
+              row.get("version").asLong()));
+      for (var mapping : row.get("filamentMappings"))
+        spools.add(mapping.get("filamentId").asLong());
+    }
+    var slots = new ArrayList<Map<String, Object>>();
+    for (Long spool : spools)
+      slots.add(Map.of("slotLabel", "AMS-" + (slots.size() + 1), "filamentId", spool));
+    var body = new LinkedHashMap<String, Object>();
+    body.put("orders", selected);
+    body.put("printerName", "테스트 프린터");
+    body.put("slots", slots);
+    body.put("printingAssigneeId", printer);
+    return body;
+  }
+
+  com.fasterxml.jackson.databind.JsonNode createPlate(
+      List<com.fasterxml.jackson.databind.JsonNode> rows) throws Exception {
+    printerToken = account(AdminRole.PRODUCTION, Set.of(WorkRole.PRINT_FINISHING));
+    Long printer = readJson(printerToken, "/api/admin/me").get("id").asLong();
+    return send(
+        stranger,
+        "/api/production/print-batches",
+        jsonBody(plateConfig(rows, printer)),
+        UUID.randomUUID().toString());
+  }
+
+  String confirmation(com.fasterxml.jackson.databind.JsonNode plate) throws Exception {
+    var body = plateConfig(plate.get("orders"), plate.get("printingAssigneeId").asLong());
+    body.put("version", plate.get("version").asLong());
+    body.put("layoutChecked", true);
+    return jsonBody(body);
+  }
+
+  com.fasterxml.jackson.databind.JsonNode uploadPlate(com.fasterxml.jackson.databind.JsonNode plate)
+      throws Exception {
+    org.mockito.Mockito.when(
+            storage.presignUpload(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+        .thenReturn(
+            new GoodsSurveyPhotoStorage.PresignedUpload(
+                "https://storage.example.test/put", Map.of(), Instant.now().plusSeconds(600)));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    var pending =
+        send(
+            stranger,
+            path + "/artifacts/upload-requests",
+            jsonBody(
+                Map.of(
+                    "version", plate.get("version").asLong(), "fileName", "plate.3mf", "size", 10)),
+            UUID.randomUUID().toString());
+    org.mockito.Mockito.when(storage.head(org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(
+            new GoodsSurveyPhotoStorage.StoredObject(
+                10, "application/octet-stream", new byte[] {80, 75, 3, 4, 0, 0, 0, 0}));
+    return send(
+        stranger,
+        path + "/artifacts/" + pending.get("artifactId").asText() + "/confirm",
+        versionBody(pending),
+        UUID.randomUUID().toString());
+  }
+
+  void expectPlateStatus(String path, String body, int status) throws Exception {
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + stranger)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(body))
+        .andExpect(status().is(status));
+  }
+
+  @Test
   void filamentMappingRetainsAllPartsAndHonorsPermissionRevocation() throws Exception {
     var row = readyForMapping();
     var f = createFilament();

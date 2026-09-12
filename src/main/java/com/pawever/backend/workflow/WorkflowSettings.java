@@ -12,6 +12,11 @@ public class WorkflowSettings {
   @Version private long version;
   private Long modeling;
   private Long review;
+  private Long printing;
+
+  public void changePrinting(Long printing) {
+    this.printing = printing;
+  }
 
   public void change(Long modeling, Long review) {
     this.modeling = modeling;
