@@ -15,10 +15,12 @@ public class WorkflowArtifactRetention {
   private final GoodsSurveyFulfillmentRepository orders;
   private final GoodsSurveyPhotoStorage storage;
   private final WorkflowCommandRepository commands;
+  private final ShipmentExportService shipmentExports;
   private final jakarta.persistence.EntityManager entityManager;
 
   @Transactional
   public int purge(Instant now) {
+    shipmentExports.purge(now);
     var candidates = artifacts.purgeCandidates(now, PageRequest.of(0, 100));
     for (var artifact : candidates) {
       // Synchronize with assignment and completion before deleting the object.

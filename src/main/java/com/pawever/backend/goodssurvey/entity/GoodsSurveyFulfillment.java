@@ -400,6 +400,11 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         this.trackingNumber = number;
     }
 
+    public void completePackingForPostOffice() {
+        productionStage = com.pawever.backend.workflow.ProductionStage.COMPLETE;
+        lifecycleShipmentStatus = "AWAITING_POST_OFFICE_RESULT";
+    }
+
     public void markDeliveryCompleted(Instant completedAt, int retentionDays) {
         this.deliveryCompletedAt = completedAt;
         this.deleteAfter = completedAt.plus(retentionDays, ChronoUnit.DAYS);

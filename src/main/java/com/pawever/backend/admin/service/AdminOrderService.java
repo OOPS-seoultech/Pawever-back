@@ -688,6 +688,8 @@ public class AdminOrderService {
         requireAdmin(principal);
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
 
+        requireLegacyShipment(fulfillment);
+
         GoodsOrderStatus before = fulfillment.getStatus();
         fulfillment.registerTracking(company, number);
         fulfillment.changeStatus(GoodsOrderStatus.SHIPPED);
@@ -726,6 +728,8 @@ public class AdminOrderService {
     public void completePickup(AdminPrincipal principal, String orderNumber) {
         requireAdmin(principal);
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
+
+        requireLegacyShipment(fulfillment);
 
         if (fulfillment.getDeliveryMethod() != GoodsDeliveryMethod.PICKUP) {
             // 부쳐야 하는 물건이다. 송장 없이 끝내면 고객이 조회할 번호가 없다.
@@ -816,6 +820,13 @@ public class AdminOrderService {
             throw new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND);
         }
         return fulfillment;
+    }
+
+    private void requireLegacyShipment(GoodsSurveyFulfillment fulfillment) {
+        if (fulfillment.getProductionStage() != null) {
+            throw new com.pawever.backend.workflow.WorkflowException(409, "WORKFLOW_ACTION_REQUIRED",
+                    "제작 관리에 들어온 주문은 포장·배송 절차를 이용해 주세요.");
+        }
     }
 
     private void requireAdmin(AdminPrincipal principal) {

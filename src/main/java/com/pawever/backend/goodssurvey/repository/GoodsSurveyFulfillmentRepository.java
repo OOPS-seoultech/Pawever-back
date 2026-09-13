@@ -13,6 +13,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSurveyFulfillment, Long> {
+    List<GoodsSurveyFulfillment> findByProductionStageAndDeliveryMethodOrderByIdAsc(
+        com.pawever.backend.workflow.ProductionStage stage,
+        com.pawever.backend.goodssurvey.entity.GoodsDeliveryMethod method);
 
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("select f from GoodsSurveyFulfillment f where f.orderNumber=:number")
