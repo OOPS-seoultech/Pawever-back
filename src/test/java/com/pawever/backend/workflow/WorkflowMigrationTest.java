@@ -185,7 +185,7 @@ class WorkflowMigrationTest {
               + " order_filament_mappings(order_number,task_id,modeling_attempt,part_name,part_key,filament_id,spool_id,color_name,material,finish,saved_by,saved_at,completed_at)"
               + " VALUES('PE-MIG-2',7003,1,'body','body',901,'MIG-SPOOL','cream','PLA','matte',12,NOW(),NOW())");
     }
-    var plateVersion = Flyway.configure().dataSource(url, user, password).load();
+    var plateVersion = Flyway.configure().dataSource(url, user, password).target("20").load();
     assertThat(plateVersion.migrate().migrationsExecuted).isEqualTo(1);
     assertThat(plateVersion.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
@@ -204,6 +204,45 @@ class WorkflowMigrationTest {
       for (int i = 4; i <= 6; i++) assertThat(rows.getLong(i)).isEqualTo(1);
       assertThat(rows.getLong(7)).isEqualTo(2);
       assertThat(rows.getLong(8)).isZero();
+    }
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      s.execute(
+          "INSERT INTO"
+              + " print_batches(id,version,creator_id,status,printer_name,printing_assignee_id,layout_revision,layout_fingerprint,updated_at,confirmed_at,artifact_id)"
+              + " VALUES(801,4,12,'CONFIRMED','existing-printer',13,2,'existing-fingerprint',NOW(),NOW(),'old-file')");
+      s.execute(
+          "INSERT INTO print_batch_items(batch_id,order_number,plate_task_id,mapping_task_id)"
+              + " VALUES(801,'PE-MIG-2',7004,7003)");
+      s.execute(
+          "INSERT INTO print_batch_slots(batch_id,slot_label,filament_id) VALUES(801,'AMS-1',901)");
+      s.execute(
+          "INSERT INTO"
+              + " print_batch_artifacts(id,batch_id,uploader_id,layout_revision,file_name,object_key,expected_size,expires_at,confirmed)"
+              + " VALUES('old-file',801,12,2,'old.3mf','production/print-batches/801/old.3mf',100,DATE_ADD(NOW(),INTERVAL"
+              + " 1 HOUR),1)");
+    }
+    var finishingVersion = Flyway.configure().dataSource(url, user, password).load();
+    assertThat(finishingVersion.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(finishingVersion.migrate().migrationsExecuted).isZero();
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement();
+        var r =
+            s.executeQuery(
+                "SELECT (SELECT COUNT(*) FROM print_batches WHERE id=801 AND version=4 AND"
+                    + " status='CONFIRMED' AND artifact_id='old-file' AND started_at IS NULL AND"
+                    + " finished_at IS NULL),(SELECT COUNT(*) FROM print_batch_artifacts WHERE"
+                    + " id='old-file' AND confirmed=1),(SELECT COUNT(*) FROM print_batch_items"
+                    + " WHERE batch_id=801),(SELECT COUNT(*) FROM production_compensation_settings"
+                    + " WHERE id=1 AND enabled=0),(SELECT COUNT(*) FROM"
+                    + " production_paid_workers),(SELECT COUNT(*) FROM"
+                    + " production_settlements),(SELECT COUNT(*) FROM print_run_results),(SELECT"
+                    + " COUNT(*) FROM print_batch_observations),(SELECT COUNT(*) FROM"
+                    + " finishing_records),(SELECT COUNT(*) FROM goods_survey_fulfillments)")) {
+      r.next();
+      for (int i = 1; i <= 4; i++) assertThat(r.getLong(i)).isEqualTo(1);
+      for (int i = 5; i <= 9; i++) assertThat(r.getLong(i)).isZero();
+      assertThat(r.getLong(10)).isEqualTo(10);
     }
   }
 }

@@ -37,6 +37,541 @@ class WorkflowIntegrationTest {
   String owner, modeler, stranger, number;
 
   @Test
+  void adminCanReleaseConfirmedPlateForNewConfigurationBeforePrinting() throws Exception {
+    var plate = confirmedPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    var input =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readValue(confirmation(plate), java.util.LinkedHashMap.class);
+    input.put("note", "프린터 변경을 위한 재구성");
+    expectAs(printerToken, path + "/cancel-queued", jsonBody(input), 403);
+    send(owner, path + "/cancel-queued", jsonBody(input), UUID.randomUUID().toString());
+    var row = readJson(stranger, "/api/admin/orders/" + number + "/workflow");
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("PLATE_PREPARATION");
+    org.assertj.core.api.Assertions.assertThat(row.get("taskAttempt").asInt()).isEqualTo(2);
+    var again = confirmedPlate(List.of(row));
+    org.assertj.core.api.Assertions.assertThat(again.get("status").asText()).isEqualTo("CONFIRMED");
+  }
+
+  @Test
+  void finishingImmediatelyHonorsRevokedFilePermission() throws Exception {
+    var row = printedPlate().get("orders").get(0);
+    Long id = readJson(printerToken, "/api/admin/me").get("id").asLong();
+    overrides.saveAndFlush(
+        StaffPermissionOverride.of(id, PermissionKey.VIEW_PRODUCTION_FILES, false, null, "작업 회수"));
+    expectAs(
+        printerToken,
+        "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+        postBody(row),
+        403);
+  }
+
+  @Test
+  void compensationTogglePreservesSelectedPaidWorkers() throws Exception {
+    var worker = account(AdminRole.PRODUCTION, Set.of(WorkRole.PRINT_FINISHING));
+    Long id = readJson(worker, "/api/admin/me").get("id").asLong();
+    var config = readJson(owner, "/api/admin/production-compensation");
+    config =
+        send(
+            owner,
+            "/api/admin/production-compensation",
+            jsonBody(
+                Map.of(
+                    "version",
+                    config.get("version").asLong(),
+                    "enabled",
+                    true,
+                    "paidWorkerIds",
+                    List.of(id))),
+            UUID.randomUUID().toString());
+    config =
+        send(
+            owner,
+            "/api/admin/production-compensation",
+            jsonBody(
+                Map.of(
+                    "version",
+                    config.get("version").asLong(),
+                    "enabled",
+                    false,
+                    "paidWorkerIds",
+                    List.of(id))),
+            UUID.randomUUID().toString());
+    config = readJson(owner, "/api/admin/production-compensation");
+    org.assertj.core.api.Assertions.assertThat(config.get("paidWorkerIds").size()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(config.get("paidWorkerIds").get(0).asLong())
+        .isEqualTo(id);
+  }
+
+  @Test
+  void printingCanTransferInProgressAndRevokedWorkerCannotFinish() throws Exception {
+    var plate = confirmedPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    plate = send(printerToken, path + "/start", confirmation(plate), UUID.randomUUID().toString());
+    String oldWorker = printerToken;
+    String replacement = account(AdminRole.PRODUCTION, Set.of(WorkRole.PRINT_FINISHING));
+    Long replacementId = readJson(replacement, "/api/admin/me").get("id").asLong();
+    var body = plateConfig(plate.get("orders"), replacementId);
+    body.put("version", plate.get("version").asLong());
+    plate = send(owner, path + "/assign", jsonBody(body), UUID.randomUUID().toString());
+    expectAs(oldWorker, path + "/finish", finishBody(plate, null), 403);
+    overrides.saveAndFlush(
+        StaffPermissionOverride.of(
+            replacementId, PermissionKey.MANAGE_PRINT_BATCH, false, null, "검사"));
+    expectAs(replacement, path + "/finish", finishBody(plate, null), 403);
+  }
+
+  @Test
+  void canceledOrderDuringPrintIsRecordedWithoutProductionHandoff() throws Exception {
+    var plate = confirmedPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    plate = send(printerToken, path + "/start", confirmation(plate), UUID.randomUUID().toString());
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    o.changeStatus(GoodsOrderStatus.CANCELED);
+    orders.saveAndFlush(o);
+    expectAs(printerToken, path + "/finish", finishBody(plate, null), 409);
+    plate = readJson(printerToken, path);
+    plate =
+        send(printerToken, path + "/finish", finishBody(plate, null), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(plate.get("results").get(0).get("result").asText())
+        .isEqualTo("SKIPPED");
+    org.assertj.core.api.Assertions.assertThat(
+            plate.get("orders").get(0).get("orderStatus").asText())
+        .isEqualTo("CANCELED");
+    org.assertj.core.api.Assertions.assertThat(
+            tasks.findByOrderNumberOrderByIdAsc(number).stream()
+                .filter(t -> t.getStage() == ProductionStage.POST_PROCESSING)
+                .count())
+        .isZero();
+  }
+
+  @Test
+  void disabledOrUnpaidWorkersNeverAccrueSettlement() throws Exception {
+    for (boolean enabled : List.of(false, true)) {
+      var config = readJson(owner, "/api/admin/production-compensation");
+      send(
+          owner,
+          "/api/admin/production-compensation",
+          jsonBody(
+              Map.of(
+                  "version",
+                  config.get("version").asLong(),
+                  "enabled",
+                  enabled,
+                  "paidWorkerIds",
+                  List.of())),
+          UUID.randomUUID().toString());
+      var row = printedPlate().get("orders").get(0);
+      row =
+          send(
+              printerToken,
+              "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+              postBody(row),
+              UUID.randomUUID().toString());
+      row =
+          send(
+              printerToken,
+              "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+              qcBody(row),
+              UUID.randomUUID().toString());
+      var ledger = readJson(owner, "/api/admin/production-settlements");
+      for (var entry : ledger)
+        org.assertj.core.api.Assertions.assertThat(entry.get("orderNumber").asText())
+            .isNotEqualTo(row.get("orderNumber").asText());
+      setup();
+    }
+  }
+
+  @Test
+  void concurrentQcRequestsRecordOneSettlementAndOnePackingTask() throws Exception {
+    var plate = printedPlate();
+    var row = plate.get("orders").get(0);
+    var config = readJson(owner, "/api/admin/production-compensation");
+    send(
+        owner,
+        "/api/admin/production-compensation",
+        jsonBody(
+            Map.of(
+                "version",
+                config.get("version").asLong(),
+                "enabled",
+                true,
+                "paidWorkerIds",
+                List.of(plate.get("printingAssigneeId").asLong()))),
+        UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    String path = "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+        body = qcBody(row),
+        worker = printerToken;
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+    var gate = new java.util.concurrent.CountDownLatch(1);
+    try {
+      java.util.concurrent.Callable<Integer> action =
+          () -> {
+            gate.await();
+            return mvc.perform(
+                    post(path)
+                        .header("Authorization", "Bearer " + worker)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType("application/json")
+                        .content(body))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+          };
+      var a = pool.submit(action);
+      var b = pool.submit(action);
+      gate.countDown();
+      org.assertj.core.api.Assertions.assertThat(
+              List.of(
+                  a.get(25, java.util.concurrent.TimeUnit.SECONDS),
+                  b.get(25, java.util.concurrent.TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder(200, 409);
+    } finally {
+      pool.shutdownNow();
+    }
+    org.assertj.core.api.Assertions.assertThat(
+            tasks.findByOrderNumberOrderByIdAsc(number).stream()
+                .filter(t -> t.getStage() == ProductionStage.PACKING)
+                .count())
+        .isEqualTo(1);
+    long count = 0;
+    for (var entry : readJson(owner, "/api/admin/production-settlements"))
+      if (entry.get("orderNumber").asText().equals(number)) count++;
+    org.assertj.core.api.Assertions.assertThat(count).isEqualTo(1);
+  }
+
+  @Test
+  void qcModelCorrectionUsesFreshAttemptAfterEarlierPrintFailure() throws Exception {
+    var plate = printedPlate();
+    var row = plate.get("orders").get(0);
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+            jsonBody(
+                Map.of(
+                    "version",
+                    row.get("version").asLong(),
+                    "decision",
+                    "FAILED",
+                    "reasonCode",
+                    "SHAPE",
+                    "reworkStage",
+                    "MODELING",
+                    "note",
+                    "귀 형태 수정")),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("MODELING_QUEUE");
+    org.assertj.core.api.Assertions.assertThat(row.get("taskAttempt").asInt()).isEqualTo(2);
+    row =
+        send(
+            modeler,
+            "/api/production/tasks/" + row.get("taskId") + "/start",
+            versionBody(row),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("MODELING");
+  }
+
+  @Test
+  void printRunSeparatesFailuresAndRetriesWithANewPlate() throws Exception {
+    var first = readyForPlate();
+    String designer = stranger;
+    Long designerId = reviewerId;
+    setup();
+    var second = readyForPlate();
+    second =
+        send(
+            owner,
+            "/api/admin/orders/" + number + "/workflow/assign",
+            jsonBody(Map.of("version", second.get("version").asLong(), "assigneeId", designerId)),
+            UUID.randomUUID().toString());
+    stranger = designer;
+    reviewerId = designerId;
+    var plate = confirmedPlate(List.of(first, second));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    String body = confirmation(plate), key = UUID.randomUUID().toString();
+    plate = send(printerToken, path + "/start", body, key);
+    org.assertj.core.api.Assertions.assertThat(send(printerToken, path + "/start", body, key))
+        .isEqualTo(plate);
+    org.assertj.core.api.Assertions.assertThat(plate.get("status").asText()).isEqualTo("PRINTING");
+    for (var row : plate.get("orders"))
+      org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+          .isEqualTo("PRINTING");
+    plate =
+        send(
+            printerToken,
+            path + "/observations",
+            jsonBody(
+                Map.of(
+                    "version",
+                    plate.get("version").asLong(),
+                    "note",
+                    "중간 확인",
+                    "purgeGrams",
+                    12.5,
+                    "issues",
+                    List.of(
+                        Map.of(
+                            "orderNumber", second.get("orderNumber").asText(), "note", "서포트 들뜸")))),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(plate.get("observations").size()).isEqualTo(1);
+    body = finishBody(plate, second.get("orderNumber").asText());
+    key = UUID.randomUUID().toString();
+    plate = send(printerToken, path + "/finish", body, key);
+    org.assertj.core.api.Assertions.assertThat(send(printerToken, path + "/finish", body, key))
+        .isEqualTo(plate);
+    org.assertj.core.api.Assertions.assertThat(plate.get("results").size()).isEqualTo(2);
+    var successful =
+        readJson(owner, "/api/admin/orders/" + first.get("orderNumber").asText() + "/workflow");
+    var retry =
+        readJson(stranger, "/api/admin/orders/" + second.get("orderNumber").asText() + "/workflow");
+    org.assertj.core.api.Assertions.assertThat(successful.get("productionStage").asText())
+        .isEqualTo("POST_PROCESSING");
+    org.assertj.core.api.Assertions.assertThat(retry.get("productionStage").asText())
+        .isEqualTo("PLATE_PREPARATION");
+    org.assertj.core.api.Assertions.assertThat(retry.get("taskAttempt").asInt()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(retry.get("printBatch").isNull()).isTrue();
+    var again = confirmedPlate(List.of(retry));
+    String againPath = "/api/production/print-batches/" + again.get("id");
+    again =
+        send(printerToken, againPath + "/start", confirmation(again), UUID.randomUUID().toString());
+    again =
+        send(
+            printerToken,
+            againPath + "/finish",
+            finishBody(again, null),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(
+            again.get("orders").get(0).get("productionStage").asText())
+        .isEqualTo("POST_PROCESSING");
+    org.assertj.core.api.Assertions.assertThat(
+            again.get("orders").get(0).get("blockingIssues").toString())
+        .doesNotContain("PRINT_FAILED");
+  }
+
+  @Test
+  void finishingRequiresChecksAndQcCreatesOneOptInSettlement() throws Exception {
+    var plate = printedPlate();
+    var row = plate.get("orders").get(0);
+    String taskPath = "/api/production/tasks/" + row.get("taskId");
+    expectAs(printerToken, taskPath + "/post-processing", versionBody(row), 400);
+    var config = readJson(owner, "/api/admin/production-compensation");
+    config =
+        send(
+            owner,
+            "/api/admin/production-compensation",
+            jsonBody(
+                Map.of(
+                    "version",
+                    config.get("version").asLong(),
+                    "enabled",
+                    false,
+                    "paidWorkerIds",
+                    List.of())),
+            UUID.randomUUID().toString());
+    send(
+        owner,
+        "/api/admin/production-compensation",
+        jsonBody(
+            Map.of(
+                "version",
+                config.get("version").asLong(),
+                "enabled",
+                true,
+                "paidWorkerIds",
+                List.of(plate.get("printingAssigneeId").asLong()))),
+        UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            taskPath + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText()).isEqualTo("QC");
+    taskPath = "/api/production/tasks/" + row.get("taskId") + "/quality-check";
+    expectAs(
+        printerToken,
+        taskPath,
+        jsonBody(
+            Map.of(
+                "version",
+                row.get("version").asLong(),
+                "decision",
+                "PASSED",
+                "checks",
+                List.of("SURFACE"))),
+        400);
+    String body = qcBody(row), key = UUID.randomUUID().toString();
+    row = send(printerToken, taskPath, body, key);
+    org.assertj.core.api.Assertions.assertThat(send(printerToken, taskPath, body, key))
+        .isEqualTo(row);
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("PACKING");
+    org.assertj.core.api.Assertions.assertThat(row.get("shipmentStatus").asText())
+        .isEqualTo("NOT_READY");
+    var ledger = readJson(owner, "/api/admin/production-settlements");
+    long count = 0;
+    for (var entry : ledger)
+      if (entry.get("orderNumber").asText().equals(row.get("orderNumber").asText())) {
+        count++;
+        org.assertj.core.api.Assertions.assertThat(entry.get("amountKrw").asInt()).isEqualTo(3000);
+      }
+    org.assertj.core.api.Assertions.assertThat(count).isEqualTo(1);
+    mvc.perform(
+            get("/api/admin/production-settlements")
+                .header("Authorization", "Bearer " + printerToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void qcFailureCreatesNewPostProcessingAttemptAndRetainsDecision() throws Exception {
+    var row = printedPlate().get("orders").get(0);
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+            jsonBody(
+                Map.of(
+                    "version",
+                    row.get("version").asLong(),
+                    "decision",
+                    "FAILED",
+                    "reasonCode",
+                    "FINISH_DEFECT",
+                    "reworkStage",
+                    "POST_PROCESSING",
+                    "note",
+                    "눈 표면 재마감")),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("POST_PROCESSING");
+    org.assertj.core.api.Assertions.assertThat(row.get("taskAttempt").asInt()).isEqualTo(2);
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+            qcBody(row),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("PACKING");
+    org.assertj.core.api.Assertions.assertThat(row.get("finishingHistory").size()).isEqualTo(4);
+    org.assertj.core.api.Assertions.assertThat(row.get("blockingIssues").toString())
+        .doesNotContain("QC_FAILED");
+  }
+
+  @Test
+  void printingRejectsForeignWorkersAndStaleBatchWithoutStartingOrders() throws Exception {
+    var plate = confirmedPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    expectAs(stranger, path + "/start", confirmation(plate), 403);
+    var stale = new com.fasterxml.jackson.databind.ObjectMapper().readTree(confirmation(plate));
+    ((com.fasterxml.jackson.databind.node.ObjectNode) stale).put("version", 0);
+    expectAs(printerToken, path + "/start", stale.toString(), 409);
+    var unchanged = readJson(printerToken, path);
+    org.assertj.core.api.Assertions.assertThat(unchanged.get("status").asText())
+        .isEqualTo("CONFIRMED");
+    plate = send(printerToken, path + "/start", confirmation(plate), UUID.randomUUID().toString());
+    expectAs(
+        printerToken,
+        path + "/finish",
+        jsonBody(Map.of("version", plate.get("version").asLong(), "orders", List.of())),
+        400);
+  }
+
+  com.fasterxml.jackson.databind.JsonNode confirmedPlate(
+      List<com.fasterxml.jackson.databind.JsonNode> rows) throws Exception {
+    var plate = uploadPlate(createPlate(rows));
+    return send(
+        stranger,
+        "/api/production/print-batches/" + plate.get("id") + "/confirm",
+        confirmation(plate),
+        UUID.randomUUID().toString());
+  }
+
+  com.fasterxml.jackson.databind.JsonNode printedPlate() throws Exception {
+    var plate = confirmedPlate(List.of(readyForPlate()));
+    String path = "/api/production/print-batches/" + plate.get("id");
+    plate = send(printerToken, path + "/start", confirmation(plate), UUID.randomUUID().toString());
+    return send(
+        printerToken, path + "/finish", finishBody(plate, null), UUID.randomUUID().toString());
+  }
+
+  String finishBody(com.fasterxml.jackson.databind.JsonNode plate, String failed) throws Exception {
+    var rows = new ArrayList<Map<String, Object>>();
+    for (var row : plate.get("orders"))
+      rows.add(
+          Map.of(
+              "orderNumber",
+              row.get("orderNumber").asText(),
+              "version",
+              row.get("version").asLong(),
+              "result",
+              row.get("orderNumber").asText().equals(failed) ? "FAILED" : "SUCCESS",
+              "note",
+              row.get("orderNumber").asText().equals(failed) ? "서포트 들뜸" : ""));
+    return jsonBody(Map.of("version", plate.get("version").asLong(), "orders", rows));
+  }
+
+  String postBody(com.fasterxml.jackson.databind.JsonNode row) throws Exception {
+    return jsonBody(
+        Map.of(
+            "version",
+            row.get("version").asLong(),
+            "checks",
+            List.of("SUPPORT_REMOVED", "SURFACE_CHECKED"),
+            "resinCuring",
+            "NOT_APPLICABLE"));
+  }
+
+  String qcBody(com.fasterxml.jackson.databind.JsonNode row) throws Exception {
+    return jsonBody(
+        Map.of(
+            "version",
+            row.get("version").asLong(),
+            "decision",
+            "PASSED",
+            "checks",
+            List.of("SHAPE_COLOR", "SURFACE", "EYES_NOSE")));
+  }
+
+  void expectAs(String token, String path, String body, int code) throws Exception {
+    mvc.perform(
+            post(path)
+                .header("Authorization", "Bearer " + token)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType("application/json")
+                .content(body))
+        .andExpect(status().is(code));
+  }
+
+  @Test
   void plateConfirmsTwoOrdersWithOneFileAndHandsOffExactlyOnce() throws Exception {
     var first = readyForPlate();
     String designerToken = stranger;
