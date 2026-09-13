@@ -36,6 +36,20 @@ public class PrintBatch {
   private Instant updatedAt;
 
   private Instant confirmedAt;
+  private Instant startedAt;
+  private Instant finishedAt;
+
+  public void start(Instant at) {
+    status = "PRINTING";
+    startedAt = at;
+    touch(at);
+  }
+
+  public void finish(Instant at) {
+    status = "FINISHED";
+    finishedAt = at;
+    touch(at);
+  }
 
   @Column(length = 36)
   private String artifactId;

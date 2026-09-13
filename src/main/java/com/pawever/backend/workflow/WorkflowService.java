@@ -29,6 +29,7 @@ public class WorkflowService {
   private final OrderFilamentMappingRepository filamentMappings;
   private final PrintBatchItemRepository printBatchItems;
   private final PrintBatchRepository printBatches;
+  private final FinishingRecordRepository finishingRecords;
   private final ProductionArtifactRepository artifacts;
   private final WorkflowIssueRepository issues;
   private final WorkflowCommandRepository commands;
@@ -133,12 +134,19 @@ public class WorkflowService {
         : WorkRole.MODELING;
   }
 
-  private List<String> actionableBlockers(ProductionTask t, List<String> codes) {
+  List<String> actionableBlockers(ProductionTask t, List<String> codes) {
     return codes.stream()
         .filter(
             code ->
-                !(code.equals("QC_FAILED")
-                    && t.getStage() == ProductionStage.MODELING
+                !(Set.of("QC_FAILED", "PRINT_FAILED").contains(code)
+                    && Set.of(
+                            ProductionStage.MODELING,
+                            ProductionStage.PLATE_PREPARATION,
+                            ProductionStage.PRINT_QUEUE,
+                            ProductionStage.PRINTING,
+                            ProductionStage.POST_PROCESSING,
+                            ProductionStage.QC)
+                        .contains(t.getStage())
                     && t.getAttempt() > 1))
         .toList();
   }
@@ -180,7 +188,7 @@ public class WorkflowService {
     return issues.findByOrderNumber(number).stream().map(WorkflowIssue::getCode).toList();
   }
 
-  private void issue(String number, String code, boolean present) {
+  void issue(String number, String code, boolean present) {
     var existing =
         issues.findByOrderNumber(number).stream().filter(i -> i.getCode().equals(code)).toList();
     if (present && existing.isEmpty()) issues.saveAndFlush(WorkflowIssue.of(number, code));
@@ -499,6 +507,7 @@ public class WorkflowService {
         t != null && t.getStage() == ProductionStage.MODELING ? t : submittedModeling(history, t);
     var block = new ArrayList<>(codes(o.getOrderNumber()));
     if (t != null
+        && t.getStage() != ProductionStage.PACKING
         && access.eligible(t.getAssigneeId(), workRole(t.getStage())) == null
         && !block.contains("UNASSIGNED")) block.add("UNASSIGNED");
     var actions = new ArrayList<String>();
@@ -543,6 +552,18 @@ public class WorkflowService {
         actions.add("REQUEST_MODEL_CHANGES");
       }
     }
+    if (active(o)
+        && paid(o)
+        && t != null
+        && Objects.equals(t.getAssigneeId(), actor.getId())
+        && access.eligible(actor.getId(), WorkRole.PRINT_FINISHING) != null
+        && permissions.contains(COMPLETE_POST_PROCESSING)
+        && actionableBlockers(t, block).isEmpty()) {
+      if (t.getStage() == ProductionStage.POST_PROCESSING) actions.add("COMPLETE_POST_PROCESSING");
+      if (t.getStage() == ProductionStage.QC) actions.add("COMPLETE_QUALITY_CHECK");
+    }
+    // Packaging is a later workflow; do not offer an assignment using a modeling role.
+    if (o.getProductionStage() == ProductionStage.PACKING) actions.remove("ASSIGN_TASK");
     var batchItem =
         printBatchItems.findByOrderNumberOrderByIdDesc(o.getOrderNumber()).stream()
             .findFirst()
@@ -550,9 +571,14 @@ public class WorkflowService {
     var batch =
         batchItem == null ? null : printBatches.findById(batchItem.getBatchId()).orElse(null);
     if (batch != null
+        && t != null
+        && t.getStage() == ProductionStage.PLATE_PREPARATION
+        && !batchItem.getPlateTaskId().equals(t.getId())) batch = null;
+    if (batch != null
         && (batch.getStatus().equals("DRAFT")
-            || t != null && t.getStage() == ProductionStage.PRINT_QUEUE))
-      actions.remove("ASSIGN_TASK");
+            || t != null
+                && Set.of(ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING)
+                    .contains(t.getStage()))) actions.remove("ASSIGN_TASK");
     var assignee =
         t == null || t.getAssigneeId() == null
             ? null
@@ -618,6 +644,37 @@ public class WorkflowService {
         t == null ? null : t.getAttempt(),
         "modelingTaskId",
         modeling == null ? null : modeling.getId(),
+        "finishingHistory",
+        permissions.contains(VIEW_PRODUCTION_FILES)
+            ? finishingRecords.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .map(
+                    r ->
+                        map(
+                            "id",
+                            r.getId(),
+                            "stage",
+                            r.getStage(),
+                            "attempt",
+                            r.getAttempt(),
+                            "decision",
+                            r.getDecision(),
+                            "checks",
+                            r.getChecks().isEmpty() ? List.of() : List.of(r.getChecks().split(",")),
+                            "note",
+                            r.getNote(),
+                            "reasonCode",
+                            r.getReasonCode(),
+                            "reworkStage",
+                            r.getReworkStage(),
+                            "actorName",
+                            accounts
+                                .findById(r.getActorId())
+                                .map(AdminAccount::getName)
+                                .orElse("이전 담당자"),
+                            "createdAt",
+                            r.getCreatedAt().toString()))
+                .toList()
+            : List.of(),
         "reviews",
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? reviews.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
@@ -897,13 +954,7 @@ public class WorkflowService {
             issue(o.getOrderNumber(), "QC_FAILED", false);
           } else {
             Long modeler = access.eligible(source.getAssigneeId(), WorkRole.MODELING);
-            int attempt =
-                history.stream()
-                        .filter(item -> item.getStage() == ProductionStage.MODELING)
-                        .mapToInt(ProductionTask::getAttempt)
-                        .max()
-                        .orElse(0)
-                    + 1;
+            int attempt = history.stream().mapToInt(ProductionTask::getAttempt).max().orElse(0) + 1;
             tasks.saveAndFlush(
                 ProductionTask.create(
                     o.getOrderNumber(), ProductionStage.MODELING, modeler, attempt));
@@ -935,9 +986,11 @@ public class WorkflowService {
           var o = locked(number);
           version(o, b);
           var t = currentTask(number);
-          if (t == null || !active(o) || !paid(o)) throw bad("배정할 활성 작업이 없습니다.");
+          if (t == null || t.getStage() == ProductionStage.PACKING || !active(o) || !paid(o))
+            throw bad("배정할 활성 작업이 없습니다.");
           if (printBatchItems.findByPlateTaskId(t.getId()).isPresent()
-              || t.getStage() == ProductionStage.PRINT_QUEUE)
+              || Set.of(ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING)
+                  .contains(t.getStage()))
             throw bad("플레이트에 연결된 작업입니다. 플레이트 담당자를 변경하거나 임시 구성을 취소한 뒤 배정해 주세요.");
           Long target = id(b, "assigneeId");
           WorkRole role = workRole(t.getStage());

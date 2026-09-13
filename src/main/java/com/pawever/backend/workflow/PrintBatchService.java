@@ -33,15 +33,17 @@ public class PrintBatchService {
   private final GoodsSurveyPhotoStorage storage;
   private final jakarta.persistence.EntityManager entityManager;
   private final Clock clock;
+  private final PrintRunResultRepository printResults;
+  private final PrintBatchObservationRepository observations;
   private final ObjectMapper json = new ObjectMapper();
 
-  private Map<String, Object> map(Object... pairs) {
+  Map<String, Object> map(Object... pairs) {
     var m = new LinkedHashMap<String, Object>();
     for (int i = 0; i < pairs.length; i += 2) m.put((String) pairs[i], pairs[i + 1]);
     return m;
   }
 
-  private WorkflowException bad(String message) {
+  WorkflowException bad(String message) {
     return new WorkflowException(400, "INVALID_INPUT", message);
   }
 
@@ -57,7 +59,7 @@ public class PrintBatchService {
     }
   }
 
-  private String text(Map<String, Object> b, String name, int max) {
+  String text(Map<String, Object> b, String name, int max) {
     Object value = b.get(name);
     if (value == null) return "";
     if (!(value instanceof String s)
@@ -66,13 +68,13 @@ public class PrintBatchService {
     return s.strip();
   }
 
-  private long number(Map<String, Object> b, String name) {
+  long number(Map<String, Object> b, String name) {
     if (!(b.get(name) instanceof Number n) || n.longValue() < 0 || n.doubleValue() != n.longValue())
       throw bad(name + " 값을 확인해 주세요.");
     return n.longValue();
   }
 
-  private List<Map<String, Object>> entries(Map<String, Object> b, String field, int min, int max) {
+  List<Map<String, Object>> entries(Map<String, Object> b, String field, int min, int max) {
     if (!(b.get(field) instanceof List<?> values) || values.size() < min || values.size() > max)
       throw bad(field + " 항목 수를 확인해 주세요.");
     var result = new ArrayList<Map<String, Object>>();
@@ -89,7 +91,7 @@ public class PrintBatchService {
     return batches.findById(id).orElseThrow(this::missing);
   }
 
-  private PrintBatch fresh(Long id) {
+  PrintBatch fresh(Long id) {
     var b = batch(id);
     entityManager.refresh(b);
     return b;
@@ -113,7 +115,7 @@ public class PrintBatchService {
     return !members.isEmpty() && members.stream().allMatch(i -> access.canRead(i.getOrderNumber()));
   }
 
-  private PrintBatch read(Long id) {
+  PrintBatch read(Long id) {
     requireData();
     var b = batch(id);
     if (!readable(b)) throw missing();
@@ -131,19 +133,19 @@ public class PrintBatchService {
     if (!b.getStatus().equals("DRAFT")) throw bad("임시 플레이트만 변경할 수 있습니다.");
   }
 
-  private void version(PrintBatch b, Map<String, Object> input) {
+  void version(PrintBatch b, Map<String, Object> input) {
     if (b.getVersion() != number(input, "version"))
       throw new WorkflowException(
           409, "VERSION_CONFLICT", "플레이트가 변경됐습니다. 최신 내용을 확인해 주세요.", view(b));
   }
 
-  private Map<String, GoodsSurveyFulfillment> lock(Collection<String> numbers) {
+  Map<String, GoodsSurveyFulfillment> lock(Collection<String> numbers) {
     var result = new LinkedHashMap<String, GoodsSurveyFulfillment>();
     for (String n : new TreeSet<>(numbers)) result.put(n, workflow.locked(n));
     return result;
   }
 
-  private Map<String, Map<String, Object>> selected(Map<String, Object> input) {
+  Map<String, Map<String, Object>> selected(Map<String, Object> input) {
     var result = new TreeMap<String, Map<String, Object>>();
     for (var item : entries(input, "orders", 1, 50)) {
       String n = text(item, "orderNumber", 20);
@@ -164,7 +166,8 @@ public class PrintBatchService {
         || !t.getStatus().equals("WAITING")) throw bad("색상 지정이 완료된 플레이트 준비 주문만 선택해 주세요.");
     if (!Objects.equals(t.getAssigneeId(), access.current().getId()))
       throw new WorkflowException(403, "FORBIDDEN", "배정된 주문만 플레이트에 포함할 수 있습니다.");
-    if (!workflow.codes(o.getOrderNumber()).isEmpty()) throw bad("주문의 차단 문제를 먼저 해결해 주세요.");
+    if (!workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber())).isEmpty())
+      throw bad("주문의 차단 문제를 먼저 해결해 주세요.");
     var reservation = items.findByPlateTaskId(t.getId()).orElse(null);
     if (reservation != null && !reservation.getBatchId().equals(batchId))
       throw new WorkflowException(409, "BATCH_CONFLICT", "이미 다른 플레이트에 포함된 주문입니다.");
@@ -177,7 +180,7 @@ public class PrintBatchService {
             t ->
                 t.getStage() == ProductionStage.COLOR_MAPPING
                     && t.getStatus().equals("COMPLETED")
-                    && t.getAttempt() == plate.getAttempt()
+                    && t.getAttempt() <= plate.getAttempt()
                     && t.getId() < plate.getId())
         .reduce((a, b) -> b)
         .map(ProductionTask::getId)
@@ -207,7 +210,7 @@ public class PrintBatchService {
     if (!f.isActive()) throw bad("사용 중지된 필라멘트가 포함돼 있습니다.");
   }
 
-  private void validateLayout(PrintBatch b, boolean requireWorker) {
+  void validateLayout(PrintBatch b, boolean requireWorker) {
     if (b.getPrinterName().isBlank()) throw bad("프린터 이름을 입력해 주세요.");
     var used = materials(items.findByBatchIdOrderByIdAsc(b.getId()));
     var assigned = slots.findByBatchIdOrderByIdAsc(b.getId());
@@ -255,7 +258,14 @@ public class PrintBatchService {
             o ->
                 workflow.active(o)
                     && workflow.paid(o)
-                    && workflow.codes(o.getOrderNumber()).isEmpty())
+                    && workflow.currentTask(o.getOrderNumber()) != null
+                    && workflow.currentTask(o.getOrderNumber()).getStage()
+                        == ProductionStage.PLATE_PREPARATION
+                    && workflow
+                        .actionableBlockers(
+                            workflow.currentTask(o.getOrderNumber()),
+                            workflow.codes(o.getOrderNumber()))
+                        .isEmpty())
         .map(workflow::view)
         .toList();
   }
@@ -272,7 +282,7 @@ public class PrintBatchService {
     return view(read(id));
   }
 
-  private Map<String, Object> view(PrintBatch b) {
+  Map<String, Object> view(PrintBatch b) {
     var members = items.findByBatchIdOrderByIdAsc(b.getId());
     var used = materials(members);
     boolean canEdit =
@@ -283,8 +293,16 @@ public class PrintBatchService {
     if (canEdit) actions.addAll(List.of("EDIT_BATCH", "UPLOAD_BATCH_FILE", "CONFIRM_BATCH"));
     if (b.getStatus().equals("DRAFT") && (canEdit || access.has(ASSIGN_WORK)))
       actions.add("CANCEL_BATCH");
-    if (b.getStatus().equals("CONFIRMED") && access.has(ASSIGN_WORK))
+    if (Set.of("CONFIRMED", "PRINTING").contains(b.getStatus()) && access.has(ASSIGN_WORK))
       actions.add("ASSIGN_PRINT_BATCH");
+    if (b.getStatus().equals("CONFIRMED") && access.has(ASSIGN_WORK))
+      actions.add("CANCEL_QUEUED_PRINT");
+    if (Objects.equals(b.getPrintingAssigneeId(), access.current().getId())
+        && access.eligible(access.current().getId(), WorkRole.PRINT_FINISHING) != null) {
+      if (b.getStatus().equals("CONFIRMED")) actions.add("START_PRINT_BATCH");
+      if (b.getStatus().equals("PRINTING"))
+        actions.addAll(List.of("RECORD_PRINT_OBSERVATION", "FINISH_PRINT_BATCH"));
+    }
     var problems = new ArrayList<String>();
     var memberViews =
         members.stream()
@@ -295,7 +313,12 @@ public class PrintBatchService {
         .anyMatch(
             o ->
                 !"ACTIVE".equals(o.get("orderStatus"))
-                    || !((List<?>) o.get("blockingIssues")).isEmpty()))
+                    || ((List<?>) o.get("blockingIssues"))
+                        .stream()
+                            .anyMatch(
+                                code ->
+                                    !Set.of("PRINT_FAILED", "QC_FAILED", "PRINT_ANOMALY")
+                                        .contains(code))))
       problems.add("포함 주문의 상태·담당자 또는 차단 문제를 확인해 주세요.");
     return map(
         "id",
@@ -304,6 +327,53 @@ public class PrintBatchService {
         b.getVersion(),
         "status",
         b.getStatus(),
+        "startedAt",
+        b.getStartedAt() == null ? null : b.getStartedAt().toString(),
+        "finishedAt",
+        b.getFinishedAt() == null ? null : b.getFinishedAt().toString(),
+        "results",
+        printResults.findByBatchIdOrderByIdAsc(b.getId()).stream()
+            .map(
+                r ->
+                    map(
+                        "id",
+                        r.getId(),
+                        "orderNumber",
+                        r.getOrderNumber(),
+                        "attempt",
+                        r.getAttempt(),
+                        "result",
+                        r.getResult(),
+                        "note",
+                        r.getNote(),
+                        "createdAt",
+                        r.getCreatedAt().toString()))
+            .toList(),
+        "observations",
+        observations.findByBatchIdOrderByIdAsc(b.getId()).stream()
+            .map(
+                r -> {
+                  Object observedIssues;
+                  try {
+                    observedIssues = json.readValue(r.getIssuesJson(), List.class);
+                  } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                  }
+                  return map(
+                      "id",
+                      r.getId(),
+                      "note",
+                      r.getNote(),
+                      "purgeGrams",
+                      r.getPurgeGrams(),
+                      "issues",
+                      observedIssues,
+                      "actorName",
+                      accounts.findById(r.getActorId()).map(a -> a.getName()).orElse("이전 담당자"),
+                      "createdAt",
+                      r.getCreatedAt().toString());
+                })
+            .toList(),
         "layoutRevision",
         b.getLayoutRevision(),
         "printerName",
@@ -598,7 +668,8 @@ public class PrintBatchService {
           requireData();
           if (!readable(b)) throw missing();
           version(b, input);
-          if (!b.getStatus().equals("CONFIRMED")) throw bad("출력 대기 플레이트의 담당자를 변경해 주세요.");
+          if (!Set.of("CONFIRMED", "PRINTING").contains(b.getStatus()))
+            throw bad("출력 대기 플레이트의 담당자를 변경해 주세요.");
           Long target = number(input, "printingAssigneeId");
           if (!printingEligible(target)) throw bad("활성 출력 담당자를 선택해 주세요.");
           var expected = selected(input);
@@ -612,9 +683,13 @@ public class PrintBatchService {
             workflow.version(o, expected.get(o.getOrderNumber()));
             var t = workflow.currentTask(o.getOrderNumber());
             if (t == null
-                || t.getStage() != ProductionStage.PRINT_QUEUE
-                || !t.getStatus().equals("WAITING")
-                || !workflow.active(o)) throw bad("모든 주문이 출력 대기 중일 때 변경할 수 있습니다.");
+                || t.getStage()
+                    != (b.getStatus().equals("PRINTING")
+                        ? ProductionStage.PRINTING
+                        : ProductionStage.PRINT_QUEUE)
+                || !t.getStatus()
+                    .equals(b.getStatus().equals("PRINTING") ? "IN_PROGRESS" : "WAITING")
+                || !workflow.active(o)) throw bad("모든 주문의 출력 단계와 활성 상태를 확인해 주세요.");
             t.assign(target);
             workflow.touch(o);
             workflow.audit(
