@@ -34,7 +34,284 @@ class WorkflowIntegrationTest {
   @Autowired StaffPermissionOverrideRepository overrides;
   @Autowired AdminTokenProvider tokens;
   @MockitoBean GoodsSurveyPhotoStorage storage;
+
+  @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+  ShipmentWorkbook shipmentWorkbook;
+
+  @Autowired ShipmentExportBatchRepository shipmentBatches;
+  @Autowired ShipmentExportItemRepository shipmentItems;
+  @Autowired ShipmentExportService shipmentExports;
+
+  @Autowired
+  com.pawever.backend.goodssurvey.service.GoodsSurveyFulfillmentOpsService fulfillmentOps;
+
   String owner, modeler, stranger, number;
+
+  @Test
+  void shippingPackingCannotStartRetentionThroughLegacyInternalDeliveryEndpoint() throws Exception {
+    readyForPacking(true);
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> fulfillmentOps.markDeliveryCompleted(o.getResponseId()))
+        .isInstanceOf(WorkflowException.class);
+    org.assertj.core.api.Assertions.assertThat(
+            orders.findByOrderNumber(number).orElseThrow().getDeleteAfter())
+        .isNull();
+  }
+
+  @Test
+  void shippingPackingFileFailureRollsBackAndCanRetryTheSameKey() throws Exception {
+    var row = readyForPacking(true);
+    long count = shipmentBatches.count();
+    String body = exportBody(row), key = UUID.randomUUID().toString();
+    org.mockito.Mockito.doThrow(new WorkflowException(503, "EXPORT_FAILED", "파일 생성 실패"))
+        .when(shipmentWorkbook)
+        .create(org.mockito.ArgumentMatchers.anyList());
+    mvc.perform(
+            post("/api/admin/shipments/export-batches")
+                .header("Authorization", "Bearer " + owner)
+                .header("Idempotency-Key", key)
+                .contentType("application/json")
+                .content(body))
+        .andExpect(status().isServiceUnavailable());
+    org.assertj.core.api.Assertions.assertThat(shipmentBatches.count()).isEqualTo(count);
+    org.assertj.core.api.Assertions.assertThat(
+            orders.findByOrderNumber(number).orElseThrow().getProductionStage())
+        .isEqualTo(ProductionStage.PACKING);
+    org.mockito.Mockito.reset(shipmentWorkbook);
+    send(owner, "/api/admin/shipments/export-batches", body, key);
+  }
+
+  @Test
+  void shippingPackingConcurrencyExportsAnOrderOnlyOnce() throws Exception {
+    var row = readyForPacking(true);
+    String body = exportBody(row), token = owner;
+    var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var results =
+          executor.invokeAll(
+              List.of(
+                  (java.util.concurrent.Callable<Integer>)
+                      () ->
+                          mvc.perform(
+                                  post("/api/admin/shipments/export-batches")
+                                      .header("Authorization", "Bearer " + token)
+                                      .header("Idempotency-Key", UUID.randomUUID().toString())
+                                      .contentType("application/json")
+                                      .content(body))
+                              .andReturn()
+                              .getResponse()
+                              .getStatus(),
+                  () ->
+                      mvc.perform(
+                              post("/api/admin/shipments/export-batches")
+                                  .header("Authorization", "Bearer " + token)
+                                  .header("Idempotency-Key", UUID.randomUUID().toString())
+                                  .contentType("application/json")
+                                  .content(body))
+                          .andReturn()
+                          .getResponse()
+                          .getStatus()));
+      org.assertj.core.api.Assertions.assertThat(
+              List.of(results.get(0).get(), results.get(1).get()))
+          .containsExactlyInAnyOrder(200, 409);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void shippingPackingSnapshotExpiresEvenAfterOriginalAddressWasStripped() throws Exception {
+    var row = readyForPacking(true);
+    var batch =
+        send(
+            owner,
+            "/api/admin/shipments/export-batches",
+            exportBody(row),
+            UUID.randomUUID().toString());
+    long id = batch.get("id").asLong();
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    o.markDeliveryCompleted(Instant.now().minusSeconds(91L * 86400), 90);
+    o.stripDeliveryDetails();
+    orders.saveAndFlush(o);
+    mvc.perform(
+            get("/api/admin/shipments/export-batches/" + id + "/file")
+                .header("Authorization", "Bearer " + owner))
+        .andExpect(status().isGone());
+    shipmentExports.purge(Instant.now());
+    org.assertj.core.api.Assertions.assertThat(
+            shipmentBatches.findById(id).orElseThrow().getFileBase64())
+        .isNull();
+    org.assertj.core.api.Assertions.assertThat(
+            shipmentItems.findByBatchIdOrderByRowNumberAsc(id).get(0).getSnapshotJson())
+        .isNull();
+  }
+
+  @Test
+  void shippingPackingDoesNotExposeOtherOrdersOrAcceptStaleSelections() throws Exception {
+    var row = readyForPacking(true);
+    String body = exportBody(row);
+    expectAs(modeler, "/api/admin/shipments/export-batches", body, 403);
+    mvc.perform(get("/api/admin/shipments/candidates").header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isForbidden());
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    o.touchWorkflow(Instant.now());
+    orders.saveAndFlush(o);
+    expectAs(owner, "/api/admin/shipments/export-batches", body, 409);
+    org.assertj.core.api.Assertions.assertThat(shipmentItems.existsByOrderNumber(number)).isFalse();
+  }
+
+  @Test
+  void shippingPackingCreatesOneTextWorkbookAndReplayUsesTheSameFile() throws Exception {
+    var row = readyForPacking(true);
+    String body = exportBody(row), key = UUID.randomUUID().toString();
+    var batch = send(owner, "/api/admin/shipments/export-batches", body, key);
+    org.assertj.core.api.Assertions.assertThat(
+            send(owner, "/api/admin/shipments/export-batches", body, key))
+        .isEqualTo(batch);
+    String file = "/api/admin/shipments/export-batches/" + batch.get("id") + "/file";
+    byte[] bytes =
+        mvc.perform(get(file).header("Authorization", "Bearer " + owner))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andReturn()
+            .getResponse()
+            .getContentAsByteArray();
+    org.assertj.core.api.Assertions.assertThat(
+            mvc.perform(get(file).header("Authorization", "Bearer " + owner))
+                .andReturn()
+                .getResponse()
+                .getContentAsByteArray())
+        .isEqualTo(bytes);
+    try (var workbook =
+        new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
+      org.assertj.core.api.Assertions.assertThat(workbook.getNumberOfSheets()).isEqualTo(1);
+      var sheet = workbook.getSheetAt(0);
+      org.assertj.core.api.Assertions.assertThat(sheet.getSheetName()).isEqualTo("준등기");
+      org.assertj.core.api.Assertions.assertThat(sheet.getPhysicalNumberOfRows()).isEqualTo(1);
+      org.assertj.core.api.Assertions.assertThat(sheet.getRow(0).getLastCellNum())
+          .isEqualTo((short) 6);
+      var expected = List.of(" 보호자 ", "01234", "서울시 테스트로", "101호", "01012345678", "=초코");
+      for (int i = 0; i < 6; i++) {
+        org.assertj.core.api.Assertions.assertThat(sheet.getRow(0).getCell(i).getCellType())
+            .isEqualTo(org.apache.poi.ss.usermodel.CellType.STRING);
+        org.assertj.core.api.Assertions.assertThat(sheet.getRow(0).getCell(i).getStringCellValue())
+            .isEqualTo(expected.get(i));
+      }
+    }
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(o.getProductionStage())
+        .isEqualTo(ProductionStage.COMPLETE);
+    org.assertj.core.api.Assertions.assertThat(o.shipmentStatus())
+        .isEqualTo("AWAITING_POST_OFFICE_RESULT");
+    org.assertj.core.api.Assertions.assertThat(o.orderStatus()).isEqualTo("ACTIVE");
+    org.assertj.core.api.Assertions.assertThat(o.getDeleteAfter()).isNull();
+    expectAs(
+        owner,
+        "/api/admin/shipments/export-batches",
+        exportBody(readJson(owner, "/api/admin/orders/" + number + "/workflow")),
+        422);
+    Long id = readJson(owner, "/api/admin/me").get("id").asLong();
+    overrides.saveAndFlush(
+        StaffPermissionOverride.of(id, PermissionKey.VIEW_CUSTOMER_ADDRESS, false, null, "회수"));
+    expectAs(owner, "/api/admin/shipments/export-batches", body, 403);
+    mvc.perform(get(file).header("Authorization", "Bearer " + owner))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void shippingPackingRejectsWholeSelectionWhenOneAddressIsInvalid() throws Exception {
+    var first = readyForPacking(true);
+    String firstNumber = number, firstOwner = owner;
+    setup();
+    var second = readyForPacking(true);
+    var o = orders.findByOrderNumber(number).orElseThrow();
+    org.springframework.test.util.ReflectionTestUtils.setField(o, "postalCode", "1234");
+    orders.saveAndFlush(o);
+    second = readJson(owner, "/api/admin/orders/" + number + "/workflow");
+    expectAs(
+        firstOwner,
+        "/api/admin/shipments/export-batches",
+        jsonBody(
+            Map.of(
+                "orders",
+                List.of(
+                    Map.of("orderNumber", firstNumber, "version", first.get("version").asLong()),
+                    Map.of("orderNumber", number, "version", second.get("version").asLong())))),
+        422);
+    for (String n : List.of(firstNumber, number)) {
+      var current = orders.findByOrderNumber(n).orElseThrow();
+      org.assertj.core.api.Assertions.assertThat(current.getProductionStage())
+          .isEqualTo(ProductionStage.PACKING);
+      org.assertj.core.api.Assertions.assertThat(current.shipmentStatus()).isEqualTo("NOT_READY");
+    }
+  }
+
+  @Test
+  void workflowOrdersCannotBypassPackingWithLegacyShipmentActions() throws Exception {
+    readyForPacking(false);
+    expectAs(owner, "/api/admin/orders/" + number + "/pickup-complete", "{}", 409);
+    expectAs(
+        owner,
+        "/api/admin/orders/" + number + "/tracking",
+        "{\"trackingCompany\":\"우체국\",\"trackingNumber\":\"1234567890123\"}",
+        409);
+    org.assertj.core.api.Assertions.assertThat(
+            orders.findByOrderNumber(number).orElseThrow().shipmentStatus())
+        .isEqualTo("NOT_READY");
+  }
+
+  com.fasterxml.jackson.databind.JsonNode readyForPacking(boolean shipping) throws Exception {
+    var row = printedPlate().get("orders").get(0);
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+            qcBody(row),
+            UUID.randomUUID().toString());
+    if (shipping) {
+      var o = orders.findByOrderNumber(number).orElseThrow();
+      var fields =
+          Map.of(
+              "deliveryMethod",
+              GoodsDeliveryMethod.SHIPPING,
+              "guardianName",
+              " 보호자 ",
+              "petName",
+              "=초코",
+              "postalCode",
+              "01234",
+              "address",
+              "서울시 테스트로",
+              "addressDetail",
+              "101호",
+              "phone",
+              "010-1234-5678");
+      fields.forEach(
+          (name, value) ->
+              org.springframework.test.util.ReflectionTestUtils.setField(o, name, value));
+      orders.saveAndFlush(o);
+    }
+    return readJson(owner, "/api/admin/orders/" + number + "/workflow");
+  }
+
+  String exportBody(com.fasterxml.jackson.databind.JsonNode row) throws Exception {
+    return jsonBody(
+        Map.of(
+            "orders",
+            List.of(
+                Map.of(
+                    "orderNumber",
+                    row.get("orderNumber").asText(),
+                    "version",
+                    row.get("version").asLong()))));
+  }
 
   @Test
   void adminCanReleaseConfirmedPlateForNewConfigurationBeforePrinting() throws Exception {

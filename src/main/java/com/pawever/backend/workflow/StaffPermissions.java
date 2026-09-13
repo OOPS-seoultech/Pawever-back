@@ -78,6 +78,11 @@ public class StaffPermissions {
       p.remove(IMPORT_SHIPMENT_RESULTS);
     if (!p.contains(VIEW_ORDER_BASIC)
         || !p.contains(VIEW_CUSTOMER_IDENTITY)
+        || !p.contains(VIEW_CUSTOMER_CONTACT)
+        || !p.contains(VIEW_CUSTOMER_ADDRESS)
+        || !p.contains(VIEW_SHIPMENT)) p.remove(PACK_AND_EXPORT_SHIPMENTS);
+    if (!p.contains(VIEW_ORDER_BASIC)
+        || !p.contains(VIEW_CUSTOMER_IDENTITY)
         || !p.contains(VIEW_SHIPMENT)) p.remove(COMPLETE_PICKUP);
     return p;
   }

@@ -32,7 +32,12 @@ class WorkflowRetentionTest {
         .delete(a.getObjectKey());
     var service =
         new WorkflowArtifactRetention(
-            artifacts, orders, storage, commands, mock(jakarta.persistence.EntityManager.class));
+            artifacts,
+            orders,
+            storage,
+            commands,
+            mock(ShipmentExportService.class),
+            mock(jakarta.persistence.EntityManager.class));
     org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.purge(Instant.now()))
         .isInstanceOf(IllegalStateException.class);
     verify(artifacts, never()).delete(any());

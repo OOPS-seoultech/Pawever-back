@@ -45,6 +45,11 @@ public class GoodsSurveyFulfillmentOpsService {
         GoodsSurveyFulfillment fulfillment = fulfillmentRepository.findByResponseId(responseId)
                 .orElseThrow(() -> new CustomException(ErrorCode.SURVEY_RESPONSE_NOT_FOUND));
 
+        if (fulfillment.getProductionStage() != null) {
+            throw new com.pawever.backend.workflow.WorkflowException(409, "WORKFLOW_ACTION_REQUIRED",
+                    "제작 관리에 들어온 주문은 배송 완료 확인 절차를 이용해 주세요.");
+        }
+
         if (fulfillment.getDeleteAfter() != null) {
             return fulfillment.getDeleteAfter();
         }
