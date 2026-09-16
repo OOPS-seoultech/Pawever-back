@@ -162,6 +162,21 @@ payment:
     base-url: ${TOSS_BASE_URL:https://api.tosspayments.com}
 
 notification:
+  alimtalk:
+    # 발송 템플릿 승인값과 최종 성공 결과 코드가 모두 맞아야만 켜진다.
+    enabled: ${ALIGO_ALIMTALK_ENABLED:false}
+    api-key: ${ALIGO_API_KEY:}
+    user-id: ${ALIGO_USER_ID:}
+    sender-key: ${ALIGO_SENDER_KEY:}
+    sender: ${ALIGO_SENDER:}
+    template-code: ${ALIGO_SHIPMENT_TEMPLATE_CODE:}
+    subject: ${ALIGO_SHIPMENT_TEMPLATE_SUBJECT:}
+    approved-body: ${ALIGO_SHIPMENT_TEMPLATE_BODY:}
+    approved-body-base64: ${ALIGO_SHIPMENT_TEMPLATE_BODY_BASE64:}
+    approved-body-sha256: ${ALIGO_SHIPMENT_TEMPLATE_BODY_SHA256:}
+    base-url: ${ALIGO_ALIMTALK_BASE_URL:https://kakaoapi.aligo.in}
+    test-mode: ${ALIGO_ALIMTALK_TEST_MODE:false}
+    success-result-codes: ${ALIGO_ALIMTALK_SUCCESS_CODES:}
   telegram:
     # 봇 토큰은 그 자체가 봇이다. 이 값을 가진 사람은 우리 채널에 글을 쓰고
     # 봇이 받는 메시지를 읽는다. 카톡으로 오간 적이 있어 폐기하고 다시 받았다.
