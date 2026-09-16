@@ -19,6 +19,21 @@ public class ShipmentExportController {
         .body(ApiResponse.ok(service.candidates()));
   }
 
+  @GetMapping("/pickup-candidates")
+  public Object pickupCandidates() {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(ApiResponse.ok(service.pickupCandidates()));
+  }
+
+  @PostMapping("/pickup-completions")
+  public Object completePickupPacking(
+      @RequestHeader("Idempotency-Key") String key, @RequestBody Map<String, Object> body) {
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(ApiResponse.ok(service.completePickupPacking(key, body)));
+  }
+
   @GetMapping("/export-batches")
   public Object list() {
     return ResponseEntity.ok()

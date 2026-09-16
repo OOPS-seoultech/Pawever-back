@@ -389,7 +389,7 @@ public class ProductionFinishingService {
               settlement = "NOT_APPLICABLE";
           if (decision.equals("PASSED")) {
             checked = checks(input, Set.of("SHAPE_COLOR", "SURFACE", "EYES_NOSE"));
-            settlement = accrue(t);
+            settlement = "PENDING_FULFILLMENT";
             advance(o, t, ProductionStage.PACKING, null, t.getAttempt());
             workflow.issue(o.getOrderNumber(), "QC_FAILED", false);
           } else if (decision.equals("FAILED")) {
@@ -438,15 +438,6 @@ public class ProductionFinishingService {
               note);
           return workflow.view(o);
         });
-  }
-
-  private String accrue(ProductionTask t) {
-    if (settlements.existsByOrderNumber(t.getOrderNumber())) return "ALREADY_RECORDED";
-    if (!compensation.findById(1L).map(ProductionCompensationSettings::isEnabled).orElse(false))
-      return "DISABLED";
-    if (!paidWorkers.existsById(t.getAssigneeId())) return "UNPAID_WORKER";
-    settlements.saveAndFlush(ProductionSettlement.of(t, t.getAssigneeId(), clock.instant()));
-    return "RECORDED";
   }
 
   public Map<String, Object> compensation() {
