@@ -1368,8 +1368,9 @@ class WorkflowIntegrationTest {
     var row = readyForMapping();
     var f = createFilament();
     String path = "/api/production/tasks/" + row.get("taskId") + "/filament-mappings";
-    for (String token :
-        List.of(owner, modeler, account(AdminRole.PRODUCTION, Set.of(WorkRole.DESIGN_QC))))
+    // 색상 작업은 공동 작업함에 있다. 대표는 색상 역할이 없고 모델러는
+    // 역할이 달라 막히지만, 색상 역할의 다른 실무자는 이어받을 수 있다.
+    for (String token : List.of(owner, modeler))
       mvc.perform(
               post(path)
                   .header("Authorization", "Bearer " + token)
@@ -1522,7 +1523,8 @@ class WorkflowIntegrationTest {
             role,
             "test",
             Instant.now().plusSeconds(3600));
-    a.activate("unused-test-hash");
+    a.acceptInvite("unused-test-hash");
+    a.approve(roles, Instant.now());
     a.setWorkRoles(roles);
     accounts.saveAndFlush(a);
     if (role == AdminRole.OWNER) ownerId = a.getId();
@@ -1938,10 +1940,30 @@ class WorkflowIntegrationTest {
   }
 
   @Test
+  void anotherDesignQcTakesOverAWaitingReview() throws Exception {
+    // 공동 작업함. 배정된 사람이 자리를 비워도 검수 역할의 다른 실무자가
+    // 이어받는다. 대표가 매번 다시 배정해야 하면 사람 하나가 빠질 때마다
+    // 제작이 멈춘다.
+    var row = readyForReview();
+    String other = account(AdminRole.PRODUCTION, Set.of(WorkRole.DESIGN_QC));
+
+    var result =
+        send(
+            other,
+            reviewPath(row),
+            reviewBody(row, "APPROVED", null, "다른 검수자가 이어받음"),
+            UUID.randomUUID().toString());
+
+    org.assertj.core.api.Assertions.assertThat(result.get("productionStage").asText())
+        .isEqualTo("COLOR_MAPPING");
+  }
+
+  @Test
   void reviewRequiresAssignedReviewerCurrentPermissionAndValidReason() throws Exception {
     var row = readyForReview();
-    for (String unauthorized :
-        List.of(owner, modeler, account(AdminRole.PRODUCTION, Set.of(WorkRole.DESIGN_QC)))) {
+    // 검수도 공동 작업함이다. 검수 역할의 다른 실무자는 이어받을 수 있고,
+    // 역할이 없는 대표나 역할이 다른 모델러는 막힌다.
+    for (String unauthorized : List.of(owner, modeler)) {
       mvc.perform(
               post(reviewPath(row))
                   .header("Authorization", "Bearer " + unauthorized)

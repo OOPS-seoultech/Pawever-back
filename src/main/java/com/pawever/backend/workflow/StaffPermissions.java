@@ -31,9 +31,21 @@ public class StaffPermissions {
 
   public Set<PermissionKey> effective(AdminAccount a) {
     var p = EnumSet.noneOf(PermissionKey.class);
-    if (a.getRole() == AdminRole.OWNER || a.getRole() == AdminRole.ADMIN) {
+    // 전권은 대표 한 사람뿐이다. 계정·권한·운영 설정·정산 지급을 여럿이
+    // 들고 있으면 누가 무엇을 바꿨는지 따라갈 수 없고, 한 계정만 새도
+    // 전부가 열린다.
+    if (a.getRole() == AdminRole.OWNER) {
       p.addAll(EnumSet.allOf(PermissionKey.class));
-      if (a.getRole() != AdminRole.OWNER) p.remove(MANAGE_ACCOUNT_PERMISSIONS);
+    }
+    // 주문 운영 담당. 주문·결제·배송은 보되 계정과 권한, 운영 설정,
+    // 워크플로 강제 이동은 대표만 한다.
+    if (a.getRole() == AdminRole.ADMIN) {
+      p.addAll(EnumSet.allOf(PermissionKey.class));
+      p.removeAll(EnumSet.of(
+          MANAGE_ACCOUNTS,
+          MANAGE_ACCOUNT_PERMISSIONS,
+          MANAGE_OPERATION_SETTINGS,
+          OVERRIDE_WORKFLOW));
     }
     if (a.getRole() == AdminRole.PRODUCTION && !a.getWorkRoles().isEmpty()) {
       p.addAll(
@@ -112,5 +124,39 @@ public class StaffPermissions {
     if (id == null) return null;
     var a = accounts.findById(id).orElse(null);
     return a != null && a.canSignIn() && a.getWorkRoles().contains(role) ? id : null;
+  }
+
+  /**
+   * 이 사람이 이 일을 잡을 수 있는지.
+   *
+   * 제작은 공동 작업함에서 가져간다. 역할이 맞는 활성 실무자면 누구나
+   * 잡을 수 있고, 대표가 매번 다시 배정하지 않아도 다른 사람이 이어받는다.
+   *
+   * 다만 이미 손을 댄 일은 가로채지 않는다. 먼저 잡은 사람이 임자다.
+   * 그만둔 사람이나 권한이 풀린 사람이 들고 있던 일은 막지 않는다 —
+   * 막으면 아무도 못 하는 일이 남는다.
+   */
+  public boolean canTake(ProductionTask t, WorkRole role, Long me) {
+    if (eligible(me, role) == null) return false;
+    Long holder = t.getAssigneeId();
+    if (java.util.Objects.equals(holder, me)) return true;
+    if (!"WAITING".equals(t.getStatus()) && eligible(holder, role) != null) return false;
+    return true;
+  }
+
+  /**
+   * 일을 잡는다. 잡을 수 없으면 이유를 말하고 멈춘다.
+   *
+   * @param what 사람에게 보여 줄 역할 이름
+   */
+  public void take(ProductionTask t, WorkRole role, String what) {
+    Long me = current().getId();
+    if (eligible(me, role) == null)
+      throw new WorkflowException(
+          403, "FORBIDDEN", what + " 역할의 활성 담당자만 처리할 수 있습니다.");
+    if (!canTake(t, role, me))
+      throw new WorkflowException(
+          409, "ALREADY_TAKEN", "다른 담당자가 이미 진행 중인 작업입니다.");
+    if (!java.util.Objects.equals(t.getAssigneeId(), me)) t.assign(me);
   }
 }

@@ -1,6 +1,7 @@
 package com.pawever.backend.admin.controller;
 
 import com.pawever.backend.admin.dto.AdminAccountResponse;
+import com.pawever.backend.admin.dto.AdminApproveRequest;
 import com.pawever.backend.admin.dto.AdminInviteRequest;
 import com.pawever.backend.admin.service.AdminAccountService;
 import com.pawever.backend.global.common.ApiResponse;
@@ -43,6 +44,24 @@ public class AdminAccountController {
     public ApiResponse<Map<String, String>> invite(@Valid @RequestBody AdminInviteRequest request) {
         String inviteToken = accountService.invite(request.email(), request.name(), request.role());
         return ApiResponse.ok(Map.of("inviteToken", inviteToken));
+    }
+
+    /**
+     * 실무 권한을 준다. 전체 관리자만 할 수 있다.
+     *
+     * 어떤 일을 맡을지는 여기서 정한다. 가입할 때 보낸 값이 권한을 정하면
+     * 요청을 고쳐 스스로 권한을 키울 수 있다.
+     */
+    @PostMapping("/{accountId}/approve")
+    public ApiResponse<Void> approve(
+            @PathVariable Long accountId,
+            @RequestBody(required = false) AdminApproveRequest request
+    ) {
+        accountService.approve(
+                accountId,
+                request == null ? java.util.Set.of() : request.workRoles()
+        );
+        return ApiResponse.ok();
     }
 
     @PostMapping("/{accountId}/reinvite")

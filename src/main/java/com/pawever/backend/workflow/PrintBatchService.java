@@ -164,8 +164,9 @@ public class PrintBatchService {
         || t == null
         || t.getStage() != ProductionStage.PLATE_PREPARATION
         || !t.getStatus().equals("WAITING")) throw bad("색상 지정이 완료된 플레이트 준비 주문만 선택해 주세요.");
-    if (!Objects.equals(t.getAssigneeId(), access.current().getId()))
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 주문만 플레이트에 포함할 수 있습니다.");
+    // 색상 지정이 끝난 주문은 공동 작업함에 있다. 역할이 맞는 활성
+    // 실무자면 누구나 자기 플레이트에 담을 수 있다.
+    access.take(t, WorkRole.DESIGN_QC, "색상");
     if (!workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber())).isEmpty())
       throw bad("주문의 차단 문제를 먼저 해결해 주세요.");
     var reservation = items.findByPlateTaskId(t.getId()).orElse(null);
