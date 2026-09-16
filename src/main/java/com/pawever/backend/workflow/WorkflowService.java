@@ -205,7 +205,7 @@ public class WorkflowService {
         >= 3;
   }
 
-  void audit(String resource, String action, String before, String after, String reason) {
+  public void audit(String resource, String action, String before, String after, String reason) {
     audits.save(
         WorkflowAudit.of(
             resource, access.current().getId(), action, before, after, reason, clock.instant()));
@@ -405,10 +405,8 @@ public class WorkflowService {
   }
 
   private void ownMapping(ProductionTask t) {
-    var actor = access.require(MAP_FILAMENT);
-    if (!Objects.equals(t.getAssigneeId(), actor.getId())
-        || access.eligible(actor.getId(), WorkRole.DESIGN_QC) == null)
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 색상 담당자만 지정할 수 있습니다.");
+    access.require(MAP_FILAMENT);
+    access.take(t, WorkRole.DESIGN_QC, "색상");
     access.read(t.getOrderNumber());
   }
 
@@ -517,8 +515,7 @@ public class WorkflowService {
         && t != null
         && t.getStage() == ProductionStage.COLOR_MAPPING
         && t.getStatus().equals("WAITING")
-        && Objects.equals(t.getAssigneeId(), actor.getId())
-        && access.eligible(actor.getId(), WorkRole.DESIGN_QC) != null
+        && access.canTake(t, WorkRole.DESIGN_QC, actor.getId())
         && permissions.contains(MAP_FILAMENT)) actions.add("MAP_FILAMENT");
     if (active(o)) {
       if (o.getStatus() == GoodsOrderStatus.PAYMENT_PENDING
@@ -530,7 +527,7 @@ public class WorkflowService {
           && o.getStatus() != GoodsOrderStatus.IN_PRODUCTION
           && t == null) actions.add("ENROLL");
       if (t != null
-          && Objects.equals(t.getAssigneeId(), actor.getId())
+          && access.canTake(t, WorkRole.MODELING, actor.getId())
           && t.getStage() == ProductionStage.MODELING
           && permissions.contains(COMPLETE_MODELING)
           && paid(o)
@@ -544,7 +541,7 @@ public class WorkflowService {
       if (t != null
           && t.getStage() == ProductionStage.MODEL_REVIEW
           && t.getStatus().equals("WAITING")
-          && Objects.equals(t.getAssigneeId(), actor.getId())
+          && access.canTake(t, WorkRole.DESIGN_QC, actor.getId())
           && permissions.contains(REVIEW_MODEL)
           && paid(o)
           && block.isEmpty()) {
@@ -555,8 +552,7 @@ public class WorkflowService {
     if (active(o)
         && paid(o)
         && t != null
-        && Objects.equals(t.getAssigneeId(), actor.getId())
-        && access.eligible(actor.getId(), WorkRole.PRINT_FINISHING) != null
+        && access.canTake(t, WorkRole.PRINT_FINISHING, actor.getId())
         && permissions.contains(COMPLETE_POST_PROCESSING)
         && actionableBlockers(t, block).isEmpty()) {
       if (t.getStage() == ProductionStage.POST_PROCESSING) actions.add("COMPLETE_POST_PROCESSING");
@@ -819,11 +815,8 @@ public class WorkflowService {
 
   private void own(ProductionTask t) {
     access.read(t.getOrderNumber());
-    if (!Objects.equals(t.getAssigneeId(), access.current().getId()))
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 작업만 처리할 수 있습니다.");
     access.require(COMPLETE_MODELING);
-    if (access.eligible(t.getAssigneeId(), WorkRole.MODELING) == null)
-      throw new WorkflowException(403, "FORBIDDEN", "모델링 역할의 활성 담당자만 처리할 수 있습니다.");
+    access.take(t, WorkRole.MODELING, "모델링");
   }
 
   public Map<String, Object> start(Long taskId, String key, Map<String, Object> b) {
@@ -887,10 +880,8 @@ public class WorkflowService {
   }
 
   private void ownReview(ProductionTask t) {
-    var actor = access.require(REVIEW_MODEL);
-    if (!Objects.equals(t.getAssigneeId(), actor.getId())
-        || access.eligible(actor.getId(), WorkRole.DESIGN_QC) == null)
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 검수 담당자만 결정할 수 있습니다.");
+    access.require(REVIEW_MODEL);
+    access.take(t, WorkRole.DESIGN_QC, "검수");
     access.read(t.getOrderNumber());
   }
 

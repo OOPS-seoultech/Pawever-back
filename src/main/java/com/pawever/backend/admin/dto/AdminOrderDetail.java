@@ -21,7 +21,15 @@ public record AdminOrderDetail(
         String goodsType,
         /** 사람이 읽는 굿즈 이름. */
         String goodsTypeLabel,
+        /** 첫 아이 이름. 목록·문자처럼 한 줄만 쓰는 자리가 본다. */
         String petName,
+        /**
+         * 이 주문에 담긴 아이들.
+         *
+         * 한 주문에 여러 마리가 올 수 있다. 첫 아이 이름만 보고 한 마리로
+         * 여기면 만들다 빠뜨린다.
+         */
+        List<Pet> pets,
         Pricing pricing,
         Payment payment,
         Shipping shipping,
@@ -30,6 +38,21 @@ public record AdminOrderDetail(
         List<StatusChange> statusHistory,
         List<AccessLog> accessLogs
 ) {
+
+    /**
+     * 주문에 담긴 아이 한 마리.
+     *
+     * @param photoCount        제출 시점의 사진 장수
+     * @param lowPhotoAcknowledged 사진이 적다는 안내를 확인하고 낸 것인지
+     */
+    public record Pet(
+            int index,
+            String petName,
+            boolean keyringAdded,
+            int photoCount,
+            boolean lowPhotoAcknowledged
+    ) {
+    }
 
     public record Pricing(
             int listPriceKrw,

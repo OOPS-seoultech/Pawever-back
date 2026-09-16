@@ -63,6 +63,7 @@ class AdminOrderServiceTest {
 
     @Mock private GoodsSurveyFulfillmentRepository fulfillmentRepository;
     @Mock private GoodsSurveyPhotoRepository photoRepository;
+    @Mock private com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRepository;
     @Mock private GoodsOrderStatusChangeRepository statusChangeRepository;
     @Mock private AdminAccessLogRepository accessLogRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
@@ -77,6 +78,7 @@ class AdminOrderServiceTest {
         service = new AdminOrderService(
                 fulfillmentRepository,
                 photoRepository,
+                petRepository,
                 statusChangeRepository,
                 accessLogRepository,
                 photoStorage,

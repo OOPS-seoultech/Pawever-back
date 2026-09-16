@@ -112,6 +112,25 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     @Column(nullable = false, length = 1000)
     private String petName;
 
+    /**
+     * 이 주문에 담긴 아이 수.
+     *
+     * 값과 한정 수량을 마리 수대로 매기려면 몇 마리인지가 주문 줄에 있어야
+     * 한다. 아이 줄을 매번 세면 목록 화면마다 조인이 붙는다.
+     *
+     * 예전 주문은 모두 한 마리다. 그래서 기본값이 1이다.
+     */
+    @Column(nullable = false)
+    private int petCount = 1;
+
+    /** 아이 줄을 저장한 뒤 그 수를 주문에 적는다. */
+    public void recordPetCount(int petCount) {
+        if (petCount < 1) {
+            throw new IllegalArgumentException("아이는 최소 한 마리다.");
+        }
+        this.petCount = petCount;
+    }
+
     @Convert(converter = EncryptedStringConverter.class)
     @Column(nullable = false, length = 1000)
     private String guardianName;
@@ -398,6 +417,32 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     public void registerTracking(String company, String number) {
         this.trackingCompany = company;
         this.trackingNumber = number;
+    }
+
+    /** 우체국이 실제로 접수한 요금. 접수 내역에서 읽어 적는다. */
+    private Integer postalPostageKrw;
+
+    /** 우체국이 접수한 시각. 배달 완료와 다르다. */
+    private Instant postOfficeAcceptedAt;
+
+    /**
+     * 우체국이 접수한 사실을 적는다.
+     *
+     * 배송 완료가 아니다. 보관 기간 시계를 여기서 시작하지 않는다 — 고객에게
+     * 고지한 것은 "배송 완료를 표시한 날부터"이고, 접수는 아직 고객에게 닿기
+     * 전이다. 여기서 시계를 돌리면 고지한 기간보다 일찍 자료가 사라진다.
+     */
+    public void confirmPostOfficeAcceptance(String trackingNumber, int postageKrw, Instant at) {
+        this.trackingCompany = "우체국";
+        this.trackingNumber = trackingNumber;
+        this.postalPostageKrw = postageKrw;
+        this.postOfficeAcceptedAt = at;
+        this.lifecycleShipmentStatus = "ACCEPTED";
+    }
+
+    /** 이미 우체국 접수가 적힌 주문인지. */
+    public boolean isPostOfficeAccepted() {
+        return postOfficeAcceptedAt != null;
     }
 
     public void completePackingForPostOffice() {

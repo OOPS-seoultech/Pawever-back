@@ -107,6 +107,7 @@ public class AdminOrderService {
 
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
+    private final com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRepository;
     private final GoodsOrderStatusChangeRepository statusChangeRepository;
     private final AdminAccessLogRepository accessLogRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
@@ -178,6 +179,18 @@ public class AdminOrderService {
                 fulfillment.getGoodsType(),
                 GoodsTypeNames.of(fulfillment.getGoodsType()),
                 fulfillment.getPetName(),
+                petRepository
+                        .findByOrderNumberOrderByPetIndexAsc(
+                                fulfillment.getOrderNumber())
+                        .stream()
+                        .map(pet -> new AdminOrderDetail.Pet(
+                                pet.getPetIndex(),
+                                pet.getPetName(),
+                                pet.isKeyringAdded(),
+                                pet.getPhotoCount(),
+                                pet.isLowPhotoAcknowledged()
+                        ))
+                        .toList(),
                 new AdminOrderDetail.Pricing(
                         fulfillment.getListPriceKrw(),
                         fulfillment.getDiscountAmountKrw(),

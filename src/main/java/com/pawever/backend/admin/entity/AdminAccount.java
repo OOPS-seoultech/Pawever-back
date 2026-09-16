@@ -97,15 +97,48 @@ public class AdminAccount extends BaseTimeEntity {
         return account;
     }
 
-    /** 초대를 받아 비밀번호를 정한다. 초대 값은 그 자리에서 버린다. */
-    public void activate(String passwordHash) {
+    /**
+     * 초대를 받아 비밀번호를 정한다. 초대 값은 그 자리에서 버린다.
+     *
+     * 아직 쓸 수 있는 계정이 아니다. 대표가 승인해야 권한이 생긴다.
+     */
+    public void acceptInvite(String passwordHash) {
         this.passwordHash = passwordHash;
-        this.status = AdminAccountStatus.ACTIVE;
+        this.status = AdminAccountStatus.PENDING_APPROVAL;
         this.inviteTokenHash = null;
         this.inviteExpiresAt = null;
     }
 
-    /** 초대를 다시 보낸다. 앞서 보낸 링크는 그 순간 쓸 수 없게 된다. */
+    /**
+     * 대표가 실무 권한을 준다.
+     *
+     * 어떤 일을 맡을지는 승인하는 사람이 정한다. 가입할 때 보낸 값이
+     * 권한을 정하면, 요청을 고쳐 스스로 권한을 키울 수 있다.
+     */
+    public void approve(java.util.Set<WorkRole> roles, Instant at) {
+        this.status = AdminAccountStatus.ACTIVE;
+        this.workRoles = new java.util.HashSet<>(roles);
+        this.permissionsChangedAt = at;
+    }
+
+    public boolean isAwaitingApproval() {
+        return status == AdminAccountStatus.PENDING_APPROVAL;
+    }
+
+    /** 비밀번호를 정한 계정인지. 승인 대기도 포함한다. */
+    public boolean hasPassword() {
+        return passwordHash != null
+                && (status == AdminAccountStatus.ACTIVE
+                        || status == AdminAccountStatus.PENDING_APPROVAL);
+    }
+
+    /**
+     * 초대를 다시 보낸다. 앞서 보낸 링크는 그 순간 쓸 수 없게 된다.
+     *
+     * 아직 비밀번호를 정하지 않은 계정에만 쓴다. 이미 정한 계정에 쓰면
+     * 초대를 다시 보내는 것만으로 남의 비밀번호가 지워진다. 비밀번호
+     * 재설정과 계정 되살리기는 따로 둔다.
+     */
     public void reinvite(String inviteTokenHash, Instant inviteExpiresAt) {
         this.inviteTokenHash = inviteTokenHash;
         this.inviteExpiresAt = inviteExpiresAt;

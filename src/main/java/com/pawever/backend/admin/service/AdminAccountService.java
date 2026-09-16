@@ -2,6 +2,7 @@ package com.pawever.backend.admin.service;
 
 import com.pawever.backend.admin.entity.AdminAccount;
 import com.pawever.backend.admin.entity.AdminRole;
+import com.pawever.backend.admin.entity.WorkRole;
 import com.pawever.backend.admin.config.AdminProperties;
 import com.pawever.backend.admin.repository.AdminAccountRepository;
 import com.pawever.backend.admin.security.AdminTokenProvider;
@@ -93,18 +94,24 @@ public class AdminAccountService {
         return createInvite(email, name, AdminRole.ADMIN);
     }
 
-    /** 계정을 만들고 초대 값을 돌려준다. 이 값은 지금 한 번만 볼 수 있다. */
+    /**
+     * 계정을 만들고 초대 값을 돌려준다. 이 값은 지금 한 번만 볼 수 있다.
+     *
+     * 전체 관리자는 한 사람뿐이다. 초대로는 실무 권한만 줄 수 있고, 어떤
+     * 일을 맡을지는 가입한 뒤 대표가 승인할 때 정한다. 이 통로로 전권을
+     * 줄 수 있으면 초대 한 번으로 대표가 둘이 된다.
+     */
     @Transactional
     public String invite(String email, String name, AdminRole role) {
         accountRepository.lockAccounts();
-        if (role == AdminRole.OWNER && (AdminPrincipal.current() == null || AdminPrincipal.current().role() != AdminRole.OWNER)) {
+        if (role != null && role != AdminRole.PRODUCTION) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
         String normalized = normalizeEmail(email);
         if (accountRepository.findByEmail(normalized).isPresent()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
-        return createInvite(normalized, name, role);
+        return createInvite(normalized, name, AdminRole.PRODUCTION);
     }
 
     /** 초대를 다시 보낸다. 앞서 보낸 링크는 그 순간 쓸 수 없게 된다. */
@@ -114,6 +121,11 @@ public class AdminAccountService {
         AdminAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
         requireEditable(account);
+        // 이미 비밀번호를 정한 사람에게 다시 보내면 그 비밀번호가 지워진다.
+        // 비밀번호 재설정은 따로 만들 동작이지 초대 재전송의 부작용이 아니다.
+        if (account.hasPassword()) {
+            throw new CustomException(ErrorCode.ADMIN_ACCOUNT_ALREADY_HAS_PASSWORD);
+        }
         String inviteToken = randomToken();
         account.reinvite(hmacHasher.hash(inviteToken), inviteExpiry());
         return inviteToken;
@@ -134,7 +146,35 @@ public class AdminAccountService {
         if (!account.isInviteUsable(clock.instant())) {
             throw new CustomException(ErrorCode.EXPIRED_TOKEN);
         }
-        account.activate(passwordEncoder.encode(password));
+        account.acceptInvite(passwordEncoder.encode(password));
+    }
+
+    /**
+     * 대표가 실무 권한을 준다.
+     *
+     * 누가 언제 승인했는지 남긴다. 승인 없이 쓸 수 있는 계정이 생기면
+     * 초대 링크가 한 번 새는 것으로 고객 정보가 통째로 열린다.
+     */
+    @Transactional
+    public void approve(Long accountId, java.util.Set<WorkRole> workRoles) {
+        AdminPrincipal actor = AdminPrincipal.current();
+        if (actor == null || actor.role() != AdminRole.OWNER) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        accountRepository.lockAccounts();
+        AdminAccount account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
+        if (!account.isAwaitingApproval()) {
+            throw new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_AWAITING_APPROVAL);
+        }
+        // 승인은 실무 권한만 준다. 전체 관리자는 한 사람뿐이다.
+        if (account.getRole() != AdminRole.PRODUCTION) {
+            throw new CustomException(ErrorCode.FORBIDDEN);
+        }
+        account.approve(
+                workRoles == null ? java.util.Set.of() : workRoles,
+                clock.instant()
+        );
     }
 
     /**
@@ -150,7 +190,10 @@ public class AdminAccountService {
         }
         AdminAccount account = accountRepository.findByEmail(normalizeEmail(email))
                 .orElse(null);
-        boolean usable = account != null && account.canSignIn();
+        // 승인 대기도 비밀번호는 있다. 대조까지 마친 뒤에 무엇이 막았는지
+        // 말해 준다 — 먼저 걸러 내면 비밀번호를 모르는 사람도 그 주소가
+        // 등록돼 있다는 것을 알게 된다.
+        boolean usable = account != null && account.hasPassword();
 
         // 계정이 없어도 대조를 거친다. 없다고 곧바로 돌려보내면 응답이 눈에 띄게
         // 빨라서, 오류 문구가 같아도 어떤 주소가 등록돼 있는지 시간으로 알 수 있다.
@@ -159,6 +202,12 @@ public class AdminAccountService {
         boolean matched = passwordEncoder.matches(password, hash);
 
         if (!usable || !matched) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
+        if (account.isAwaitingApproval()) {
+            throw new CustomException(ErrorCode.ADMIN_ACCOUNT_PENDING_APPROVAL);
+        }
+        if (!account.canSignIn()) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
         account.recordLogin(clock.instant());

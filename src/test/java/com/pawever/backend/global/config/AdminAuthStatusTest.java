@@ -63,7 +63,8 @@ class AdminAuthStatusTest {
         var account = com.pawever.backend.admin.entity.AdminAccount.invite(
                 java.util.UUID.randomUUID()+"@example.test", "제작 담당자", AdminRole.PRODUCTION,
                 "test-invite", java.time.Instant.now().plusSeconds(3600));
-        account.activate("test-hash");
+        account.acceptInvite("test-hash");
+        account.approve(java.util.Set.of(), java.time.Instant.now());
         accounts.saveAndFlush(account);
         String token = adminTokens.createToken(account.getId(), AdminRole.PRODUCTION);
 

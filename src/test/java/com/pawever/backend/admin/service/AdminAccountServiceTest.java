@@ -4,6 +4,9 @@ import com.pawever.backend.admin.config.AdminProperties;
 import com.pawever.backend.admin.entity.AdminAccount;
 import com.pawever.backend.admin.entity.AdminAccountStatus;
 import com.pawever.backend.admin.entity.AdminRole;
+import com.pawever.backend.admin.entity.WorkRole;
+import com.pawever.backend.admin.security.AdminPrincipal;
+import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.admin.repository.AdminAccountRepository;
 import com.pawever.backend.admin.security.AdminTokenProvider;
 import com.pawever.backend.global.exception.CustomException;
@@ -48,6 +51,12 @@ class AdminAccountServiceTest {
     private BCryptPasswordEncoder passwordEncoder;
     private final java.util.concurrent.atomic.AtomicInteger matchCalls =
             new java.util.concurrent.atomic.AtomicInteger();
+
+    /** 로그인 주체는 시험마다 비운다. 남아 있으면 다음 시험이 남의 권한으로 돈다. */
+    @org.junit.jupiter.api.AfterEach
+    void clearPrincipal() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     void setUp() {
@@ -126,7 +135,10 @@ class AdminAccountServiceTest {
 
         service.acceptInvite(inviteToken, "충분히-길고-안전한-비밀번호");
 
-        assertThat(account.getStatus()).isEqualTo(AdminAccountStatus.ACTIVE);
+        // 가입만으로 권한이 생기지 않는다. 초대 링크가 한 번 새는 것으로
+        // 고객 주소와 연락처가 통째로 열리면 안 된다.
+        assertThat(account.getStatus())
+                .isEqualTo(AdminAccountStatus.PENDING_APPROVAL);
         assertThat(account.getInviteTokenHash()).isNull();
         // 같은 링크로 두 번 계정을 세울 수 없다.
         assertThat(account.isInviteUsable(NOW)).isFalse();
@@ -267,7 +279,9 @@ class AdminAccountServiceTest {
                 hmacHasher.hash("invite"),
                 NOW.plusSeconds(3600)
         );
-        account.activate(passwordEncoder.encode(password));
+        // 가입은 승인 대기로 끝난다. 시험이 쓰려면 승인까지 마친 계정이어야 한다.
+        account.acceptInvite(passwordEncoder.encode(password));
+        account.approve(java.util.Set.of(), NOW);
         return account;
     }
 
@@ -290,5 +304,105 @@ class AdminAccountServiceTest {
         assertThatThrownBy(() -> service.invite("a@example.com", "나혜", AdminRole.PRODUCTION))
                 .isInstanceOf(CustomException.class);
         verify(accountRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void 승인을_기다리는_계정은_로그인할_수_없다() {
+        AdminAccount account = pendingAccount("맞는-비밀번호입니다");
+        when(accountRepository.findByEmail("a@example.com"))
+                .thenReturn(Optional.of(account));
+
+        // 비밀번호가 맞아도 아직이다. 무엇이 막았는지는 대조를 마친 뒤에만
+        // 말해 준다 — 먼저 걸러 내면 비밀번호를 모르는 사람도 그 주소가
+        // 등록돼 있다는 것을 알게 된다.
+        assertThatThrownBy(() -> service.signIn("a@example.com", "맞는-비밀번호입니다"))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(
+                        ErrorCode.ADMIN_ACCOUNT_PENDING_APPROVAL.getMessage());
+    }
+
+    @Test
+    void 전체_관리자가_승인하면_실무_권한이_생긴다() {
+        AdminAccount account = pendingAccount("맞는-비밀번호입니다");
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+        asOwner();
+
+        service.approve(1L, java.util.Set.of(WorkRole.DESIGN_QC));
+
+        assertThat(account.getStatus()).isEqualTo(AdminAccountStatus.ACTIVE);
+        assertThat(account.getWorkRoles()).containsExactly(WorkRole.DESIGN_QC);
+        assertThat(account.canSignIn()).isTrue();
+    }
+
+    @Test
+    void 전체_관리자가_아니면_승인할_수_없다() {
+        // 실무자가 서로 승인해 주면 대표의 승인 절차가 없는 것과 같다.
+        AdminAccount account = pendingAccount("맞는-비밀번호입니다");
+        asProduction();
+
+        assertThatThrownBy(() -> service.approve(1L, java.util.Set.of()))
+                .isInstanceOf(CustomException.class);
+        assertThat(account.getStatus())
+                .isEqualTo(AdminAccountStatus.PENDING_APPROVAL);
+    }
+
+    @Test
+    void 초대로는_전권을_줄_수_없다() {
+        // 전체 관리자는 한 사람뿐이다. 이 통로가 열려 있으면 초대 한 번으로
+        // 대표가 둘이 된다.
+        asOwner();
+
+        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.OWNER))
+                .isInstanceOf(CustomException.class);
+        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.ADMIN))
+                .isInstanceOf(CustomException.class);
+        verify(accountRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void 이미_비밀번호를_정한_계정에는_초대를_다시_보내지_않는다() {
+        // 다시 보내면 그 비밀번호가 지워진다. 비밀번호 재설정은 따로 만들
+        // 동작이지 초대 재전송의 부작용이 아니다.
+        AdminAccount account = activeAccount("맞는-비밀번호입니다");
+        when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+        assertThatThrownBy(() -> service.reinvite(1L))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(
+                        ErrorCode.ADMIN_ACCOUNT_ALREADY_HAS_PASSWORD.getMessage());
+        assertThat(account.getPasswordHash()).isNotNull();
+    }
+
+    private AdminAccount pendingAccount(String password) {
+        AdminAccount account = AdminAccount.invite(
+                "a@example.com",
+                "나혜",
+                AdminRole.PRODUCTION,
+                hmacHasher.hash("invite-token"),
+                NOW.plusSeconds(3600)
+        );
+        account.acceptInvite(passwordEncoder.encode(password));
+        return account;
+    }
+
+    private void asOwner() {
+        setPrincipal(new AdminPrincipal(9L, AdminRole.OWNER));
+    }
+
+    private void asProduction() {
+        setPrincipal(new AdminPrincipal(9L, AdminRole.PRODUCTION));
+    }
+
+    private void setPrincipal(AdminPrincipal principal) {
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .setAuthentication(
+                        new org.springframework.security.authentication
+                                .UsernamePasswordAuthenticationToken(
+                                principal,
+                                null,
+                                java.util.List.of(
+                                        new org.springframework.security.core.authority
+                                                .SimpleGrantedAuthority(
+                                                principal.role().authority()))));
     }
 }

@@ -33,11 +33,24 @@ public class ProductionFinishingService {
   private final jakarta.persistence.EntityManager em;
   private final Clock clock;
 
+  /**
+   * 플레이트는 만든 사람이 출력 담당자를 정해 넘긴다.
+   *
+   * 그래서 일감처럼 먼저 잡는 것이 아니라 넘겨받은 사람이 맡는다. 다만
+   * 그 사람이 그만두거나 권한이 풀렸으면 다른 출력 담당자가 이어받는다 —
+   * 막으면 프린터에 올라간 채로 아무도 손댈 수 없는 플레이트가 남는다.
+   */
   private void ownBatch(PrintBatch b) {
     access.require(MANAGE_PRINT_BATCH);
-    if (!Objects.equals(b.getPrintingAssigneeId(), access.current().getId())
-        || access.eligible(access.current().getId(), WorkRole.PRINT_FINISHING) == null)
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 출력 담당자만 처리할 수 있습니다.");
+    Long me = access.current().getId();
+    if (access.eligible(me, WorkRole.PRINT_FINISHING) == null)
+      throw new WorkflowException(
+          403, "FORBIDDEN", "출력 역할의 활성 담당자만 처리할 수 있습니다.");
+    Long holder = b.getPrintingAssigneeId();
+    if (!Objects.equals(holder, me)
+        && access.eligible(holder, WorkRole.PRINT_FINISHING) != null)
+      throw new WorkflowException(
+          403, "FORBIDDEN", "다른 담당자가 맡은 플레이트입니다.");
   }
 
   public Map<String, Object> cancelQueued(Long id, String key, Map<String, Object> input) {
@@ -299,9 +312,7 @@ public class ProductionFinishingService {
             .orElseThrow(() -> new WorkflowException(404, "NOT_FOUND", "작업을 찾을 수 없습니다."));
     access.read(t.getOrderNumber());
     access.require(COMPLETE_POST_PROCESSING);
-    if (!Objects.equals(t.getAssigneeId(), access.current().getId())
-        || access.eligible(access.current().getId(), WorkRole.PRINT_FINISHING) == null)
-      throw new WorkflowException(403, "FORBIDDEN", "배정된 출력·후가공 담당자만 처리할 수 있습니다.");
+    access.take(t, WorkRole.PRINT_FINISHING, "출력·후가공");
     return t;
   }
 

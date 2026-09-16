@@ -62,30 +62,57 @@ public class GoodsOrderService {
             GoodsDeliveryMethod deliveryMethod,
             boolean keyringAdded
     ) {
-        // 부치지 않으면 배송비도 없다.
+        return priceFor(channel, surveyParticipant, deliveryMethod, 1, keyringAdded ? 1 : 0);
+    }
+
+    /**
+     * 아이 수와 키링 수를 셈에 넣은 금액.
+     *
+     * 만드는 값과 깎아 주는 값은 아이마다 붙는다. 두 마리면 두 마리 값을 받아야
+     * 하고, 할인도 두 마리에 적용해야 한 마리 값만 받은 주문이 생기지 않는다.
+     *
+     * 배송비는 한 번만 붙는다. 한 상자에 같이 담아 한 번 부친다.
+     *
+     * 키링은 아이마다 따로 고르므로 고른 아이 수만큼만 붙인다.
+     *
+     * @param petCount     아이 수. 1 이상
+     * @param keyringCount 키링을 고른 아이 수. 0 이상 petCount 이하
+     */
+    public GoodsOrderPricing priceFor(
+            GoodsSalesChannel channel,
+            boolean surveyParticipant,
+            GoodsDeliveryMethod deliveryMethod,
+            int petCount,
+            int keyringCount
+    ) {
+        if (petCount < 1 || keyringCount < 0 || keyringCount > petCount) {
+            throw new IllegalArgumentException("아이 수와 키링 수가 맞지 않습니다.");
+        }
+        // 부치지 않으면 배송비도 없다. 몇 마리든 한 번만 붙는다.
         int shippingFeeKrw = deliveryMethod == GoodsDeliveryMethod.PICKUP
                 ? 0
                 : properties.getShippingFeeKrw();
         // 부자재는 깎는 것이 아니라 더하는 것이라 할인 계산 뒤에 붙인다.
-        int keyringFeeKrw = keyringAdded ? properties.getKeyringFeeKrw() : 0;
+        int keyringFeeKrw = properties.getKeyringFeeKrw() * keyringCount;
+        int listPriceKrw = properties.getListPriceKrw() * petCount;
         if (channel == GoodsSalesChannel.FLEA) {
             // 현장 한정가다. 설문을 거치지 않는 자리라 누가 오든 같은 값이고,
             // 설문 참여 할인과 겹쳐 쓰지 않는다.
             return GoodsOrderPricing.discounted(
-                    properties.getListPriceKrw(),
-                    properties.getFleaDiscountKrw(),
+                    listPriceKrw,
+                    properties.getFleaDiscountKrw() * petCount,
                     properties.getFleaPromotionName(),
                     shippingFeeKrw
             ).withKeyring(keyringFeeKrw);
         }
         if (!surveyParticipant) {
             return GoodsOrderPricing
-                    .listPrice(properties.getListPriceKrw(), shippingFeeKrw)
+                    .listPrice(listPriceKrw, shippingFeeKrw)
                     .withKeyring(keyringFeeKrw);
         }
         return GoodsOrderPricing.discounted(
-                properties.getListPriceKrw(),
-                properties.getSurveyDiscountKrw(),
+                listPriceKrw,
+                properties.getSurveyDiscountKrw() * petCount,
                 properties.getSurveyPromotionName(),
                 shippingFeeKrw
         ).withKeyring(keyringFeeKrw);

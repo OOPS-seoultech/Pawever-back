@@ -84,6 +84,19 @@ public class GoodsSurveyPhoto extends BaseTimeEntity {
         this.confirmedAt = confirmedAt;
     }
 
+    /**
+     * 어느 아이의 사진인지. 신청을 제출할 때 정해진다.
+     *
+     * 올리는 동안에는 아직 어느 아이에게 붙일지 모르고, 고객이 도중에 아이를
+     * 지우거나 순서를 바꿀 수 있어 제출 시점에 확정한다. 예전 주문은 한
+     * 마리뿐이라 비어 있다.
+     */
+    private Integer petIndex;
+
+    public void assignToPet(int petIndex) {
+        this.petIndex = petIndex;
+    }
+
     public void setPublicationAgreed(boolean publicationAgreed) {
         this.publicationAgreed = publicationAgreed;
     }
