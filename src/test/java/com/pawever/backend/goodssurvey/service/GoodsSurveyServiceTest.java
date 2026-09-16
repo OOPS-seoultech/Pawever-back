@@ -10,6 +10,9 @@ import com.pawever.backend.goodssurvey.dto.GoodsSurveyDraftResponse;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyDraftRequest;
 import com.pawever.backend.goodssurvey.dto.SaveGoodsSurveyStoryRequest;
 import com.pawever.backend.goodssurvey.dto.SubmitGoodsSurveyApplicationRequest;
+import com.pawever.backend.goodssurvey.entity.GoodsOrderPet;
+import com.pawever.backend.global.exception.CustomException;
+import com.pawever.backend.global.exception.ErrorCode;
 import com.pawever.backend.goodssurvey.dto.SubscribeGoodsSurveyNoticeRequest;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyCampaign;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyNoticeSubscription;
@@ -58,6 +61,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -74,6 +78,7 @@ class GoodsSurveyServiceTest {
     @Mock private GoodsSurveyStoryRepository storyRepository;
     @Mock private GoodsSurveyFulfillmentRepository fulfillmentRepository;
     @Mock private GoodsSurveyPhotoRepository photoRepository;
+    @Mock private com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRepository;
     @Mock private GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     @Mock private GoodsSurveyPhotoStorage photoStorage;
     @Mock private GoodsOrderSequenceRepository sequenceRepository;
@@ -147,6 +152,7 @@ class GoodsSurveyServiceTest {
                 storyRepository,
                 fulfillmentRepository,
                 photoRepository,
+                petRepository,
                 noticeSubscriptionRepository,
                 photoStorage,
                 new GoodsSurveyAnswerValidator(new ObjectMapper()),
@@ -1119,13 +1125,15 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void 사진이_세_장보다_적으면_접수되지_않는다() {
-        // 근거: [카톡 나혜님] "사진 3개 이상 등록해야 제출 버튼 활성화되도록
-        //       변경해주세요. 즉, 사진 3개 이상만 제출 가능하도록 (3-5개)"
+    void 예전_형태의_요청은_적은_장수로_들어올_수_없다() {
+        // 최소 장수를 한 장으로 낮추면서, 적게 낸 사람에게는 결과가 달라질 수
+        // 있다고 알리고 확인을 받기로 했다. 확인은 새 형태에만 담긴다.
         //
-        // 화면은 세 장부터 열리게 고쳤지만 API 는 한 장도 받고 있었다. 화면만
-        // 막으면 그 화면을 거치지 않는 요청이 그대로 들어온다. 얼굴·전신·털무늬
-        // 세 종이 제작의 최소 구성이라, 두 장짜리 주문은 만들 수 없다.
+        // 예전 형태에는 확인 값이 없다. 그 화면은 세 장을 채워야만 보낼 수
+        // 있었으니 적은 장수로 올 일이 없고, 그런데도 왔다면 화면을 거치지 않은
+        // 요청이다. 확인 없이 들어온 것으로 보고 받지 않는다.
+        //
+        // 이 확인이 없으면 새 화면의 확인 절차를 예전 형태로 보내 지나갈 수 있다.
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-too-few");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -1144,8 +1152,8 @@ class GoodsSurveyServiceTest {
         );
 
         // 두 장이 실제로 올라와 확인까지 끝난 상태를 만든다. 그래야 "덜
-        // 올라왔다"가 아니라 "장수가 모자라다"로 걸리는지 볼 수 있다.
-        // 고치고 나면 장수를 먼저 보고 끊으므로 이 stub 은 쓰이지 않는다.
+        // 올라왔다"가 아니라 "확인을 받지 않았다"로 걸리는지 볼 수 있다.
+        // 장수를 먼저 보고 끊으므로 이 stub 은 쓰이지 않는다.
         lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(
                 any(), any(), any()
         )).thenReturn(List.of(
@@ -1176,7 +1184,8 @@ class GoodsSurveyServiceTest {
                         true,
                         false
                 )
-        )).hasMessageContaining("3장");
+        )).isInstanceOf(CustomException.class)
+                .hasMessageContaining(ErrorCode.SURVEY_PHOTO_WARNING_REQUIRED.getMessage());
     }
 
     @Test
@@ -1284,6 +1293,212 @@ class GoodsSurveyServiceTest {
         )).isInstanceOf(Exception.class);
 
         assertThat(publishedEvents).noneMatch(GoodsOrderSubmittedEvent.class::isInstance);
+    }
+
+    /**
+     * 사진 한 장으로도 낼 수 있다. 부족하다고 알린 뒤 확인을 받는 것이 조건이다.
+     *
+     * <p>세 장을 갖추지 못해 아예 신청하지 못하는 쪽보다, 적더라도 받아 만들어
+     * 보는 쪽이 낫다는 판단이다.
+     */
+    @Test
+    void onePhotoIsAcceptedWhenTheShortageWasAcknowledged() {
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+
+        submitPets(List.of(pet("몽이", List.of("photo-1"), true, false)), List.of("photo-1"));
+
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getPetCount()).isEqualTo(1);
+    }
+
+    /**
+     * 확인 없이 한 장을 보내면 받지 않는다.
+     *
+     * <p>화면에서만 막아 두면 요청을 고쳐 지나갈 수 있다. 확인했다는 사실이
+     * 서버에 남아야 결과가 다르다는 문의가 왔을 때 근거가 된다.
+     */
+    @Test
+    void onePhotoIsRejectedWhenTheShortageWasNotAcknowledged() {
+        assertThatThrownBy(() ->
+                submitPets(List.of(pet("몽이", List.of("photo-1"), false, false)), List.of("photo-1")))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ErrorCode.SURVEY_PHOTO_WARNING_REQUIRED.getMessage());
+    }
+
+    /** 0장은 확인을 받았더라도 만들 수 없다. */
+    @Test
+    void noPhotoIsRejectedEvenWhenAcknowledged() {
+        assertThatThrownBy(() ->
+                submitPets(List.of(pet("몽이", List.of(), true, false)), List.of()))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ErrorCode.SURVEY_PHOTO_COUNT_INVALID.getMessage());
+    }
+
+    /**
+     * 두 마리를 넣으면 두 마리 값을 받는다.
+     *
+     * <p>한 주문에 두 마리를 신청받고 한 마리 값만 받은 일이 있었다. 만드는 값과
+     * 할인은 아이마다 붙고, 배송비는 한 상자라 한 번만 붙는다.
+     */
+    @Test
+    void twoPetsAreChargedForBothWithOneShippingFee() {
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+
+        submitPets(
+                List.of(
+                        pet("몽이", List.of("photo-1", "photo-2", "photo-3"), false, false),
+                        pet("초코", List.of("photo-4", "photo-5", "photo-6"), false, false)
+                ),
+                List.of("photo-1", "photo-2", "photo-3", "photo-4", "photo-5", "photo-6")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        GoodsSurveyFulfillment fulfillment = saved.getValue();
+        assertThat(fulfillment.getPetCount()).isEqualTo(2);
+        // 정가와 할인이 두 마리분이고, 배송비는 한 번이다.
+        assertThat(fulfillment.getListPriceKrw()).isEqualTo(29_900 * 2);
+        assertThat(fulfillment.getDiscountAmountKrw()).isEqualTo(6_000 * 2);
+        assertThat(fulfillment.getShippingFeeKrw()).isEqualTo(3_000);
+        assertThat(fulfillment.getPaymentAmountKrw()).isEqualTo(23_900 * 2 + 3_000);
+    }
+
+    /** 아이는 줄로 나눠 남는다. 몇 마리인지 세려면 줄이 있어야 한다. */
+    @Test
+    void eachPetIsStoredAsItsOwnRow() {
+        ArgumentCaptor<GoodsOrderPet> pets = ArgumentCaptor.forClass(GoodsOrderPet.class);
+
+        submitPets(
+                List.of(
+                        pet("몽이", List.of("photo-1"), true, false),
+                        pet("초코", List.of("photo-2", "photo-3", "photo-4"), false, true)
+                ),
+                List.of("photo-1", "photo-2", "photo-3", "photo-4")
+        );
+
+        verify(petRepository, times(2)).save(pets.capture());
+        assertThat(pets.getAllValues()).extracting(GoodsOrderPet::getPetName)
+                .containsExactly("몽이", "초코");
+        assertThat(pets.getAllValues()).extracting(GoodsOrderPet::getPetIndex)
+                .containsExactly(0, 1);
+        assertThat(pets.getAllValues()).extracting(GoodsOrderPet::getPhotoCount)
+                .containsExactly(1, 3);
+        // 적게 낸 아이에게만 확인을 받았다.
+        assertThat(pets.getAllValues()).extracting(GoodsOrderPet::isLowPhotoAcknowledged)
+                .containsExactly(true, false);
+        // 키링은 아이마다 따로 고른다.
+        assertThat(pets.getAllValues()).extracting(GoodsOrderPet::isKeyringAdded)
+                .containsExactly(false, true);
+    }
+
+    /** 키링은 고른 아이 수만큼만 값이 붙는다. */
+    @Test
+    void keyringIsChargedOnlyForThePetsThatAskedForIt() {
+        ArgumentCaptor<GoodsSurveyFulfillment> saved =
+                ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+
+        submitPets(
+                List.of(
+                        pet("몽이", List.of("photo-1"), true, true),
+                        pet("초코", List.of("photo-2"), true, false)
+                ),
+                List.of("photo-1", "photo-2")
+        );
+
+        verify(fulfillmentRepository).save(saved.capture());
+        // 두 마리 중 한 마리만 키링이다.
+        assertThat(saved.getValue().getKeyringFeeKrw()).isEqualTo(2_000);
+        assertThat(saved.getValue().isKeyringAdded()).isTrue();
+    }
+
+    /**
+     * 같은 사진을 두 아이에게 나눠 쓸 수 없다.
+     *
+     * <p>허용하면 한 장으로 두 마리를 만든다고 적힌 주문이 생긴다. 어느 아이를
+     * 보고 만든 사진인지도 사라진다.
+     */
+    @Test
+    void onePhotoCannotBeSharedBetweenTwoPets() {
+        assertThatThrownBy(() -> submitPets(
+                List.of(
+                        pet("몽이", List.of("photo-1", "photo-2"), true, false),
+                        pet("초코", List.of("photo-2", "photo-3"), true, false)
+                ),
+                List.of("photo-1", "photo-2", "photo-3")
+        ))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ErrorCode.SURVEY_PHOTO_SHARED_BETWEEN_PETS.getMessage());
+    }
+
+    /** 아이 수에는 상한이 있다. */
+    @Test
+    void moreThanFivePetsIsRejected() {
+        List<SubmitGoodsSurveyApplicationRequest.Pet> tooMany = new ArrayList<>();
+        List<String> photos = new ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            String photoId = "photo-" + index;
+            tooMany.add(pet("아이" + index, List.of(photoId), true, false));
+            photos.add(photoId);
+        }
+
+        assertThatThrownBy(() -> submitPets(tooMany, photos))
+                .isInstanceOf(CustomException.class)
+                .hasMessageContaining(ErrorCode.SURVEY_PET_COUNT_INVALID.getMessage());
+    }
+
+    private SubmitGoodsSurveyApplicationRequest.Pet pet(
+            String petName,
+            List<String> photoIds,
+            boolean lowPhotoAcknowledged,
+            boolean keyringAdded
+    ) {
+        return new SubmitGoodsSurveyApplicationRequest.Pet(
+                petName, photoIds, List.of(), keyringAdded, lowPhotoAcknowledged);
+    }
+
+    private void submitPets(
+            List<SubmitGoodsSurveyApplicationRequest.Pet> pets,
+            List<String> photoIds
+    ) {
+        JsonNode tracking = new ObjectMapper().createObjectNode().put("visitId", "visit-pets");
+        GoodsSurveyDraftResponse draft = service.createDraft(
+                new CreateGoodsSurveyRequest("2026-07-25-v2", "figure", tracking, null)
+        );
+        service.completeSurvey(
+                draft.responseId(),
+                draft.editToken(),
+                new SaveGoodsSurveyDraftRequest(reservableAnswers(), "q33", 30_000L, Map.of(), tracking)
+        );
+        lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
+                .thenReturn(photoIds.stream()
+                        .map(id -> confirmedPhoto(id, draft.responseId()))
+                        .toList());
+        service.submitApplication(
+                draft.responseId(),
+                draft.editToken(),
+                "idempotency-pets",
+                new SubmitGoodsSurveyApplicationRequest(
+                        "figure",
+                        "",
+                        null,
+                        "보호자",
+                        "01012345678",
+                        null,
+                        "01234",
+                        "서울시 노원구",
+                        "",
+                        null,
+                        List.of(),
+                        "conversion-pets",
+                        tracking,
+                        false,
+                        true,
+                        true,
+                        false,
+                        pets
+                )
+        );
     }
 
     private void submitOnce(

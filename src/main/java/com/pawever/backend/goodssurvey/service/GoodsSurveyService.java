@@ -49,7 +49,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -70,19 +72,36 @@ public class GoodsSurveyService {
      * 1차 신청 기록에는 다른 값이 남아 있다. 그때 실제로 신청한 것이라 고치지 않는다.
      */
     /**
-     * 제작에 필요한 사진 장수.
+     * 아이 한 마리에 받는 사진 장수.
      *
-     * 얼굴·전신·털무늬 세 종이 최소 구성이다. 아무 사진 세 장이 아니라 칸마다
-     * 무엇을 찍어야 하는지가 정해져 있고, 그래서 화면의 등록 칸도 세 개다.
+     * 예전에는 얼굴·전신·털무늬 세 칸을 모두 채워야 냈다. 세 장을 갖추지 못해
+     * 아예 신청하지 못하는 쪽보다, 적더라도 받아 만들어 보는 쪽이 낫다는
+     * 판단으로 최소를 한 장으로 낮췄다.
      *
-     * 화면만 세 장으로 막아 두면 그 화면을 거치지 않는 요청은 한 장으로도
-     * 들어온다. 만들 수 없는 주문이 결제까지 가므로 여기서도 본다.
+     * 대신 적게 낸 사람에게는 결과가 달라질 수 있다고 알리고 확인을 받는다.
+     * {@link #LOW_PHOTO_WARNING_MAX} 를 본다.
      *
-     * 근거: [카톡 나혜님] "사진 3개 이상 등록해야 제출 버튼 활성화되도록
-     *       변경해주세요. 즉, 사진 3개 이상만 제출 가능하도록 (3-5개)"
+     * 화면만 막아 두면 그 화면을 거치지 않는 요청은 0장으로도 들어온다.
+     * 만들 수 없는 주문이 결제까지 가므로 여기서도 본다.
      */
-    private static final int PHOTO_MIN_COUNT = 3;
+    private static final int PHOTO_MIN_COUNT = 1;
     private static final int PHOTO_MAX_COUNT = 5;
+
+    /**
+     * 이 장수 이하면 부족하다고 알린 뒤 확인을 받는다.
+     *
+     * 확인 없이 들어온 요청은 받지 않는다. 화면에서만 확인하고 넘어가면 요청을
+     * 고쳐 지나갈 수 있다.
+     */
+    private static final int LOW_PHOTO_WARNING_MAX = 2;
+
+    /**
+     * 한 신청에 담을 수 있는 아이 수.
+     *
+     * 한 주문에 두 마리를 넣고 한 마리 값만 받은 일이 있었다. 여러 마리를
+     * 제대로 받되, 사진이 아이마다 최대 다섯 장이라 끝없이 늘리지는 않는다.
+     */
+    private static final int PET_MAX_COUNT = 5;
 
     private static final Set<String> GOODS_TYPES = Set.of("figure");
     private static final Map<String, String> GOODS_LABELS = Map.of("figure", "3D 전신 피규어");
@@ -106,6 +125,7 @@ public class GoodsSurveyService {
     private final GoodsSurveyStoryRepository storyRepository;
     private final GoodsSurveyFulfillmentRepository fulfillmentRepository;
     private final GoodsSurveyPhotoRepository photoRepository;
+    private final com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRepository;
     private final GoodsSurveyNoticeSubscriptionRepository noticeSubscriptionRepository;
     private final GoodsSurveyPhotoStorage photoStorage;
     private final GoodsSurveyAnswerValidator answerValidator;
@@ -377,7 +397,9 @@ public class GoodsSurveyService {
                     GoodsSurveyPhotoStatus.PENDING,
                     GoodsSurveyPhotoStatus.CONFIRMED
             );
-            if (usablePhotos >= 5) {
+            // 아이마다 다섯 장까지라, 한 신청이 올릴 수 있는 전체 장수는
+            // 아이 수 상한을 곱한 만큼이다. 어느 아이 것인지는 제출할 때 정한다.
+            if (usablePhotos >= (long) PHOTO_MAX_COUNT * PET_MAX_COUNT) {
                 throw new CustomException(ErrorCode.SURVEY_PHOTO_LIMIT_EXCEEDED);
             }
             String photoId = UUID.randomUUID().toString();
@@ -506,23 +528,47 @@ public class GoodsSurveyService {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
 
-        Set<String> uniquePhotoIds = new LinkedHashSet<>(request.photoIds());
-        if (uniquePhotoIds.size() != request.photoIds().size()) {
-            throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+        List<PetSubmission> pets = normalizePets(request);
+        // 만들어 보내는 피규어 수만큼 자리를 쓴다. 두 마리를 받으려면 자리도
+        // 두 개 남아 있어야 한다. 앞의 확인은 한 자리만 보므로 여기서 다시 본다.
+        if (!campaign.isGoodsAvailable(
+                countSubmittedAllocations(campaign.getId()) + pets.size() - 1L)) {
+            throw new CustomException(ErrorCode.SURVEY_CAMPAIGN_FULL);
         }
-        // 장수는 사진을 찾아보기 전에 본다. 몇 장을 보냈는지는 보낸 것만으로
-        // 알 수 있고, 모자란 요청 때문에 저장소를 뒤질 이유가 없다.
-        if (uniquePhotoIds.size() < PHOTO_MIN_COUNT
-                || uniquePhotoIds.size() > PHOTO_MAX_COUNT) {
-            throw new CustomException(ErrorCode.SURVEY_PHOTO_COUNT_INVALID);
+
+        Set<String> uniquePhotoIds = new LinkedHashSet<>();
+        Set<String> publicPhotoIds = new LinkedHashSet<>();
+        for (PetSubmission pet : pets) {
+            Set<String> petPhotoIds = new LinkedHashSet<>(pet.photoIds());
+            if (petPhotoIds.size() != pet.photoIds().size()) {
+                throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
+            }
+            // 장수는 사진을 찾아보기 전에 본다. 몇 장을 보냈는지는 보낸 것만으로
+            // 알 수 있고, 모자란 요청 때문에 저장소를 뒤질 이유가 없다.
+            if (petPhotoIds.size() < PHOTO_MIN_COUNT
+                    || petPhotoIds.size() > PHOTO_MAX_COUNT) {
+                throw new CustomException(ErrorCode.SURVEY_PHOTO_COUNT_INVALID);
+            }
+            if (petPhotoIds.size() <= LOW_PHOTO_WARNING_MAX
+                    && !pet.lowPhotoAcknowledged()) {
+                throw new CustomException(ErrorCode.SURVEY_PHOTO_WARNING_REQUIRED);
+            }
+            for (String photoId : petPhotoIds) {
+                if (!uniquePhotoIds.add(photoId)) {
+                    // 한 장을 두 아이에게 나눠 쓰면 어느 아이를 보고 만든
+                    // 사진인지 사라지고, 장수도 실제보다 많아 보인다.
+                    throw new CustomException(ErrorCode.SURVEY_PHOTO_SHARED_BETWEEN_PETS);
+                }
+            }
+            List<String> requestedPublicPhotoIds = pet.publicPhotoIds();
+            Set<String> petPublicPhotoIds = new LinkedHashSet<>(requestedPublicPhotoIds);
+            if (petPublicPhotoIds.size() != requestedPublicPhotoIds.size()
+                    || !petPhotoIds.containsAll(petPublicPhotoIds)) {
+                throw new CustomException(ErrorCode.INVALID_INPUT);
+            }
+            publicPhotoIds.addAll(petPublicPhotoIds);
         }
-        List<String> requestedPublicPhotoIds =
-                request.publicPhotoIds() == null ? List.of() : request.publicPhotoIds();
-        Set<String> publicPhotoIds = new LinkedHashSet<>(requestedPublicPhotoIds);
-        if (publicPhotoIds.size() != requestedPublicPhotoIds.size()
-                || !uniquePhotoIds.containsAll(publicPhotoIds)) {
-            throw new CustomException(ErrorCode.INVALID_INPUT);
-        }
+
         List<GoodsSurveyPhoto> confirmedPhotos = photoRepository.findAllByIdInAndResponseIdAndStatus(
                 uniquePhotoIds,
                 responseId,
@@ -531,10 +577,21 @@ public class GoodsSurveyService {
         if (confirmedPhotos.size() != uniquePhotoIds.size()) {
             throw new CustomException(ErrorCode.SURVEY_PHOTO_NOT_READY);
         }
-        confirmedPhotos.forEach(
-                photo -> photo.setPublicationAgreed(publicPhotoIds.contains(photo.getId()))
-        );
+        Map<String, Integer> petIndexByPhotoId = new HashMap<>();
+        for (int petIndex = 0; petIndex < pets.size(); petIndex++) {
+            for (String photoId : pets.get(petIndex).photoIds()) {
+                petIndexByPhotoId.put(photoId, petIndex);
+            }
+        }
+        confirmedPhotos.forEach(photo -> {
+            photo.setPublicationAgreed(publicPhotoIds.contains(photo.getId()));
+            // 어느 아이 것인지는 제출할 때 정해진다. 올리는 동안에는 고객이
+            // 아이를 지우거나 순서를 바꿀 수 있어 그때는 정할 수 없다.
+            photo.assignToPet(petIndexByPhotoId.get(photo.getId()));
+        });
         photoRepository.saveAll(confirmedPhotos);
+
+        int keyringCount = (int) pets.stream().filter(PetSubmission::keyringAdded).count();
 
         String normalizedPhone = normalizePhone(request.phone());
         String phoneHash = hmacHasher.hash(response.getCampaignId() + ":" + normalizedPhone);
@@ -560,7 +617,7 @@ public class GoodsSurveyService {
                 serialize(request.tracking()),
                 request.goodsType(),
                 trimToNull(request.customGoods()),
-                request.petName().trim(),
+                pets.get(0).petName(),
                 request.guardianName().trim(),
                 normalizedPhone,
                 phoneHash,
@@ -578,15 +635,28 @@ public class GoodsSurveyService {
                         campaign.getChannel(),
                         response.isSurveyParticipant(),
                         deliveryMethod,
-                        request.keyringAdded()
+                        pets.size(),
+                        keyringCount
                 ),
-                request.keyringAdded(),
+                keyringCount > 0,
                 request.marketingAgreed(),
                 properties.getMarketingConsentVersion(),
                 paymentWindowMinutesFor(campaign.getChannel()),
                 properties.getContractRetentionDays()
         );
+        fulfillment.recordPetCount(pets.size());
         fulfillmentRepository.save(fulfillment);
+        for (int petIndex = 0; petIndex < pets.size(); petIndex++) {
+            PetSubmission pet = pets.get(petIndex);
+            petRepository.save(com.pawever.backend.goodssurvey.entity.GoodsOrderPet.of(
+                    fulfillment.getOrderNumber(),
+                    petIndex,
+                    pet.petName(),
+                    pet.keyringAdded(),
+                    pet.lowPhotoAcknowledged(),
+                    pet.photoIds().size()
+            ));
+        }
         orderService.recordCreated(fulfillment);
         response.submit();
 
@@ -791,8 +861,70 @@ public class GoodsSurveyService {
         }
     }
 
+    /**
+     * 요청을 아이 목록으로 맞춘다.
+     *
+     * 화면과 서버는 따로 배포된다. 서버가 먼저 올라가 있는 동안에도 예전 화면의
+     * 신청은 들어오므로, 아이 목록 없이 낱개 항목만 온 요청을 한 마리로 읽는다.
+     *
+     * 예전 형태에는 확인 값이 없다. 그 화면은 세 장을 채워야만 보낼 수 있었으니
+     * 적은 장수로 올 일이 없고, 확인 없이 왔다면 화면을 거치지 않은 요청이라
+     * 확인을 받지 않은 것으로 둔다.
+     */
+    private List<PetSubmission> normalizePets(SubmitGoodsSurveyApplicationRequest request) {
+        List<SubmitGoodsSurveyApplicationRequest.Pet> requested = request.pets();
+        if (requested == null || requested.isEmpty()) {
+            String petName = trimToNull(request.petName());
+            if (petName == null) {
+                throw new CustomException(ErrorCode.INVALID_INPUT);
+            }
+            return List.of(new PetSubmission(
+                    petName,
+                    request.photoIds() == null ? List.of() : request.photoIds(),
+                    request.publicPhotoIds() == null ? List.of() : request.publicPhotoIds(),
+                    request.keyringAdded(),
+                    false
+            ));
+        }
+        if (requested.size() > PET_MAX_COUNT) {
+            throw new CustomException(ErrorCode.SURVEY_PET_COUNT_INVALID);
+        }
+        List<PetSubmission> pets = new ArrayList<>();
+        for (SubmitGoodsSurveyApplicationRequest.Pet pet : requested) {
+            String petName = trimToNull(pet.petName());
+            if (petName == null) {
+                throw new CustomException(ErrorCode.INVALID_INPUT);
+            }
+            pets.add(new PetSubmission(
+                    petName,
+                    pet.photoIds() == null ? List.of() : pet.photoIds(),
+                    pet.publicPhotoIds() == null ? List.of() : pet.publicPhotoIds(),
+                    pet.keyringAdded(),
+                    pet.lowPhotoAcknowledged()
+            ));
+        }
+        return pets;
+    }
+
+    /** 예전 형태와 새 형태를 같은 모양으로 다루기 위한 한 마리분 입력. */
+    private record PetSubmission(
+            String petName,
+            List<String> photoIds,
+            List<String> publicPhotoIds,
+            boolean keyringAdded,
+            boolean lowPhotoAcknowledged
+    ) {
+    }
+
     private long countSubmittedAllocations(String campaignId) {
+        // 자리는 만들어 보내는 피규어 수로 센다. 기존 계산은 제출된 응답을 세고
+        // 만료·환불로 돌아온 자리를 빼는 규칙을 담고 있어 그대로 두고, 한 마리를
+        // 넘는 만큼만 더한다.
         return responseRepository.countSubmittedAllocations(
+                campaignId,
+                GoodsSurveyResponseStatus.SUBMITTED,
+                GoodsOrderStatus.releasesSlot()
+        ) + fulfillmentRepository.countExtraPetAllocations(
                 campaignId,
                 GoodsSurveyResponseStatus.SUBMITTED,
                 GoodsOrderStatus.releasesSlot()

@@ -88,6 +88,14 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     List<GoodsSurveyFulfillment> findByOrderNumberIn(Collection<String> orderNumbers);
 
     /**
+     * 이 송장번호가 이미 붙어 있는 주문.
+     *
+     * 같은 번호가 두 주문에 붙으면 둘 중 하나는 실제와 다른 번호를 갖게 되고,
+     * 그 고객은 자기 물건을 추적할 수 없다.
+     */
+    Optional<GoodsSurveyFulfillment> findByTrackingNumber(String trackingNumber);
+
+    /**
      * 여러 상태를 한 번에 센다.
      *
      * 뷰 하나가 상태 여럿을 묶는다. 상태마다 세어 더하면 뷰 다섯 개에
@@ -110,5 +118,37 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
             GoodsOrderStatus status,
             Instant now,
             Limit limit
+    );
+
+    /**
+     * 두 번째 마리부터 더 잡은 자리 수.
+     *
+     * 정원은 만들어 보내는 피규어 수로 센다. 한 주문에 두 마리면 두 자리를
+     * 쓴다. 그런데 자리 계산은 주문이 아니라 제출된 응답을 세고, 만료·환불로
+     * 돌아온 자리를 빼는 규칙이 이미 그 안에 있다. 그 규칙을 다시 쓰면
+     * 돌아온 자리를 잘못 세기 쉬워, 기존 계산은 그대로 두고 한 마리를 넘는
+     * 만큼만 여기서 더한다.
+     *
+     * 자리를 놓아 준 상태의 주문은 세지 않는다. 기존 계산과 같은 기준이라야
+     * 두 값을 더해 쓸 수 있다.
+     */
+    @Query("""
+            select coalesce(sum(fulfillment.petCount - 1), 0)
+            from GoodsSurveyFulfillment fulfillment
+            where fulfillment.petCount > 1
+              and fulfillment.status not in :releasedStatuses
+              and exists (
+                  select 1
+                  from GoodsSurveyResponse response
+                  where response.id = fulfillment.responseId
+                    and response.campaignId = :campaignId
+                    and response.status = :submitted
+              )
+            """)
+    long countExtraPetAllocations(
+            @Param("campaignId") String campaignId,
+            @Param("submitted")
+            com.pawever.backend.goodssurvey.entity.GoodsSurveyResponseStatus submitted,
+            @Param("releasedStatuses") Collection<GoodsOrderStatus> releasedStatuses
     );
 }
