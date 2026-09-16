@@ -11,6 +11,7 @@ import com.pawever.backend.workflow.StaffPermissions;
 import com.pawever.backend.workflow.ProductionSettlementService;
 import com.pawever.backend.workflow.WorkflowException;
 import com.pawever.backend.workflow.WorkflowService;
+import com.pawever.backend.workflow.notification.ShipmentNotificationService;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +42,7 @@ public class PostalImportService {
     private final StaffPermissions access;
     private final WorkflowService workflow;
     private final ProductionSettlementService compensation;
+    private final ShipmentNotificationService notifications;
     private final Clock clock;
 
     /**
@@ -174,10 +176,12 @@ public class PostalImportService {
             results.put(String.valueOf(rowId), applyOne(row, pool, now));
         }
         rows.flush();
-        return Map.of(
-                "batchId", batchId,
-                "results", results,
-                "rows", rowViews(rows.findByBatchIdOrderByLineNumberAsc(batchId)));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("batchId", batchId);
+        notifications.batchIdForPostalImport(batchId).ifPresent(id -> response.put("notificationBatchId", id));
+        response.put("results", results);
+        response.put("rows", rowViews(rows.findByBatchIdOrderByLineNumberAsc(batchId)));
+        return response;
     }
 
     /** 한 줄을 반영한다. 반영 직전에 주문 상태를 다시 본다. */
@@ -221,6 +225,7 @@ public class PostalImportService {
 
         order.confirmPostOfficeAcceptance(row.getTrackingNumber(), row.getPostageKrw(), now);
         String settlement = compensation.recordAtFulfillment(orderNumber);
+        notifications.enqueue(row.getBatchId(), order);
         row.markCommitted(now);
         workflow.audit(
                 orderNumber,

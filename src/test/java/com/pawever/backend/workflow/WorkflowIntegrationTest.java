@@ -337,7 +337,7 @@ class WorkflowIntegrationTest {
   }
 
   @Test
-  void shippingSettlementStartsAtPostOfficeAcceptanceOnlyOnce() throws Exception {
+  void shippingAcceptanceCreatesOneSettlementAndOnePendingNotification() throws Exception {
     var row = readyForPacking(true);
     enableCompensationFor(readJson(printerToken, "/api/admin/me").get("id").asLong());
     var batch =
@@ -372,13 +372,45 @@ class WorkflowIntegrationTest {
 
     String commitPath = "/api/admin/postal-imports/" + preview.get("batchId").asLong() + "/commit";
     String commitBody = jsonBody(Map.of("selectedRowIds", List.of(importRow.get("id").asLong())));
+    var committed =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(
+                mvc.perform(
+                        post(commitPath)
+                            .header("Authorization", "Bearer " + owner)
+                            .contentType("application/json")
+                            .content(commitBody))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString());
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+    long notificationBatchId = committed.get("notificationBatchId").asLong();
+    var notificationBatch =
+        mvc.perform(
+                get("/api/admin/notification-batches/" + notificationBatchId)
+                    .header("Authorization", "Bearer " + owner))
+            .andExpect(status().isOk())
+            .andReturn();
+    var notificationView =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(notificationBatch.getResponse().getContentAsString());
+    org.assertj.core.api.Assertions.assertThat(notificationView.get("pending").asInt()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(notificationView.get("succeeded").asInt()).isZero();
+    org.assertj.core.api.Assertions.assertThat(notificationView.get("events").get(0).get("status").asText())
+        .isEqualTo("PENDING_CONFIGURATION");
+    long notificationEventId = notificationView.get("events").get(0).get("id").asLong();
     mvc.perform(
-            post(commitPath)
+            post("/api/admin/notification-events/" + notificationEventId + "/retry")
                 .header("Authorization", "Bearer " + owner)
                 .contentType("application/json")
-                .content(commitBody))
-        .andExpect(status().isOk());
-    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+                .content(jsonBody(Map.of("reason", "관리자 확인 후 재시도"))))
+        .andExpect(status().isConflict());
+    org.assertj.core.api.Assertions.assertThat(
+            readJson(owner, "/api/admin/orders/" + number + "/workflow")
+                .get("shipmentStatus")
+                .asText())
+        .isEqualTo("ACCEPTED");
 
     mvc.perform(
             post(commitPath)
@@ -387,6 +419,16 @@ class WorkflowIntegrationTest {
                 .content(commitBody))
         .andExpect(status().isOk());
     org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+    notificationBatch =
+        mvc.perform(
+                get("/api/admin/notification-batches/" + notificationBatchId)
+                    .header("Authorization", "Bearer " + owner))
+            .andExpect(status().isOk())
+            .andReturn();
+    notificationView =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(notificationBatch.getResponse().getContentAsString());
+    org.assertj.core.api.Assertions.assertThat(notificationView.get("events")).hasSize(1);
   }
 
   @Test

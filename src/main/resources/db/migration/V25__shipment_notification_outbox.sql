@@ -1,0 +1,45 @@
+-- 우체국 접수 후 알림톡의 요청 접수와 수신자 최종 성공을 분리한다.
+CREATE TABLE shipment_notification_batches (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  postal_import_batch_id BIGINT NOT NULL,
+  created_by BIGINT NOT NULL,
+  queued_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NULL,
+  updated_at DATETIME(6) NULL,
+  UNIQUE KEY uk_notification_batch_postal_import (postal_import_batch_id)
+);
+
+CREATE TABLE shipment_notification_events (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  version BIGINT NOT NULL DEFAULT 0,
+  batch_id BIGINT NOT NULL,
+  order_number VARCHAR(20) NOT NULL,
+  recipient_phone VARCHAR(1000) NOT NULL,
+  recipient_hash VARCHAR(64) NOT NULL,
+  guardian_name VARCHAR(1000) NULL,
+  pet_name VARCHAR(1000) NULL,
+  shipping_address VARCHAR(2000) NULL,
+  shipping_address_detail VARCHAR(2000) NULL,
+  postal_code VARCHAR(20) NULL,
+  tracking_number VARCHAR(20) NOT NULL,
+  template_code VARCHAR(100) NULL,
+  template_body_hash VARCHAR(64) NULL,
+  rendered_body VARCHAR(4000) NULL,
+  status VARCHAR(30) NOT NULL,
+  provider_message_id VARCHAR(100) NULL,
+  send_attempts INT NOT NULL DEFAULT 0,
+  result_checks INT NOT NULL DEFAULT 0,
+  last_result_code VARCHAR(80) NULL,
+  last_result_message VARCHAR(300) NULL,
+  accepted_at DATETIME(6) NULL,
+  succeeded_at DATETIME(6) NULL,
+  failed_at DATETIME(6) NULL,
+  next_check_at DATETIME(6) NULL,
+  last_retry_reason VARCHAR(300) NULL,
+  last_retried_at DATETIME(6) NULL,
+  created_at DATETIME(6) NULL,
+  updated_at DATETIME(6) NULL,
+  UNIQUE KEY uk_shipment_notification_order_tracking (order_number, tracking_number),
+  KEY ix_shipment_notification_batch (batch_id),
+  KEY ix_shipment_notification_status_check (status, next_check_at)
+);
