@@ -8,6 +8,7 @@ import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
 import com.pawever.backend.workflow.ShipmentExportItemRepository;
 import com.pawever.backend.workflow.StaffPermissions;
+import com.pawever.backend.workflow.ProductionSettlementService;
 import com.pawever.backend.workflow.WorkflowException;
 import com.pawever.backend.workflow.WorkflowService;
 import java.time.Clock;
@@ -39,6 +40,7 @@ public class PostalImportService {
     private final GoodsSurveyFulfillmentRepository orders;
     private final StaffPermissions access;
     private final WorkflowService workflow;
+    private final ProductionSettlementService compensation;
     private final Clock clock;
 
     /**
@@ -80,7 +82,7 @@ public class PostalImportService {
         rows.flush();
 
         workflow.audit(
-                null,
+                "postal-import:" + batch.getId(),
                 "PREVIEW_POSTAL_IMPORT",
                 null,
                 null,
@@ -189,7 +191,7 @@ public class PostalImportService {
             return "NOT_IN_BATCH";
         }
 
-        var order = orders.findByOrderNumber(orderNumber).orElse(null);
+        var order = orders.lockByOrderNumber(orderNumber).orElse(null);
         if (order == null) {
             row.block("주문을 찾을 수 없습니다.");
             return "ORDER_NOT_FOUND";
@@ -218,13 +220,15 @@ public class PostalImportService {
         }
 
         order.confirmPostOfficeAcceptance(row.getTrackingNumber(), row.getPostageKrw(), now);
+        String settlement = compensation.recordAtFulfillment(orderNumber);
         row.markCommitted(now);
         workflow.audit(
                 orderNumber,
                 "APPLY_POSTAL_TRACKING",
                 "AWAITING_POST_OFFICE_RESULT",
                 "ACCEPTED",
-                "송장 " + row.getTrackingNumber() + " · 요금 " + row.getPostageKrw() + "원");
+                "송장 " + row.getTrackingNumber() + " · 요금 " + row.getPostageKrw()
+                        + "원 · 정산 " + settlement);
         return "APPLIED";
     }
 

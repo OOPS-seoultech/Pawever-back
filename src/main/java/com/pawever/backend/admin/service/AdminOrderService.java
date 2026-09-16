@@ -742,8 +742,6 @@ public class AdminOrderService {
         requireAdmin(principal);
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
 
-        requireLegacyShipment(fulfillment);
-
         if (fulfillment.getDeliveryMethod() != GoodsDeliveryMethod.PICKUP) {
             // 부쳐야 하는 물건이다. 송장 없이 끝내면 고객이 조회할 번호가 없다.
             throw new CustomException(ErrorCode.ORDER_NOT_PICKUP_COMPLETABLE);
@@ -751,7 +749,19 @@ public class AdminOrderService {
         if (fulfillment.getStatus() == GoodsOrderStatus.PICKED_UP) {
             return;
         }
-        if (!PICKUP_COMPLETABLE.contains(fulfillment.getStatus())) {
+        if (fulfillment.getProductionStage() != null) {
+            if (principal.role() != AdminRole.OWNER) {
+                throw new CustomException(ErrorCode.FORBIDDEN);
+            }
+            if (fulfillment.getProductionStage()
+                            != com.pawever.backend.workflow.ProductionStage.COMPLETE
+                    || !"READY_FOR_PICKUP".equals(fulfillment.shipmentStatus())) {
+                throw new com.pawever.backend.workflow.WorkflowException(
+                        409,
+                        "PICKUP_PACKING_REQUIRED",
+                        "직접 수령 포장을 먼저 완료해 주세요.");
+            }
+        } else if (!PICKUP_COMPLETABLE.contains(fulfillment.getStatus())) {
             throw new CustomException(ErrorCode.ORDER_NOT_PICKUP_COMPLETABLE);
         }
 

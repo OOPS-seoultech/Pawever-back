@@ -23,6 +23,7 @@ public class ShipmentExportService {
   private final ShipmentExportBatchRepository batches;
   private final ShipmentExportItemRepository items;
   private final ShipmentWorkbook workbook;
+  private final ProductionSettlementService compensation;
   private final Clock clock;
   private final com.pawever.backend.goodssurvey.config.GoodsSurveyProperties properties;
   private final ObjectMapper json = new ObjectMapper();
@@ -46,6 +47,26 @@ public class ShipmentExportService {
                 null,
                 "포장 정보 조회"));
     return result;
+  }
+
+  public List<Map<String, Object>> pickupCandidates() {
+    access.require(COMPLETE_PICKUP);
+    return orders
+        .findByProductionStageAndDeliveryMethodOrderByIdAsc(
+            ProductionStage.PACKING, GoodsDeliveryMethod.PICKUP)
+        .stream()
+        .filter(o -> workflow.active(o) && access.canRead(o.getOrderNumber()))
+        .map(
+            o ->
+                Map.<String, Object>of(
+                    "orderNumber", o.getOrderNumber(),
+                    "version", o.getVersion(),
+                    "petName", o.getPetName(),
+                    "guardianName", o.getGuardianName(),
+                    "productionStage", o.getProductionStage().name(),
+                    "shipmentStatus", o.shipmentStatus(),
+                    "blockingIssues", pickupProblems(o)))
+        .toList();
   }
 
   Map<String, Object> candidate(GoodsSurveyFulfillment o) {
@@ -87,6 +108,21 @@ public class ShipmentExportService {
                 s.length() > 2000
                     || s.codePoints().anyMatch(c -> c < 32 && c != 9 && c != 10 && c != 13)))
       p.add("배송 정보에 사용할 수 없는 문자가 있습니다.");
+    return p;
+  }
+
+  List<String> pickupProblems(GoodsSurveyFulfillment o) {
+    var p = new ArrayList<String>();
+    if (!workflow.active(o)
+        || !workflow.paid(o)
+        || o.getProductionStage() != ProductionStage.PACKING
+        || o.getDeliveryMethod() != GoodsDeliveryMethod.PICKUP)
+      p.add("검수를 통과한 직접 수령 주문만 포장할 수 있습니다.");
+    var task = workflow.currentTask(o.getOrderNumber());
+    if (task == null || task.getStage() != ProductionStage.PACKING)
+      p.add("포장 작업을 확인해 주세요.");
+    if (!workflow.codes(o.getOrderNumber()).isEmpty())
+      p.add("먼저 주문의 차단 이슈를 해결해 주세요.");
     return p;
   }
 
@@ -201,6 +237,67 @@ public class ShipmentExportService {
     access.require(PACK_AND_EXPORT_SHIPMENTS);
     requested.forEach(r -> access.read((String) r.get("orderNumber")));
     return result;
+  }
+
+  public Map<String, Object> completePickupPacking(String key, Map<String, Object> body) {
+    access.require(COMPLETE_PICKUP);
+    var requested = selection(body);
+    requested.forEach(r -> access.read((String) r.get("orderNumber")));
+    return workflow.command(
+        "pickup-pack",
+        key,
+        body,
+        () -> {
+          access.require(COMPLETE_PICKUP);
+          var locked = new LinkedHashMap<String, GoodsSurveyFulfillment>();
+          requested.stream()
+              .map(r -> (String) r.get("orderNumber"))
+              .sorted()
+              .forEach(
+                  n -> {
+                    access.read(n);
+                    locked.put(n, workflow.locked(n));
+                  });
+          var errors = new ArrayList<Map<String, Object>>();
+          for (var row : requested) {
+            var order = locked.get(row.get("orderNumber"));
+            workflow.version(order, row);
+            var problems = pickupProblems(order);
+            if (!problems.isEmpty())
+              errors.add(
+                  Map.of(
+                      "orderNumber", order.getOrderNumber(),
+                      "blockingIssues", problems));
+          }
+          if (!errors.isEmpty())
+            throw new WorkflowException(
+                422,
+                "PICKUP_NOT_READY",
+                "선택 주문의 직접 수령 포장 상태를 확인해 주세요.",
+                errors);
+
+          var at = clock.instant();
+          var settlementResults = new LinkedHashMap<String, String>();
+          for (var order : requested.stream().map(r -> locked.get(r.get("orderNumber"))).toList()) {
+            var task = workflow.currentTask(order.getOrderNumber());
+            task.assign(access.current().getId());
+            task.complete(at);
+            order.completePackingForPickup();
+            workflow.touch(order);
+            String settlement = compensation.recordAtFulfillment(order.getOrderNumber());
+            settlementResults.put(order.getOrderNumber(), settlement);
+            workflow.audit(
+                order.getOrderNumber(),
+                "COMPLETE_PICKUP_PACKING",
+                "PACKING",
+                "READY_FOR_PICKUP",
+                "정산 " + settlement);
+          }
+          return Map.of(
+              "completed", requested.size(),
+              "orderNumbers", requested.stream().map(r -> r.get("orderNumber")).toList(),
+              "settlements", settlementResults);
+        });
   }
 
   public List<Map<String, Object>> list() {

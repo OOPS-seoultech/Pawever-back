@@ -450,6 +450,12 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         lifecycleShipmentStatus = "AWAITING_POST_OFFICE_RESULT";
     }
 
+    /** 직접 수령품 포장을 끝낸다. 실제 고객 인도와는 다른 사건이다. */
+    public void completePackingForPickup() {
+        productionStage = com.pawever.backend.workflow.ProductionStage.COMPLETE;
+        lifecycleShipmentStatus = "READY_FOR_PICKUP";
+    }
+
     public void markDeliveryCompleted(Instant completedAt, int retentionDays) {
         this.deliveryCompletedAt = completedAt;
         this.deleteAfter = completedAt.plus(retentionDays, ChronoUnit.DAYS);

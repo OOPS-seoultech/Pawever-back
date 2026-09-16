@@ -313,6 +313,114 @@ class WorkflowIntegrationTest {
                     row.get("version").asLong()))));
   }
 
+  void enableCompensationFor(Long workerId) throws Exception {
+    var config = readJson(owner, "/api/admin/production-compensation");
+    send(
+        owner,
+        "/api/admin/production-compensation",
+        jsonBody(
+            Map.of(
+                "version",
+                config.get("version").asLong(),
+                "enabled",
+                true,
+                "paidWorkerIds",
+                List.of(workerId))),
+        UUID.randomUUID().toString());
+  }
+
+  long settlementCount(String orderNumber) throws Exception {
+    long count = 0;
+    for (var entry : readJson(owner, "/api/admin/production-settlements"))
+      if (entry.get("orderNumber").asText().equals(orderNumber)) count++;
+    return count;
+  }
+
+  @Test
+  void shippingSettlementStartsAtPostOfficeAcceptanceOnlyOnce() throws Exception {
+    var row = readyForPacking(true);
+    enableCompensationFor(readJson(printerToken, "/api/admin/me").get("id").asLong());
+    var batch =
+        send(
+            owner,
+            "/api/admin/shipments/export-batches",
+            exportBody(row),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isZero();
+
+    String previewBody =
+        jsonBody(
+            Map.of(
+                "outboundBatchId",
+                batch.get("id").asLong(),
+                "text",
+                "1234567890123 1,800 01234 보호자 =초코\n통상 반송불요 20g"));
+    var previewResponse =
+        mvc.perform(
+                post("/api/admin/postal-imports/preview")
+                    .header("Authorization", "Bearer " + owner)
+                    .contentType("application/json")
+                    .content(previewBody))
+            .andExpect(status().isOk())
+            .andReturn();
+    var preview =
+        new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(previewResponse.getResponse().getContentAsString());
+    var importRow = preview.get("rows").get(0);
+    org.assertj.core.api.Assertions.assertThat(importRow.get("status").asText())
+        .isEqualTo("AUTO_MATCH");
+
+    String commitPath = "/api/admin/postal-imports/" + preview.get("batchId").asLong() + "/commit";
+    String commitBody = jsonBody(Map.of("selectedRowIds", List.of(importRow.get("id").asLong())));
+    mvc.perform(
+            post(commitPath)
+                .header("Authorization", "Bearer " + owner)
+                .contentType("application/json")
+                .content(commitBody))
+        .andExpect(status().isOk());
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+
+    mvc.perform(
+            post(commitPath)
+                .header("Authorization", "Bearer " + owner)
+                .contentType("application/json")
+                .content(commitBody))
+        .andExpect(status().isOk());
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+  }
+
+  @Test
+  void pickupPackingCompletesWorkAndAccruesBeforeSeparateHandoff() throws Exception {
+    var row = readyForPacking(false);
+    enableCompensationFor(readJson(printerToken, "/api/admin/me").get("id").asLong());
+    String body = exportBody(row), key = UUID.randomUUID().toString();
+
+    var completed = send(owner, "/api/admin/shipments/pickup-completions", body, key);
+    org.assertj.core.api.Assertions.assertThat(completed.get("completed").asInt()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(
+            send(owner, "/api/admin/shipments/pickup-completions", body, key))
+        .isEqualTo(completed);
+
+    var packed = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(packed.getProductionStage())
+        .isEqualTo(ProductionStage.COMPLETE);
+    org.assertj.core.api.Assertions.assertThat(packed.shipmentStatus())
+        .isEqualTo("READY_FOR_PICKUP");
+    org.assertj.core.api.Assertions.assertThat(packed.orderStatus()).isEqualTo("ACTIVE");
+    org.assertj.core.api.Assertions.assertThat(packed.getDeleteAfter()).isNull();
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+
+    send(
+        owner,
+        "/api/admin/orders/" + number + "/pickup-complete",
+        "{}",
+        UUID.randomUUID().toString());
+    var handedOff = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(handedOff.shipmentStatus()).isEqualTo("PICKED_UP");
+    org.assertj.core.api.Assertions.assertThat(handedOff.getDeleteAfter()).isNotNull();
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(1);
+  }
+
   @Test
   void adminCanReleaseConfirmedPlateForNewConfigurationBeforePrinting() throws Exception {
     var plate = confirmedPlate(List.of(readyForPlate()));
@@ -379,6 +487,43 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(config.get("paidWorkerIds").size()).isEqualTo(1);
     org.assertj.core.api.Assertions.assertThat(config.get("paidWorkerIds").get(0).asLong())
         .isEqualTo(id);
+  }
+
+  @Test
+  void qualityPassWaitsForFulfillmentBeforeSettlement() throws Exception {
+    var plate = printedPlate();
+    var row = plate.get("orders").get(0);
+    var config = readJson(owner, "/api/admin/production-compensation");
+    send(
+        owner,
+        "/api/admin/production-compensation",
+        jsonBody(
+            Map.of(
+                "version",
+                config.get("version").asLong(),
+                "enabled",
+                true,
+                "paidWorkerIds",
+                List.of(plate.get("printingAssigneeId").asLong()))),
+        UUID.randomUUID().toString());
+
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/post-processing",
+            postBody(row),
+            UUID.randomUUID().toString());
+    row =
+        send(
+            printerToken,
+            "/api/production/tasks/" + row.get("taskId") + "/quality-check",
+            qcBody(row),
+            UUID.randomUUID().toString());
+
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText())
+        .isEqualTo("PACKING");
+    org.assertj.core.api.Assertions.assertThat(readJson(owner, "/api/admin/production-settlements"))
+        .noneMatch(entry -> entry.get("orderNumber").asText().equals(number));
   }
 
   @Test
@@ -461,7 +606,7 @@ class WorkflowIntegrationTest {
   }
 
   @Test
-  void concurrentQcRequestsRecordOneSettlementAndOnePackingTask() throws Exception {
+  void concurrentQcRequestsCreateOnePackingTaskWithoutEarlySettlement() throws Exception {
     var plate = printedPlate();
     var row = plate.get("orders").get(0);
     var config = readJson(owner, "/api/admin/production-compensation");
@@ -518,10 +663,7 @@ class WorkflowIntegrationTest {
                 .filter(t -> t.getStage() == ProductionStage.PACKING)
                 .count())
         .isEqualTo(1);
-    long count = 0;
-    for (var entry : readJson(owner, "/api/admin/production-settlements"))
-      if (entry.get("orderNumber").asText().equals(number)) count++;
-    org.assertj.core.api.Assertions.assertThat(count).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isZero();
   }
 
   @Test
@@ -642,7 +784,7 @@ class WorkflowIntegrationTest {
   }
 
   @Test
-  void finishingRequiresChecksAndQcCreatesOneOptInSettlement() throws Exception {
+  void finishingRequiresChecksAndQcWaitsForFulfillmentSettlement() throws Exception {
     var plate = printedPlate();
     var row = plate.get("orders").get(0);
     String taskPath = "/api/production/tasks/" + row.get("taskId");
@@ -701,14 +843,8 @@ class WorkflowIntegrationTest {
         .isEqualTo("PACKING");
     org.assertj.core.api.Assertions.assertThat(row.get("shipmentStatus").asText())
         .isEqualTo("NOT_READY");
-    var ledger = readJson(owner, "/api/admin/production-settlements");
-    long count = 0;
-    for (var entry : ledger)
-      if (entry.get("orderNumber").asText().equals(row.get("orderNumber").asText())) {
-        count++;
-        org.assertj.core.api.Assertions.assertThat(entry.get("amountKrw").asInt()).isEqualTo(3000);
-      }
-    org.assertj.core.api.Assertions.assertThat(count).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(settlementCount(row.get("orderNumber").asText()))
+        .isZero();
     mvc.perform(
             get("/api/admin/production-settlements")
                 .header("Authorization", "Bearer " + printerToken))
