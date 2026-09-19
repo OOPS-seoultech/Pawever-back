@@ -30,6 +30,8 @@ class WorkflowIntegrationTest {
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository responses;
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository photos;
   @Autowired ProductionTaskRepository tasks;
+  @Autowired ProductionArtifactRepository artifacts;
+  @Autowired AsCaseAccessGrantRepository asGrants;
   @Autowired WorkflowSettingsRepository settings;
   @Autowired StaffPermissionOverrideRepository overrides;
   @Autowired AdminTokenProvider tokens;
@@ -429,6 +431,102 @@ class WorkflowIntegrationTest {
         new com.fasterxml.jackson.databind.ObjectMapper()
             .readTree(notificationBatch.getResponse().getContentAsString());
     org.assertj.core.api.Assertions.assertThat(notificationView.get("events")).hasSize(1);
+  }
+
+  @Test
+  void completedOrdersStaySummaryOnlyAndAsGrantsAreNarrowAndRevocable() throws Exception {
+    var order = orders.findByOrderNumber(number).orElseThrow();
+    order.changeStatus(GoodsOrderStatus.SHIPPED);
+    order.markDeliveryCompleted(Instant.now(), 90);
+    orders.saveAndFlush(order);
+    String artifactId = "as-" + UUID.randomUUID();
+    var artifact =
+        ProductionArtifact.pending(
+            artifactId,
+            number,
+            1L,
+            modelerId,
+            "MODEL_SOURCE",
+            "repair.3mf",
+            "application/octet-stream",
+            12,
+            Instant.now().plusSeconds(3600));
+    artifact.confirm();
+    artifacts.saveAndFlush(artifact);
+    org.mockito.Mockito.when(
+            storage.presignDownload(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()))
+        .thenAnswer(
+            invocation ->
+                new GoodsSurveyPhotoStorage.PresignedDownload(
+                    "https://example.test/as-file", invocation.getArgument(2)));
+
+    mvc.perform(get("/api/admin/completed-orders").header("Authorization", "Bearer " + owner))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data[?(@.orderNumber == '" + number + "')]").isNotEmpty())
+        .andExpect(jsonPath("$.data[?(@.orderNumber == '" + number + "')].guardianName").doesNotExist())
+        .andExpect(jsonPath("$.data[?(@.orderNumber == '" + number + "')].petName").doesNotExist());
+
+    var caseRow =
+        send(
+            owner,
+            "/api/admin/as-cases",
+            "{\"orderNumber\":\"" + number + "\",\"reason\":\"재출력 확인\"}",
+            UUID.randomUUID().toString());
+    long caseId = caseRow.get("id").asLong();
+    var grant =
+        send(
+            owner,
+            "/api/admin/as-cases/" + caseId + "/access-grants",
+            "{\"recipientId\":" + modelerId + ",\"artifactIds\":[\"" + artifactId + "\"]}",
+            UUID.randomUUID().toString());
+
+    mvc.perform(
+            get("/api/production/as-cases/" + caseId + "/assets/" + artifactId)
+                .header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"))
+        .andExpect(jsonPath("$.data.url").value("https://example.test/as-file"));
+    mvc.perform(
+            get("/api/production/as-cases/" + caseId + "/assets/" + artifactId)
+                .header("Authorization", "Bearer " + stranger))
+        .andExpect(status().isNotFound());
+
+    var expired = asGrants.findById(grant.get("id").asLong()).orElseThrow();
+    org.springframework.test.util.ReflectionTestUtils.setField(expired, "expiresAt", Instant.now());
+    asGrants.saveAndFlush(expired);
+    mvc.perform(
+            get("/api/production/as-cases/" + caseId + "/assets/" + artifactId)
+                .header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isNotFound());
+    var renewed =
+        send(
+            owner,
+            "/api/admin/as-cases/" + caseId + "/access-grants",
+            "{\"recipientId\":"
+                + modelerId
+                + ",\"artifactIds\":[\""
+                + artifactId
+                + "\"],\"replacesGrantId\":"
+                + grant.get("id")
+                + "}",
+            UUID.randomUUID().toString());
+    mvc.perform(
+            get("/api/production/as-cases/" + caseId + "/assets/" + artifactId)
+                .header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isOk());
+
+    send(
+        owner,
+        "/api/admin/as-cases/" + caseId + "/access-grants/" + renewed.get("id") + "/revoke",
+        "{}",
+        UUID.randomUUID().toString());
+    mvc.perform(
+            get("/api/production/as-cases/" + caseId + "/assets/" + artifactId)
+                .header("Authorization", "Bearer " + modeler))
+        .andExpect(status().isNotFound());
   }
 
   @Test
