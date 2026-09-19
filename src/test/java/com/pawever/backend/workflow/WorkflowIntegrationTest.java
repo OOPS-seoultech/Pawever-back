@@ -464,6 +464,65 @@ class WorkflowIntegrationTest {
   }
 
   @Test
+  void ownerPreparesAndRecordsAnImmutablePayoutWithoutDoublePaying() throws Exception {
+    var row = readyForPacking(false);
+    enableCompensationFor(readJson(printerToken, "/api/admin/me").get("id").asLong());
+    send(
+        owner,
+        "/api/admin/shipments/pickup-completions",
+        exportBody(row),
+        UUID.randomUUID().toString());
+
+    var summary = readJson(owner, "/api/admin/compensation/summary");
+    var settlement =
+        java.util.stream.StreamSupport.stream(summary.get("settlements").spliterator(), false)
+            .filter(item -> number.equals(item.get("orderNumber").asText()))
+            .findFirst()
+            .orElse(null);
+    org.assertj.core.api.Assertions.assertThat(settlement).isNotNull();
+    long settlementId = settlement.get("id").asLong();
+    var prepared =
+        send(
+            owner,
+            "/api/admin/compensation/payout-batches",
+            jsonBody(Map.of("settlementIds", List.of(settlementId), "deductionKrw", 0)),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(prepared.get("status").asText()).isEqualTo("PREPARED");
+    org.assertj.core.api.Assertions.assertThat(prepared.get("grossKrw").asInt()).isEqualTo(3000);
+    org.assertj.core.api.Assertions.assertThat(prepared.get("netKrw").asInt()).isEqualTo(3000);
+    expectAs(
+        owner,
+        "/api/admin/compensation/payout-batches",
+        jsonBody(Map.of("settlementIds", List.of(settlementId), "deductionKrw", 0)),
+        409);
+
+    var paid =
+        send(
+            owner,
+            "/api/admin/compensation/payout-batches/" + prepared.get("id").asLong() + "/mark-paid",
+            jsonBody(Map.of("reference", "BANK-20260919-001")),
+            UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(paid.get("status").asText()).isEqualTo("PAID");
+    expectAs(
+        owner,
+        "/api/admin/compensation/payout-batches/" + prepared.get("id").asLong() + "/mark-paid",
+        jsonBody(Map.of("reference", "BANK-20260919-002")),
+        409);
+    var ownerEntry =
+        java.util.stream.StreamSupport.stream(
+                readJson(owner, "/api/admin/compensation/summary").get("settlements").spliterator(), false)
+            .filter(item -> number.equals(item.get("orderNumber").asText()))
+            .findFirst()
+            .orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(ownerEntry.get("paymentStatus").asText()).isEqualTo("PAID");
+    org.assertj.core.api.Assertions.assertThat(
+            java.util.stream.StreamSupport.stream(
+                    readJson(printerToken, "/api/admin/compensation/summary").get("settlements").spliterator(), false)
+                .anyMatch(item -> number.equals(item.get("orderNumber").asText())))
+        .isTrue();
+  }
+
+  @Test
   void adminCanReleaseConfirmedPlateForNewConfigurationBeforePrinting() throws Exception {
     var plate = confirmedPlate(List.of(readyForPlate()));
     String path = "/api/production/print-batches/" + plate.get("id");
