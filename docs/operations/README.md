@@ -6,7 +6,7 @@
 
 ## 읽는 순서
 
-추가 구현: [출력·후가공·검수](2026-09-13-print-finishing-qc.md), [포장 완료·우체국 제출 파일](2026-09-13-shipment-packing-export.md), [발송·직접 수령 완료 기준 정산](2026-09-16-fulfillment-settlement-pickup.md). 정산 발생 기준은 최신 2차 기획에 따라 마지막 문서를 우선한다.
+추가 구현: [출력·후가공·검수](2026-09-13-print-finishing-qc.md), [포장 완료·우체국 제출 파일](2026-09-13-shipment-packing-export.md), [발송·직접 수령 완료 기준 정산](2026-09-16-fulfillment-settlement-pickup.md), [제작비 지급 원장](2026-09-19-production-payout-ledger.md). 정산 발생 기준은 최신 2차 기획에 따라 마지막 문서를 우선한다.
 
 [개발 보완서](2026-09-12-development-addendum.md)를 먼저 읽고 [원본 운영 명세의 개발용 사본](../superpowers/specs/2026-09-10-pawever-admin-operations-ux-design.md), [최종 이관서](2026-09-11-pawever-developer-final-handoff.md), [작업별 구현 계획](../superpowers/plans/2026-09-11-pawever-admin-notion-integration.md), [Notion 변경 지시서](2026-09-11-notion-gpt-change-request.md)를 따른다. 정책 충돌 Q1~Q3는 보완서에 미답변으로 남겼다.
 

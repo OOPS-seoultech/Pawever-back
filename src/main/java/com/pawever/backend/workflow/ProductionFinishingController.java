@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ProductionFinishingController {
   private final ProductionFinishingService service;
+  private final ProductionPayoutService payouts;
 
   @PostMapping("/api/production/print-batches/{id}/cancel-queued")
   public Object cancelQueued(
@@ -72,5 +73,24 @@ public class ProductionFinishingController {
   @GetMapping("/api/admin/production-settlements")
   public Object settlements() {
     return ApiResponse.ok(service.settlements());
+  }
+
+  @GetMapping("/api/admin/compensation/summary")
+  public Object compensationSummary() {
+    return ApiResponse.ok(payouts.summary());
+  }
+
+  @PostMapping("/api/admin/compensation/payout-batches")
+  public Object preparePayout(
+      @RequestHeader("Idempotency-Key") String key, @RequestBody Map<String, Object> body) {
+    return ApiResponse.ok(payouts.prepare(key, body));
+  }
+
+  @PostMapping("/api/admin/compensation/payout-batches/{id}/mark-paid")
+  public Object markPayoutPaid(
+      @PathVariable Long id,
+      @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> body) {
+    return ApiResponse.ok(payouts.markPaid(id, key, body));
   }
 }

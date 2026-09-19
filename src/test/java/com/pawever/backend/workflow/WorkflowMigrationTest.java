@@ -245,7 +245,7 @@ class WorkflowMigrationTest {
       assertThat(r.getLong(10)).isEqualTo(10);
     }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(4);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(5);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
         var s = c.createStatement();
@@ -256,7 +256,8 @@ class WorkflowMigrationTest {
                     + " shipment_export_items),(SELECT COUNT(*) FROM print_batches WHERE id=801 AND"
                     + " status='CONFIRMED'),(SELECT COUNT(*) FROM goods_order_pets),(SELECT COUNT(*)"
                     + " FROM postal_import_batches),(SELECT COUNT(*) FROM"
-                    + " shipment_notification_events)")) {
+                    + " shipment_notification_events),(SELECT COUNT(*) FROM"
+                    + " production_payout_batches),(SELECT COUNT(*) FROM production_payout_items)")) {
       r.next();
       assertThat(r.getLong(1)).isEqualTo(10);
       assertThat(r.getLong(2)).isZero();
@@ -265,6 +266,8 @@ class WorkflowMigrationTest {
       assertThat(r.getLong(5)).isEqualTo(10);
       assertThat(r.getLong(6)).isZero();
       assertThat(r.getLong(7)).isZero();
+      assertThat(r.getLong(8)).isZero();
+      assertThat(r.getLong(9)).isZero();
     }
   }
 }
