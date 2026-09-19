@@ -1,6 +1,7 @@
 package com.pawever.backend.notification.telegram;
 
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
+import com.pawever.backend.workflow.event.ModelReviewRequestedEvent;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,6 +55,18 @@ class TelegramMessageTest {
         assertThat(text).contains("PW-1042");
         assertThat(text).contains("010-1234-5678");
         assertThat(text).contains("황성욱");
+    }
+
+    @Test
+    void 검수_알림에는_주문번호만_넣고_개인정보나_파일_링크는_넣지_않는다() {
+        String text = TelegramMessage.modelReviewRequested(
+                new ModelReviewRequestedEvent("PE-2026-000101", 42L));
+
+        assertThat(text).contains("모델 검수 대기");
+        assertThat(text).contains("PE-2026-000101");
+        assertThat(text).contains("4면도, 모델 원본, 출력 모델");
+        assertThat(text).doesNotContain("https://");
+        assertThat(text).doesNotContain("연락처");
     }
 
     @Test
