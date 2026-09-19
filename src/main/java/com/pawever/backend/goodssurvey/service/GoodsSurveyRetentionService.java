@@ -30,7 +30,7 @@ import java.util.List;
  * 방침에 적어 둔 기간이 셋이고, 저마다 세는 기준이 다르다.
  *
  * <ul>
- *   <li>배송 정보와 제작용 사진 — 배송 완료 시점부터 {@code personalDataRetentionDays}</li>
+ *   <li>배송 정보와 제작용 사진 — 배송 완료 시점부터 한국 시간 기준 {@code personalDataRetentionMonths}개월</li>
  *   <li>안내 이메일 — 동의 시점부터 {@code noticeRetentionDays}, 수신거부하면 즉시</li>
  *   <li>설문 응답·사연·공개 동의 사진 — 수집 시점부터 {@code surveyRetentionDays}</li>
  * </ul>

@@ -85,7 +85,7 @@ class AdminOrderServiceTest {
                 orderService,
                 tossClient,
                 retentionService,
-                // 사진 보유 기간 90일. 수령 완료 시각에 더해 파기 예정일을 잡는다.
+                // 사진 보유 기간 3개월. 수령 완료 시각의 한국 시간 달력 월로 파기 예정일을 잡는다.
                 new GoodsSurveyProperties(),
                 Clock.fixed(NOW, ZoneOffset.UTC)
         );
@@ -894,7 +894,7 @@ class AdminOrderServiceTest {
 
     @Test
     void 수령_완료를_찍으면_사진_파기_시계가_돌기_시작한다() {
-        // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고 고지했다.
+        // 제작용 사진은 "배송 완료를 표시한 날"부터 3개월 뒤에 지운다고 고지했다.
         // 표시할 길이 없으면 기준일이 잡히지 않아 사진이 계약 기록과 함께 5년을 산다.
         GoodsSurveyFulfillment order = pickupOrder(GoodsOrderStatus.IN_PRODUCTION);
         when(fulfillmentRepository.findByOrderNumber("PE-2026-000201"))
@@ -903,7 +903,8 @@ class AdminOrderServiceTest {
         service.completePickup(ADMIN, "PE-2026-000201");
 
         assertThat(order.getDeliveryCompletedAt()).isEqualTo(NOW);
-        assertThat(order.getDeleteAfter()).isEqualTo(NOW.plus(Duration.ofDays(90)));
+        assertThat(order.getDeleteAfter())
+                .isEqualTo(GoodsSurveyFulfillment.deliveryRetentionExpiresAt(NOW, 3));
     }
 
     @Test
@@ -974,7 +975,7 @@ class AdminOrderServiceTest {
 
     @Test
     void 송장을_넣으면_사진_파기_시계가_돌기_시작한다() {
-        // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고 고지했다.
+        // 제작용 사진은 "배송 완료를 표시한 날"부터 3개월 뒤에 지운다고 고지했다.
         // 송장 등록이 그 표시를 하지 않으면, 내부 API 를 건마다 따로 부르지
         // 않는 한 사진이 계약 기록과 함께 5년을 산다.
         GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.IN_PRODUCTION);
@@ -984,7 +985,8 @@ class AdminOrderServiceTest {
         service.registerTracking(ADMIN, "PE-2026-000001", "CJ대한통운", "123456789");
 
         assertThat(order.getDeliveryCompletedAt()).isEqualTo(NOW);
-        assertThat(order.getDeleteAfter()).isEqualTo(NOW.plus(Duration.ofDays(90)));
+        assertThat(order.getDeleteAfter())
+                .isEqualTo(GoodsSurveyFulfillment.deliveryRetentionExpiresAt(NOW, 3));
     }
 
     @Test
@@ -992,14 +994,15 @@ class AdminOrderServiceTest {
         // 밀리면 고지한 기간보다 오래 갖고 있게 된다.
         GoodsSurveyFulfillment order = order("PE-2026-000001", GoodsOrderStatus.SHIPPED);
         Instant firstShipped = NOW.minus(Duration.ofDays(10));
-        order.markDeliveryCompleted(firstShipped, 90);
+        order.markDeliveryCompleted(firstShipped, 3);
         when(fulfillmentRepository.findByOrderNumber("PE-2026-000001"))
                 .thenReturn(Optional.of(order));
 
         service.registerTracking(ADMIN, "PE-2026-000001", "롯데택배", "987654321");
 
         assertThat(order.getTrackingNumber()).isEqualTo("987654321");
-        assertThat(order.getDeleteAfter()).isEqualTo(firstShipped.plus(Duration.ofDays(90)));
+        assertThat(order.getDeleteAfter())
+                .isEqualTo(GoodsSurveyFulfillment.deliveryRetentionExpiresAt(firstShipped, 3));
     }
 
     @Test

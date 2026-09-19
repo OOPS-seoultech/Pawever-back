@@ -244,8 +244,16 @@ class WorkflowMigrationTest {
       for (int i = 5; i <= 9; i++) assertThat(r.getLong(i)).isZero();
       assertThat(r.getLong(10)).isEqualTo(10);
     }
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      // V28은 아직 보관 중인 주문만 달력상 3개월 기준으로 다시 계산한다.
+      // 2096년을 써서 실행 시점과 무관하게 migration 대상임을 보장한다.
+      s.execute(
+          "UPDATE goods_survey_fulfillments SET delivery_completed_at='2096-01-31 03:00:00',"
+              + " delete_after='2096-05-01 03:00:00' WHERE order_number='PE-MIG-2'");
+    }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(6);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(7);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
         var s = c.createStatement();
@@ -259,7 +267,8 @@ class WorkflowMigrationTest {
                     + " shipment_notification_events),(SELECT COUNT(*) FROM"
                     + " production_payout_batches),(SELECT COUNT(*) FROM production_payout_items),(SELECT COUNT(*) FROM"
                     + " as_cases),(SELECT COUNT(*) FROM as_case_access_grants),(SELECT COUNT(*) FROM"
-                    + " as_case_access_grant_assets)")) {
+                    + " as_case_access_grant_assets),(SELECT COUNT(*) FROM goods_survey_fulfillments"
+                    + " WHERE order_number='PE-MIG-2' AND delete_after='2096-04-30 03:00:00')")) {
       r.next();
       assertThat(r.getLong(1)).isEqualTo(10);
       assertThat(r.getLong(2)).isZero();
@@ -273,6 +282,7 @@ class WorkflowMigrationTest {
       assertThat(r.getLong(10)).isZero();
       assertThat(r.getLong(11)).isZero();
       assertThat(r.getLong(12)).isZero();
+      assertThat(r.getLong(13)).isEqualTo(1);
     }
   }
 }

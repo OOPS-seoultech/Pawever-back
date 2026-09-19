@@ -133,7 +133,7 @@ class WorkflowIntegrationTest {
             UUID.randomUUID().toString());
     long id = batch.get("id").asLong();
     var o = orders.findByOrderNumber(number).orElseThrow();
-    o.markDeliveryCompleted(Instant.now().minusSeconds(91L * 86400), 90);
+    o.markDeliveryCompleted(Instant.now().minusSeconds(100L * 86400), 3);
     o.stripDeliveryDetails();
     orders.saveAndFlush(o);
     mvc.perform(
@@ -437,7 +437,7 @@ class WorkflowIntegrationTest {
   void completedOrdersStaySummaryOnlyAndAsGrantsAreNarrowAndRevocable() throws Exception {
     var order = orders.findByOrderNumber(number).orElseThrow();
     order.changeStatus(GoodsOrderStatus.SHIPPED);
-    order.markDeliveryCompleted(Instant.now(), 90);
+    order.markDeliveryCompleted(Instant.now(), 3);
     orders.saveAndFlush(order);
     String artifactId = "as-" + UUID.randomUUID();
     var artifact =

@@ -84,7 +84,7 @@ PG 또는 간편결제 계약. 심사에 1~2주.
 `delete_after`는 기록만 하고 실제로 지우는 스케줄러가 없다
 (`@EnableScheduling` 자체가 없다). 대상:
 
-- `goods_survey_fulfillments` — "굿즈 발송일로부터 3주 뒤 삭제"로 안내
+- `goods_survey_fulfillments` — "굿즈 배송 완료일로부터 3개월 뒤 삭제"로 안내
 - `goods_survey_notice_subscriptions` — "수집일로부터 1년"으로 안내
 
 **고지한 기간이 지나면 사람이 직접 지워야 한다.**

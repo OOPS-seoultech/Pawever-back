@@ -56,7 +56,7 @@ public class GoodsSurveyFulfillmentOpsService {
 
         fulfillment.markDeliveryCompleted(
                 goodsSurveyClock.instant(),
-                properties.getPersonalDataRetentionDays()
+                properties.getPersonalDataRetentionMonths()
         );
         return fulfillment.getDeleteAfter();
     }

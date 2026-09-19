@@ -348,8 +348,9 @@ public class ShipmentExportService {
         || Set.of("CANCELED", "EXPIRED").contains(o.orderStatus())
         || (o.getDeleteAfter() != null && !o.getDeleteAfter().isAfter(now))
         || (o.getDeliveryCompletedAt() != null
-            && !o.getDeliveryCompletedAt()
-                .plus(properties.getPersonalDataRetentionDays(), java.time.temporal.ChronoUnit.DAYS)
+            && !com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment
+                .deliveryRetentionExpiresAt(
+                    o.getDeliveryCompletedAt(), properties.getPersonalDataRetentionMonths())
                 .isAfter(now));
   }
 

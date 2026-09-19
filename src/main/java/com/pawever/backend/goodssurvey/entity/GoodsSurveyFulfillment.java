@@ -17,6 +17,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
 @Entity
@@ -456,9 +457,19 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
         lifecycleShipmentStatus = "READY_FOR_PICKUP";
     }
 
-    public void markDeliveryCompleted(Instant completedAt, int retentionDays) {
+    private static final ZoneId GOODS_RETENTION_ZONE = ZoneId.of("Asia/Seoul");
+
+    /** 고객 고지의 "3개월"은 90일이 아니라 한국 시간의 달력 월을 따른다. */
+    public static Instant deliveryRetentionExpiresAt(Instant completedAt, int retentionMonths) {
+        if (retentionMonths < 1) {
+            throw new IllegalArgumentException("굿즈 보관 개월 수는 1 이상이어야 합니다.");
+        }
+        return completedAt.atZone(GOODS_RETENTION_ZONE).plusMonths(retentionMonths).toInstant();
+    }
+
+    public void markDeliveryCompleted(Instant completedAt, int retentionMonths) {
         this.deliveryCompletedAt = completedAt;
-        this.deleteAfter = completedAt.plus(retentionDays, ChronoUnit.DAYS);
+        this.deleteAfter = deliveryRetentionExpiresAt(completedAt, retentionMonths);
     }
 
     /** 아직 법정 보존 기간이 남아 있는지. 남아 있으면 행을 지우면 안 된다. */

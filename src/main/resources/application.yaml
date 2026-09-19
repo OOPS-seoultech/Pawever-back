@@ -97,7 +97,8 @@ survey:
     photo-bucket: ${GOODS_SURVEY_S3_BUCKET:}
     reservation-minutes: 15
     upload-url-minutes: 10
-    personal-data-retention-days: 90
+    # 배송 완료 시점의 Asia/Seoul 달력 기준 3개월. 90일로 근사하지 않는다.
+    personal-data-retention-months: 3
     # 설문 응답·사연은 "수집 후 2년"으로 고지한다.
     survey-retention-days: 730
     # 유료 판매의 계약·결제·공급 기록. 전자상거래법이 5년을 요구한다.
