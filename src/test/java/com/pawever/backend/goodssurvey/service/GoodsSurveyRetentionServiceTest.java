@@ -99,6 +99,19 @@ class GoodsSurveyRetentionServiceTest {
     }
 
     @Test
+    void 배송_완료_보관_기간은_90일이_아닌_한국시간_달력상_3개월이다() {
+        // 1월 31일 12시(KST)에서 90일을 더하면 5월 1일이지만, 3개월 뒤는
+        // 4월 30일 12시다. 고객 고지의 "3개월"을 일수로 근사하면 안 된다.
+        GoodsSurveyFulfillment fulfillment = fulfillment("resp-calendar-month");
+        Instant deliveredAt = Instant.parse("2026-01-31T03:00:00Z");
+
+        fulfillment.markDeliveryCompleted(deliveredAt, 3);
+
+        assertThat(fulfillment.getDeleteAfter())
+                .isEqualTo(Instant.parse("2026-04-30T03:00:00Z"));
+    }
+
+    @Test
     void 공개에_동의한_사진은_배송_기간이_지나도_남긴다() {
         GoodsSurveyFulfillment fulfillment = fulfillment("resp-1");
 

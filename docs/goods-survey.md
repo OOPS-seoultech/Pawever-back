@@ -25,5 +25,5 @@
 ## 운영 전 확인
 
 - `V2__goods_survey.sql`, `V3__goods_survey_photo_publication_consent.sql` 적용 후 `goods-2026-07` 캠페인의 기존 확정 인원 `27`, 정원 `100`, 기간을 실제 운영값과 대조합니다.
-- 배송 완료 시 `delivery_completed_at`을 기록하고 `delete_after`를 완료일+90일로 설정하는 배송 운영 연동이 필요합니다.
+- 배송 완료 시 `delivery_completed_at`을 기록하고 `delete_after`를 완료 시점의 한국 시간 달력상 3개월 뒤로 설정하는 배송 운영 연동이 필요합니다.
 - Meta CAPI를 사용할 때는 신청 레코드의 `conversion_event_id`를 서버 이벤트 ID로 사용하고, 전송 토큰은 백엔드 환경변수에만 둡니다.

@@ -21,15 +21,16 @@ public class GoodsSurveyProperties {
     private String campaignId = "goods-2026-07";
     private int reservationMinutes = 15;
     private int uploadUrlMinutes = 10;
-    private int personalDataRetentionDays = 90;
+    /** 굿즈 제작 자료는 배송 완료 시점의 한국 시간 기준 달력상 3개월 보관한다. */
+    private int personalDataRetentionMonths = 3;
     // 2차 안내용 이메일 보유 기간. 화면에 "1년"으로 고지하고 받는다.
     private int noticeRetentionDays = 365;
     // 설문 응답과 사연의 보유 기간. 방침에 "수집 후 2년"으로 고지한다.
     // 공개 동의를 받은 사진도 이 기간을 따른다. 제작용 사진은 배송 뒤
-    // personalDataRetentionDays 로 훨씬 먼저 지운다.
+    // personalDataRetentionMonths 로 훨씬 먼저 지운다.
     private int surveyRetentionDays = 730;
     // 유료 판매의 계약·결제·공급 기록 보존 기간. 전자상거래법이 5년을 요구한다.
-    // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionDays 로 먼저 지운다.
+    // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionMonths 로 먼저 지운다.
     private int contractRetentionDays = 1825;
     /*
      * 11차 회의록에서 정한 2차 가격.

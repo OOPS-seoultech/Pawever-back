@@ -60,7 +60,7 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     /**
      * 법정 보존 기간까지 지난 계약 기록.
      *
-     * 사진·상세주소를 지울 때와 기준일이 다르다. 그쪽은 배송 후 90일,
+     * 사진·상세주소를 지울 때와 기준일이 다르다. 그쪽은 배송 완료 후 한국 시간 달력상 3개월,
      * 이쪽은 전자상거래법이 요구하는 5년이다.
      */
     List<GoodsSurveyFulfillment> findByContractDeleteAfterNotNullAndContractDeleteAfterLessThanEqual(

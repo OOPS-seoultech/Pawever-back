@@ -707,12 +707,12 @@ public class AdminOrderService {
         fulfillment.registerTracking(company, number);
         fulfillment.changeStatus(GoodsOrderStatus.SHIPPED);
         if (fulfillment.getDeleteAfter() == null) {
-            // 제작용 사진은 "배송 완료를 표시한 날"부터 90일 뒤에 지운다고
+            // 제작용 사진은 "배송 완료를 표시한 날"부터 한국 시간 달력상 3개월 뒤에 지운다고
             // 고지했다. 여기서 표시하지 않으면 내부 API 를 건마다 따로 부르지
             // 않는 한 사진이 계약 기록과 함께 5년을 산다. 송장을 고쳐 다시
             // 넣어도 날짜는 밀리지 않는다 — 밀리면 고지한 기간보다 오래 갖는다.
             fulfillment.markDeliveryCompleted(
-                    clock.instant(), properties.getPersonalDataRetentionDays());
+                    clock.instant(), properties.getPersonalDataRetentionMonths());
         }
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
@@ -729,7 +729,7 @@ public class AdminOrderService {
      * 송장을 받지 않는다. 현장 수령에는 택배사도 송장번호도 없고, 발송 완료
      * 하나만 끝으로 두면 이 주문들은 끝낼 길이 없다.
      *
-     * 이 시각부터 사진 보유 기간(90일)을 센다. 고지한 파기 기준일이 "배송
+     * 이 시각부터 사진 보유 기간(한국 시간 달력상 3개월)을 센다. 고지한 파기 기준일이 "배송
      * 완료를 표시한 날"인데, 표시할 길이 없으면 기준일이 잡히지 않아 사진이
      * 계약 기록과 함께 5년을 산다.
      *
@@ -770,7 +770,7 @@ public class AdminOrderService {
         fulfillment.changeStatus(GoodsOrderStatus.PICKED_UP);
         if (fulfillment.getDeleteAfter() == null) {
             // 다시 찍어도 파기 예정일이 뒤로 밀리지 않게 한 번만 잡는다.
-            fulfillment.markDeliveryCompleted(now, properties.getPersonalDataRetentionDays());
+            fulfillment.markDeliveryCompleted(now, properties.getPersonalDataRetentionMonths());
         }
         orderService.recordManualChange(
                 fulfillment.getResponseId(),
