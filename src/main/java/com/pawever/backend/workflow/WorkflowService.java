@@ -8,6 +8,7 @@ import com.pawever.backend.admin.repository.AdminAccountRepository;
 import com.pawever.backend.goodssurvey.entity.*;
 import com.pawever.backend.goodssurvey.repository.*;
 import com.pawever.backend.goodssurvey.service.GoodsSurveyPhotoStorage;
+import com.pawever.backend.workflow.event.ModelReviewRequestedEvent;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
@@ -15,6 +16,7 @@ import java.util.*;
 import java.util.HexFormat;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +42,7 @@ public class WorkflowService {
   private final GoodsSurveyPhotoRepository photos;
   private final GoodsSurveyPhotoStorage storage;
   private final StaffPermissions access;
+  private final ApplicationEventPublisher eventPublisher;
   private final Clock clock;
   private final jakarta.persistence.EntityManager entityManager;
   private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
@@ -867,14 +870,16 @@ public class WorkflowService {
             throw bad("차단 문제를 먼저 해결해 주세요.");
           t.complete(clock.instant());
           Long reviewer = access.eligible(config().getReview(), WorkRole.DESIGN_QC);
-          tasks.saveAndFlush(
-              ProductionTask.create(
-                  o.getOrderNumber(), ProductionStage.MODEL_REVIEW, reviewer, t.getAttempt()));
+          ProductionTask reviewTask =
+              tasks.saveAndFlush(
+                  ProductionTask.create(
+                      o.getOrderNumber(), ProductionStage.MODEL_REVIEW, reviewer, t.getAttempt()));
           o.moveProduction(ProductionStage.MODEL_REVIEW);
           issue(o.getOrderNumber(), "QC_FAILED", false);
           issue(o.getOrderNumber(), "UNASSIGNED", reviewer == null);
           touch(o);
           audit(o.getOrderNumber(), "COMPLETE_MODELING", "MODELING", "MODEL_REVIEW", null);
+          eventPublisher.publishEvent(new ModelReviewRequestedEvent(o.getOrderNumber(), reviewTask.getId()));
           return view(o);
         });
   }

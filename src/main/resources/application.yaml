@@ -186,6 +186,11 @@ notification:
     # 봇이 그 채널의 관리자로 들어가 있어야 글이 써진다.
     chat-id: ${TELEGRAM_CHAT_ID:}
     base-url: ${TELEGRAM_BASE_URL:https://api.telegram.org}
+  # 기존 입금·신청 알림방과 분리된 제작 검수 전용 봇. 없으면 검수 알림만 생략한다.
+  telegram-ops:
+    bot-token: ${TELEGRAM_OPS_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_OPS_CHAT_ID:}
+    base-url: ${TELEGRAM_OPS_BASE_URL:https://api.telegram.org}
   sms:
     # 알리고. 2026-08-16 에 팀이 가입하고 비용을 충전해 둔 계정이다.
     api-key: ${ALIGO_API_KEY:}

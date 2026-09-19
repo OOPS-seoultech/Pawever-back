@@ -1,6 +1,7 @@
 package com.pawever.backend.notification.telegram;
 
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
+import com.pawever.backend.workflow.event.ModelReviewRequestedEvent;
 
 import java.text.NumberFormat;
 import java.util.Locale;
@@ -75,6 +76,14 @@ public final class TelegramMessage {
                 .append("위 연락처로 계좌를 직접 안내해 주세요. ")
                 .append("안내하지 않으면 기한이 지나 주문이 사라집니다.");
         return clip(text.toString(), MAX_LENGTH);
+    }
+
+    /** 개인정보·파일 URL 없이 검수 대기 사실과 내부 주문번호만 보낸다. */
+    public static String modelReviewRequested(ModelReviewRequestedEvent event) {
+        return "🔎 <b>모델 검수 대기</b>\n"
+                + "- 주문번호: " + field(event.orderNumber()) + '\n'
+                + "- 제출 자료: 4면도, 모델 원본, 출력 모델\n"
+                + "- 관리자 주문 상세에서 검수해 주세요.";
     }
 
     private static String field(String value) {
