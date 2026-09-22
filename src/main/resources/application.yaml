@@ -39,6 +39,21 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  jackson:
+    deserialization:
+      # 값이 빠진 원시 타입(boolean·int)을 false·0 으로 읽는다.
+      #
+      # 켜 두면(Jackson 3 기본) 화면이 필드 하나를 빠뜨렸을 때 본문을 읽는
+      # 단계에서 요청이 통째로 거절되고, 우리가 적어 둔 검증은 한 줄도 돌지
+      # 않는다. 답에는 어느 항목인지도 담기지 않아 "잘못된 입력값입니다"만
+      # 남는다. 2026-09-16 에 신청 폼이 keyringAdded 를 pets 로 옮기면서
+      # 빠뜨렸고, 엿새 동안 들어온 주문이 모두 이렇게 막혔다.
+      #
+      # 동의는 이 완화로 뚫리지 않는다. 빠지면 false 로 읽히고 @AssertTrue 가
+      # 그 자리에서 거절한다. 읽지도 못해 거절하는 것과 달리, 이쪽은 검증을
+      # 거친 거절이라 무엇이 문제였는지 답과 로그에 남는다.
+      fail-on-null-for-primitives: false
+
 app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000}
