@@ -1,7 +1,11 @@
 package com.pawever.backend.global.exception;
 
 import com.pawever.backend.global.common.ApiResponse;
+import com.pawever.backend.global.event.ApiContractBreachEvent;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -18,7 +22,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final ApplicationEventPublisher eventPublisher;
 
     @ExceptionHandler(CustomException.class)
     public ResponseEntity<ApiResponse<Void>> handleCustomException(CustomException e) {
@@ -38,8 +45,34 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
     }
 
+    /**
+     * 본문을 읽지도 못한 요청.
+     *
+     * 값 하나가 틀린 것과 다르다. 여기까지 오면 우리가 적어 둔 검증은 한 줄도
+     * 돌지 않고, 답에도 어느 항목이 문제인지 담기지 않는다. 화면 쪽 모양이
+     * 어긋난 것이므로 그 화면에서 오는 요청은 한 건도 통과하지 못한다.
+     *
+     * 그래서 INFO 가 아니라 WARN 으로, 어느 경로였는지와 함께 남긴다. 2026-09-16
+     * 에 신청 폼이 원시 boolean 하나를 빠뜨렸을 때 여기에 답이 적혀 있었지만,
+     * INFO 로 흘러가 엿새 동안 아무도 보지 않았다.
+     *
+     * 까닭은 로그에만 둔다. 본문 조각이 섞여 나올 수 있고 그 안에는 이름과
+     * 연락처가 있다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableBody(
+            HttpMessageNotReadableException e,
+            HttpServletRequest request
+    ) {
+        String path = request.getMethod() + " " + request.getRequestURI();
+        log.warn("본문을 읽지 못해 거절했다: {} - {}", path, e.getMessage());
+        eventPublisher.publishEvent(new ApiContractBreachEvent(path));
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), ErrorCode.INVALID_INPUT.getMessage()));
+    }
+
     @ExceptionHandler({
-            HttpMessageNotReadableException.class,
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })

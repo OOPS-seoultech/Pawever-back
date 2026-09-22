@@ -78,6 +78,21 @@ public final class TelegramMessage {
         return clip(text.toString(), MAX_LENGTH);
     }
 
+    /**
+     * 화면과 서버의 모양이 어긋나 요청을 읽지도 못했다는 알림.
+     *
+     * 값이 담기지 않는다. 읽지 못한 본문에는 이름·연락처·주소가 들어 있고,
+     * 무엇이 어긋났는지는 서버 로그의 WARN 한 줄에 적혀 있다. 여기서 할 일은
+     * "지금 이 경로로는 아무도 못 지나간다"를 늦지 않게 알리는 것뿐이다.
+     */
+    public static String apiContractBreach(String path, int quietMinutes) {
+        return "⛔ <b>요청을 읽지 못해 거절하고 있습니다</b>\n"
+                + "- 경로: " + field(path) + "\n"
+                + "- 이 경로로 오는 신청은 지금 한 건도 접수되지 않습니다.\n"
+                + "- 까닭은 서버 로그의 WARN \"본문을 읽지 못해 거절했다\" 에 적혀 있습니다.\n"
+                + "- 같은 경로는 " + quietMinutes + "분에 한 번만 알립니다.";
+    }
+
     /** 개인정보·파일 URL 없이 검수 대기 사실과 내부 주문번호만 보낸다. */
     public static String modelReviewRequested(ModelReviewRequestedEvent event) {
         return "🔎 <b>모델 검수 대기</b>\n"
