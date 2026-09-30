@@ -171,10 +171,11 @@ public class AdminAccountService {
         if (account.getRole() != AdminRole.PRODUCTION) {
             throw new CustomException(ErrorCode.FORBIDDEN);
         }
-        account.approve(
-                workRoles == null ? java.util.Set.of() : workRoles,
-                clock.instant()
-        );
+        var selectedRoles = workRoles == null ? account.getWorkRoles() : workRoles;
+        if (selectedRoles.isEmpty() || selectedRoles.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        account.approve(selectedRoles, clock.instant());
     }
 
     /**

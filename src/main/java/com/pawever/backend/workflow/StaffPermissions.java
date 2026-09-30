@@ -16,6 +16,7 @@ public class StaffPermissions {
   private final AdminAccountRepository accounts;
   private final StaffPermissionOverrideRepository overrides;
   private final ProductionTaskRepository tasks;
+  private final com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository orders;
   private final Clock clock;
 
   public AdminAccount current() {
@@ -47,7 +48,8 @@ public class StaffPermissions {
           MANAGE_OPERATION_SETTINGS,
           OVERRIDE_WORKFLOW));
     }
-    if (a.getRole() == AdminRole.PRODUCTION && !a.getWorkRoles().isEmpty()) {
+    if (a.getRole() == AdminRole.PRODUCTION && a.getWorkRoles().stream().anyMatch(
+        r -> r == WorkRole.MODELING || r == WorkRole.DESIGN_QC || r == WorkRole.PRINT_FINISHING)) {
       p.addAll(
           EnumSet.of(
               VIEW_ORDER_BASIC,
@@ -60,6 +62,11 @@ public class StaffPermissions {
         p.addAll(EnumSet.of(REVIEW_MODEL, VIEW_FILAMENT, MAP_FILAMENT, MANAGE_PRINT_BATCH));
       if (a.getWorkRoles().contains(WorkRole.PRINT_FINISHING))
         p.addAll(EnumSet.of(VIEW_FILAMENT, MANAGE_PRINT_BATCH, COMPLETE_POST_PROCESSING));
+    }
+    if (a.getRole() == AdminRole.PRODUCTION && a.getWorkRoles().contains(WorkRole.PACKING_SHIPPING)) {
+      p.addAll(EnumSet.of(VIEW_ORDER_BASIC, VIEW_ROLE_QUEUE, VIEW_CUSTOMER_IDENTITY,
+          VIEW_CUSTOMER_CONTACT, VIEW_CUSTOMER_ADDRESS, VIEW_SHIPMENT,
+          PACK_AND_EXPORT_SHIPMENTS, COMPLETE_PICKUP, IMPORT_SHIPMENT_RESULTS));
     }
     for (var o : overrides.findByAccountId(a.getId()))
       if (o.getExpiresAt() == null || o.getExpiresAt().isAfter(clock.instant())) {
@@ -111,9 +118,19 @@ public class StaffPermissions {
 
   public boolean canRead(String number) {
     var a = current();
-    return effective(a).contains(VIEW_ORDER_BASIC)
-        && (effective(a).contains(VIEW_ALL_ORDERS)
-            || tasks.existsByOrderNumberAndAssigneeId(number, a.getId()));
+    var permissions = effective(a);
+    if (!permissions.contains(VIEW_ORDER_BASIC)) return false;
+    if (permissions.contains(VIEW_ALL_ORDERS)
+        || tasks.existsByOrderNumberAndAssigneeId(number, a.getId())) return true;
+    // Packaging has a shared queue, not an individual modeling-task assignment.
+    // Do not grant access to pre-production orders or customer photos/files.
+    return a.getRole() == AdminRole.PRODUCTION
+        && a.getWorkRoles().contains(WorkRole.PACKING_SHIPPING)
+        && permissions.contains(VIEW_ROLE_QUEUE)
+        && permissions.contains(VIEW_SHIPMENT)
+        && orders.findByOrderNumber(number)
+            .map(o -> o.getProductionStage() == ProductionStage.PACKING
+                || o.getProductionStage() == ProductionStage.COMPLETE).orElse(false);
   }
 
   public void read(String number) {

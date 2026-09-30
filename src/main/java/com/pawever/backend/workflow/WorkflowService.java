@@ -286,6 +286,8 @@ public class WorkflowService {
         f.getVersion(),
         "colorName",
         f.getColorName(),
+        "colorCategory",
+        f.getColorCategory(),
         "material",
         f.getMaterial(),
         "finish",
@@ -362,12 +364,19 @@ public class WorkflowService {
         b,
         () -> {
           access.require(MANAGE_FILAMENT);
-          String spool = requiredText(b, "spoolId", 64).toUpperCase(Locale.ROOT);
-          if (!spool.matches("[A-Z0-9][A-Z0-9._-]{0,63}"))
+          String spool = text(b, "spoolId", 64).toUpperCase(Locale.ROOT);
+          if (!spool.isEmpty() && !spool.matches("[A-Z0-9][A-Z0-9._-]{0,63}"))
             throw bad("스풀 ID는 영문·숫자·점·밑줄·하이픈으로 입력해 주세요.");
           Filament f;
           String before = null;
           if (filamentId == null) {
+            if (spool.isEmpty()) {
+              do {
+                Number next = (Number) entityManager.createNativeQuery(
+                    "SELECT NEXT VALUE FOR filament_spool_sequence").getSingleResult();
+                spool = String.format(Locale.ROOT, "F-%03d", next.longValue());
+              } while (filaments.existsBySpoolId(spool));
+            }
             if (filaments.existsBySpoolId(spool))
               throw new WorkflowException(409, "DUPLICATE_SPOOL", "이미 등록된 스풀 ID입니다.");
             f = Filament.create(spool);
@@ -378,13 +387,19 @@ public class WorkflowService {
                     .orElseThrow(() -> new WorkflowException(404, "NOT_FOUND", "필라멘트를 찾을 수 없습니다."));
             entityManager.refresh(f);
             if (f.getVersion() != number(b, "version")) throw conflict(filamentView(f));
-            if (!f.getSpoolId().equals(spool)) throw bad("실제 스풀 ID는 변경할 수 없습니다. 새 스풀을 등록해 주세요.");
+            if (!spool.isEmpty() && !f.getSpoolId().equals(spool)) throw bad("실제 스풀 ID는 변경할 수 없습니다. 새 스풀을 등록해 주세요.");
             before = snapshot(filamentView(f));
           }
-          long remaining = number(b, "remainingGrams");
+          Long remaining = id(b, "remainingGrams");
           Long price = id(b, "priceKrw");
-          if (remaining > 1_000_000 || price != null && price > 100_000_000)
+          if (remaining != null && remaining > 1_000_000 || price != null && price > 100_000_000)
             throw bad("잔량 또는 가격 범위를 확인해 주세요.");
+          if (b.containsKey("colorCategory")) {
+            String category = text(b, "colorCategory", 40);
+            if (!category.isEmpty() && !Set.of("WHITE", "BLACK", "GRAY", "BROWN", "BEIGE", "RED", "YELLOW", "GREEN", "BLUE", "OTHER").contains(category))
+              throw bad("색상 분류를 확인해 주세요.");
+            f.setColorCategory(category.isEmpty() ? null : category);
+          }
           f.update(
               requiredText(b, "colorName", 80),
               requiredText(b, "material", 40),
@@ -990,6 +1005,19 @@ public class WorkflowService {
             throw bad("플레이트에 연결된 작업입니다. 플레이트 담당자를 변경하거나 임시 구성을 취소한 뒤 배정해 주세요.");
           Long target = id(b, "assigneeId");
           WorkRole role = workRole(t.getStage());
+          if (Boolean.TRUE.equals(b.get("useDefault"))) {
+            if (t.getAssigneeId() != null)
+              throw new WorkflowException(409, "ALREADY_ASSIGNED", "이미 담당자가 배정된 작업입니다. 새로고침해 주세요.");
+            var defaults = config();
+            target = switch (role) {
+              case MODELING -> defaults.getModeling();
+              case DESIGN_QC -> defaults.getReview();
+              case PRINT_FINISHING -> defaults.getPrinting();
+              default -> null;
+            };
+            if (access.eligible(target, role) == null)
+              throw bad("이 단계의 활성 기본 담당자가 없습니다. 담당자 관리에서 기본 담당자를 설정해 주세요.");
+          }
           if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
           String before = String.valueOf(t.getAssigneeId());
           t.assign(target);

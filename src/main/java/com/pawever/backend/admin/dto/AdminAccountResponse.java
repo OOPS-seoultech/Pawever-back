@@ -13,7 +13,8 @@ public record AdminAccountResponse(
         String name,
         AdminRole role,
         AdminAccountStatus status,
-        Instant lastLoginAt
+        Instant lastLoginAt,
+        java.util.Set<com.pawever.backend.admin.entity.WorkRole> workRoles
 ) {
     public static AdminAccountResponse from(AdminAccount account) {
         return new AdminAccountResponse(
@@ -22,7 +23,8 @@ public record AdminAccountResponse(
                 account.getName(),
                 account.getRole(),
                 account.getStatus(),
-                account.getLastLoginAt()
+                account.getLastLoginAt(),
+                account.getWorkRoles()
         );
     }
 }
