@@ -252,7 +252,7 @@ class WorkflowMigrationTest {
           "UPDATE goods_survey_fulfillments SET delivery_completed_at='2096-01-31 03:00:00',"
               + " delete_after='2096-05-01 03:00:00' WHERE order_number='PE-MIG-2'");
     }
-    var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
+    var shippingVersion = Flyway.configure().dataSource(url, user, password).target("28").load();
     assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(7);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     try (var c = DriverManager.getConnection(url, user, password);
@@ -283,6 +283,27 @@ class WorkflowMigrationTest {
       assertThat(r.getLong(11)).isZero();
       assertThat(r.getLong(12)).isZero();
       assertThat(r.getLong(13)).isEqualTo(1);
+    }
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      s.execute("INSERT INTO filaments(spool_id,color_name,material,finish,manufacturer,source,remaining_grams,active,version,updated_at) VALUES('V29-KEEP','cream','PLA','matte','','',0,1,0,NOW())");
+    }
+    var registrationVersion = Flyway.configure().dataSource(url, user, password).load();
+    assertThat(registrationVersion.migrate().migrationsExecuted).isEqualTo(1);
+    assertThat(registrationVersion.migrate().migrationsExecuted).isZero();
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement()) {
+      try (var r = s.executeQuery("SELECT remaining_grams, color_category FROM filaments WHERE spool_id='V29-KEEP'")) {
+        assertThat(r.next()).isTrue();
+        assertThat(r.getLong(1)).isZero();
+        assertThat(r.wasNull()).isFalse();
+        assertThat(r.getString(2)).isNull();
+      }
+      s.execute("UPDATE filaments SET remaining_grams=NULL,color_category='BEIGE' WHERE spool_id='V29-KEEP'");
+      try (var r = s.executeQuery("SELECT NEXT VALUE FOR filament_spool_sequence")) {
+        assertThat(r.next()).isTrue();
+        assertThat(r.getLong(1)).isEqualTo(1);
+      }
     }
   }
 }
