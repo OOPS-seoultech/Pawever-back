@@ -49,6 +49,40 @@ class WorkflowIntegrationTest {
 
   String owner, modeler, stranger, number;
 
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+  @Test
+  void automaticSpoolIdsPreserveUnknownAndZeroRemaining() throws Exception {
+    jdbc.execute("CREATE SEQUENCE IF NOT EXISTS filament_spool_sequence START WITH 1");
+    String body = "{\"colorName\":\"cream\",\"colorCategory\":\"BEIGE\",\"material\":\"PLA\",\"finish\":\"matte\",\"remainingGrams\":null,\"active\":true}";
+    String key = UUID.randomUUID().toString();
+    var first = send(owner, "/api/admin/filaments", body, key);
+    org.assertj.core.api.Assertions.assertThat(first.get("spoolId").asText()).matches("F-[0-9]{3,}");
+    org.assertj.core.api.Assertions.assertThat(first.get("remainingGrams").isNull()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(first.get("colorCategory").asText()).isEqualTo("BEIGE");
+    org.assertj.core.api.Assertions.assertThat(send(owner, "/api/admin/filaments", body, key)).isEqualTo(first);
+    var second = send(owner, "/api/admin/filaments", body.replace("null", "0"), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(second.get("spoolId")).isNotEqualTo(first.get("spoolId"));
+    org.assertj.core.api.Assertions.assertThat(second.get("remainingGrams").asLong()).isZero();
+  }
+
+  @Test
+  void applyDefaultAssignsOnlyUnassignedWorkAndRejectsMissingDefault() throws Exception {
+    var config = settings.findById(1L).orElseGet(WorkflowSettings::new);
+    config.change(null, null);
+    settings.saveAndFlush(config);
+    var row = send(owner, "/api/admin/orders/" + number + "/payments/confirm", "{\"version\":0,\"amount\":18900}", UUID.randomUUID().toString());
+    String path = "/api/admin/orders/" + number + "/workflow/assign";
+    String body = "{\"version\":" + row.get("version") + ",\"useDefault\":true}";
+    mvc.perform(post(path).header("Authorization", "Bearer " + owner).header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json").content(body)).andExpect(status().isBadRequest());
+    config = settings.findById(1L).orElseThrow();
+    config.change(modelerId, null);
+    settings.saveAndFlush(config);
+    row = send(owner, path, body, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("assignee").get("id").asLong()).isEqualTo(modelerId);
+    mvc.perform(post(path).header("Authorization", "Bearer " + owner).header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json").content("{\"version\":" + row.get("version") + ",\"useDefault\":true}")).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ALREADY_ASSIGNED"));
+  }
+
   @Test
   void shippingPackingCannotStartRetentionThroughLegacyInternalDeliveryEndpoint() throws Exception {
     readyForPacking(true);

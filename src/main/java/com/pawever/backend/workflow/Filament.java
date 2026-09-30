@@ -35,8 +35,14 @@ public class Filament {
 
   private Long priceKrw;
 
-  @Column(nullable = false)
-  private long remainingGrams;
+  private Long remainingGrams;
+
+  @Column(length = 40)
+  private String colorCategory;
+
+  public void setColorCategory(String category) {
+    this.colorCategory = category;
+  }
 
   @Column(nullable = false)
   private boolean active;
@@ -57,7 +63,7 @@ public class Filament {
       String manufacturer,
       String source,
       Long price,
-      long remaining,
+      Long remaining,
       boolean active,
       Instant at) {
     this.colorName = color;
