@@ -52,6 +52,38 @@ class WorkflowIntegrationTest {
   @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   @Test
+  void packingRoleReadsPackingQueueWithoutAccessToModelingOrAccountManagement() throws Exception {
+    String packing = account(AdminRole.PRODUCTION, Set.of(WorkRole.PACKING_SHIPPING));
+    mvc.perform(get("/api/admin/me").header("Authorization", "Bearer " + packing))
+        .andExpect(jsonPath("$.data.permissions", org.hamcrest.Matchers.hasItem("PACK_AND_EXPORT_SHIPMENTS")))
+        .andExpect(jsonPath("$.data.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("VIEW_ALL_ORDERS"))))
+        .andExpect(jsonPath("$.data.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("VIEW_CUSTOMER_PHOTOS"))));
+    mvc.perform(get("/api/admin/orders/" + number + "/workflow").header("Authorization", "Bearer " + packing)).andExpect(status().isNotFound());
+    var row = readyForPacking(true);
+    mvc.perform(get("/api/admin/shipments/candidates").header("Authorization", "Bearer " + packing))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data[?(@.orderNumber == '" + number + "')]").isNotEmpty());
+    send(packing, "/api/admin/shipments/export-batches", exportBody(row), UUID.randomUUID().toString());
+    mvc.perform(get("/api/admin/accounts").header("Authorization", "Bearer " + packing)).andExpect(status().isForbidden());
+  }
+
+  @Test
+  void approvalPreservesPreparedRolesAndRejectsRolelessActivation() throws Exception {
+    var pending = AdminAccount.invite(UUID.randomUUID() + "@example.test", "pending", AdminRole.PRODUCTION, "test", Instant.now().plusSeconds(600));
+    pending.acceptInvite("test-hash");
+    pending.setWorkRoles(Set.of(WorkRole.PACKING_SHIPPING));
+    accounts.saveAndFlush(pending);
+    mvc.perform(post("/api/admin/accounts/" + pending.getId() + "/approve").header("Authorization", "Bearer " + owner).contentType("application/json").content("{}"))
+        .andExpect(status().isOk());
+    org.assertj.core.api.Assertions.assertThat(accounts.findById(pending.getId()).orElseThrow().getWorkRoles()).containsExactly(WorkRole.PACKING_SHIPPING);
+    var empty = AdminAccount.invite(UUID.randomUUID() + "@example.test", "empty", AdminRole.PRODUCTION, "test", Instant.now().plusSeconds(600));
+    empty.acceptInvite("test-hash");
+    accounts.saveAndFlush(empty);
+    mvc.perform(post("/api/admin/accounts/" + empty.getId() + "/approve").header("Authorization", "Bearer " + owner).contentType("application/json").content("{\"workRoles\":[]}"))
+        .andExpect(status().isBadRequest());
+    org.assertj.core.api.Assertions.assertThat(accounts.findById(empty.getId()).orElseThrow().getStatus()).isEqualTo(AdminAccountStatus.PENDING_APPROVAL);
+  }
+
+  @Test
   void automaticSpoolIdsPreserveUnknownAndZeroRemaining() throws Exception {
     jdbc.execute("CREATE SEQUENCE IF NOT EXISTS filament_spool_sequence START WITH 1");
     String body = "{\"colorName\":\"cream\",\"colorCategory\":\"BEIGE\",\"material\":\"PLA\",\"finish\":\"matte\",\"remainingGrams\":null,\"active\":true}";
