@@ -120,8 +120,8 @@ survey:
     contract-retention-days: 1825
     # 굿즈 정상가. 2차 주력은 3D 전신 피규어 한 종이라 값이 하나다.
     list-price-krw: ${GOODS_LIST_PRICE_KRW:29900}
-    # 설문에 답하고 온 사람에게 깎아 주는 금액.
-    survey-discount-krw: ${GOODS_SURVEY_DISCOUNT_KRW:6000}
+    # 설문 없이 바로 구매하는 온라인 판매 할인. 29,900 - 4,000 = 25,900
+    online-discount-krw: ${GOODS_ONLINE_DISCOUNT_KRW:4000}
     # 플리마켓 모집. 비어 있으면 이 통로 자체가 열리지 않는다.
     # 행사가 끝나면 이 값을 비워 닫는다.
     flea-campaign-id: ${GOODS_FLEA_CAMPAIGN_ID:}

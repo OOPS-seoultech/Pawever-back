@@ -27,7 +27,7 @@ public record SubmitGoodsSurveyApplicationRequest(
         /**
          * 건네는 방법. SHIPPING 또는 PICKUP 이고, 비어 있으면 택배로 본다.
          *
-         * PICKUP 은 행사장이 있는 경로에서만 고를 수 있다. 이때 주소는 받지
+         * PICKUP 은 상상관 방문 수령이다. 이때 주소는 받지
          * 않고 배송비도 붙지 않는다.
          */
         @Size(max = 20) String deliveryMethod,

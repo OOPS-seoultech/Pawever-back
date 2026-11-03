@@ -577,9 +577,7 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void 현장_수령은_플리마켓이_아니면_고를_수_없다() {
-        // 상시 온라인 판매에는 건네줄 자리가 없다. 여기서 열어 두면 부칠 곳
-        // 없는 주문이 들어오고, 행사가 끝난 뒤에도 그대로 남는다.
+    void 온라인_주문도_상상관에서_수령하고_주소는_저장하지_않는다() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-pickup-online");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -589,7 +587,7 @@ class GoodsSurveyServiceTest {
         lenient().when(photoRepository.findAllByIdInAndResponseIdAndStatus(any(), any(), any()))
                 .thenReturn(confirmedPhotos("photo-pickup-online", draft.responseId()));
 
-        assertThatThrownBy(() -> service.submitApplication(
+        service.submitApplication(
                 draft.responseId(),
                 draft.editToken(),
                 "idempotency-pickup-online",
@@ -612,7 +610,14 @@ class GoodsSurveyServiceTest {
                         true,
                         false
                 )
-        )).hasMessageContaining("현장 수령을 고를 수 없는");
+        );
+        ArgumentCaptor<GoodsSurveyFulfillment> saved = ArgumentCaptor.forClass(GoodsSurveyFulfillment.class);
+        verify(fulfillmentRepository).save(saved.capture());
+        assertThat(saved.getValue().getDeliveryMethod()).isEqualTo(GoodsDeliveryMethod.PICKUP);
+        assertThat(saved.getValue().getAddress()).isNull();
+        assertThat(saved.getValue().getPostalCode()).isNull();
+        assertThat(saved.getValue().getShippingFeeKrw()).isZero();
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(25_900);
     }
 
     @Test
@@ -1359,9 +1364,9 @@ class GoodsSurveyServiceTest {
         assertThat(fulfillment.getPetCount()).isEqualTo(2);
         // 정가와 할인이 두 마리분이고, 배송비는 한 번이다.
         assertThat(fulfillment.getListPriceKrw()).isEqualTo(29_900 * 2);
-        assertThat(fulfillment.getDiscountAmountKrw()).isEqualTo(6_000 * 2);
+        assertThat(fulfillment.getDiscountAmountKrw()).isEqualTo(4_000 * 2);
         assertThat(fulfillment.getShippingFeeKrw()).isEqualTo(3_000);
-        assertThat(fulfillment.getPaymentAmountKrw()).isEqualTo(23_900 * 2 + 3_000);
+        assertThat(fulfillment.getPaymentAmountKrw()).isEqualTo(25_900 * 2 + 3_000);
     }
 
     /** 아이는 줄로 나눠 남는다. 몇 마리인지 세려면 줄이 있어야 한다. */
@@ -1732,9 +1737,7 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void 설문을_건너뛰고_신청하면_정가가_적용된다() {
-        // 설문에 답하는 대신 값을 더 내는 길이다. 여기서 할인가가 적용되면
-        // 설문을 끝까지 답할 이유가 사라진다.
+    void 바로_신청해도_온라인_25900원_할인을_적용한다() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -1757,12 +1760,11 @@ class GoodsSurveyServiceTest {
 
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isFalse();
-        // 정상가 그대로. 깎아 줄 근거가 없다.
-        // 제작비 29,900 + 배송비 3,000
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(32_900);
+        // 제작비 25,900 + 배송비 3,000
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(28_900);
         assertThat(saved.getValue().getShippingFeeKrw()).isEqualTo(3_000);
-        assertThat(saved.getValue().getDiscountAmountKrw()).isZero();
-        assertThat(saved.getValue().getPromotionName()).isNull();
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(4_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("온라인 판매 할인");
     }
 
     @Test
@@ -1799,10 +1801,10 @@ class GoodsSurveyServiceTest {
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isTrue();
         // 제작비 23,900 + 배송비 3,000
-        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(26_900);
+        assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(28_900);
         assertThat(saved.getValue().getShippingFeeKrw()).isEqualTo(3_000);
-        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(6_000);
-        assertThat(saved.getValue().getPromotionName()).isEqualTo("설문 참여 할인");
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(4_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("온라인 판매 할인");
     }
 
     /** 같은 신청에 키링만 켠 것. 나머지 값이 달라지면 무엇 때문인지 알 수 없다. */
