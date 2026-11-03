@@ -53,16 +53,14 @@ public class GoodsOrderService {
     /**
      * 이 신청에 적용할 금액.
      *
-     * 설문에 답하고 온 사람만 깎아 준다. 건너뛴 사람은 정상가다. 답하는 수고와
-     * 값의 차이가 이 서비스가 설문을 받는 이유다.
+     * 설문 참여 여부와 관계없이 판매 통로의 할인액을 적용한다.
      */
     public GoodsOrderPricing priceFor(
             GoodsSalesChannel channel,
-            boolean surveyParticipant,
             GoodsDeliveryMethod deliveryMethod,
             boolean keyringAdded
     ) {
-        return priceFor(channel, surveyParticipant, deliveryMethod, 1, keyringAdded ? 1 : 0);
+        return priceFor(channel, deliveryMethod, 1, keyringAdded ? 1 : 0);
     }
 
     /**
@@ -80,7 +78,6 @@ public class GoodsOrderService {
      */
     public GoodsOrderPricing priceFor(
             GoodsSalesChannel channel,
-            boolean surveyParticipant,
             GoodsDeliveryMethod deliveryMethod,
             int petCount,
             int keyringCount
@@ -105,15 +102,10 @@ public class GoodsOrderService {
                     shippingFeeKrw
             ).withKeyring(keyringFeeKrw);
         }
-        if (!surveyParticipant) {
-            return GoodsOrderPricing
-                    .listPrice(listPriceKrw, shippingFeeKrw)
-                    .withKeyring(keyringFeeKrw);
-        }
         return GoodsOrderPricing.discounted(
                 listPriceKrw,
-                properties.getSurveyDiscountKrw() * petCount,
-                properties.getSurveyPromotionName(),
+                properties.getOnlineDiscountKrw() * petCount,
+                properties.getOnlinePromotionName(),
                 shippingFeeKrw
         ).withKeyring(keyringFeeKrw);
     }

@@ -505,12 +505,6 @@ public class GoodsSurveyService {
         validateGoodsType(request.goodsType(), request.customGoods());
 
         GoodsDeliveryMethod deliveryMethod = parseDelivery(request.deliveryMethod());
-        // 현장 수령은 행사장이 있는 경로에서만 고를 수 있다. 상시 온라인 판매에
-        // 열어 두면 부칠 곳 없는 주문이 들어온다.
-        if (deliveryMethod == GoodsDeliveryMethod.PICKUP
-                && campaign.getChannel() != GoodsSalesChannel.FLEA) {
-            throw new CustomException(ErrorCode.SURVEY_PICKUP_NOT_AVAILABLE);
-        }
         String postalCode = trimToNull(request.postalCode());
         String address = trimToNull(request.address());
         String addressDetail = trimToNull(request.addressDetail());
@@ -633,7 +627,6 @@ public class GoodsSurveyService {
                 orderService.issueOrderNumber(),
                 orderService.priceFor(
                         campaign.getChannel(),
-                        response.isSurveyParticipant(),
                         deliveryMethod,
                         pets.size(),
                         keyringCount

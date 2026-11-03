@@ -89,15 +89,15 @@ class GoodsOrderServiceTest {
     }
 
     @Test
-    void 설문에_답하고_왔으면_할인가를_적용한다() {
-        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, true, GoodsDeliveryMethod.SHIPPING, false);
+    void 온라인은_설문_없이_25900원에_판매한다() {
+        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, GoodsDeliveryMethod.SHIPPING, false);
 
         assertThat(pricing.listPriceKrw()).isEqualTo(29_900);
-        assertThat(pricing.discountAmountKrw()).isEqualTo(6_000);
+        assertThat(pricing.discountAmountKrw()).isEqualTo(4_000);
         assertThat(pricing.shippingFeeKrw()).isEqualTo(3_000);
-        // 제작비 23,900 + 배송비 3,000
-        assertThat(pricing.paymentAmountKrw()).isEqualTo(26_900);
-        assertThat(pricing.promotionName()).isEqualTo("설문 참여 할인");
+        // 제작비 25,900 + 배송비 3,000
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(28_900);
+        assertThat(pricing.promotionName()).isEqualTo("온라인 판매 할인");
     }
 
     @Test
@@ -105,20 +105,18 @@ class GoodsOrderServiceTest {
         // 부치지 않으니 받을 이유가 없다. 디자인도 "방문수령 외 택배 시"라고
         // 적어 두었다(5472:1482).
         GoodsOrderPricing pickup = orderService.priceFor(
-                GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.PICKUP, false);
+                GoodsSalesChannel.FLEA, GoodsDeliveryMethod.PICKUP, false);
 
         assertThat(pickup.shippingFeeKrw()).isZero();
         assertThat(pickup.paymentAmountKrw()).isEqualTo(18_900);
     }
 
     @Test
-    void 플리마켓은_설문을_거쳤든_아니든_같은_값이다() {
+    void 플리마켓_배송은_기존_가격을_유지한다() {
         // 현장에서 QR 을 찍고 바로 주문하는 자리라 설문을 거칠 길이 없다.
-        // 설문 참여 할인과 겹쳐 쓰면 같은 현장가가 두 갈래로 갈린다.
-        GoodsOrderPricing afterSurvey = orderService.priceFor(GoodsSalesChannel.FLEA, true, GoodsDeliveryMethod.SHIPPING, false);
-        GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, false, GoodsDeliveryMethod.SHIPPING, false);
+        // 온라인 판매 할인과 겹쳐 쓰면 같은 현장가가 두 갈래로 갈린다.
+        GoodsOrderPricing direct = orderService.priceFor(GoodsSalesChannel.FLEA, GoodsDeliveryMethod.SHIPPING, false);
 
-        assertThat(afterSurvey).isEqualTo(direct);
         assertThat(direct.discountAmountKrw()).isEqualTo(11_000);
         assertThat(direct.promotionName()).isEqualTo("과기대 플리마켓 할인");
         // 제작비 18,900 + 배송비 3,000
@@ -126,15 +124,18 @@ class GoodsOrderServiceTest {
     }
 
     @Test
-    void 설문을_건너뛰었으면_정상가를_적용한다() {
-        // 답하는 수고와 값의 차이가 이 서비스가 설문을 받는 이유다.
-        // 여기서 깎아 주면 설문을 끝까지 답할 까닭이 없어진다.
-        GoodsOrderPricing pricing = orderService.priceFor(GoodsSalesChannel.ONLINE, false, GoodsDeliveryMethod.SHIPPING, false);
+    void 온라인_방문수령은_25900원이고_배송비가_없다() {
+        GoodsOrderPricing pricing = orderService.priceFor(
+                GoodsSalesChannel.ONLINE, GoodsDeliveryMethod.PICKUP, false);
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(25_900);
+        assertThat(pricing.shippingFeeKrw()).isZero();
+    }
 
-        // 제작비 29,900 + 배송비 3,000
-        assertThat(pricing.paymentAmountKrw()).isEqualTo(32_900);
-        assertThat(pricing.discountAmountKrw()).isZero();
-        assertThat(pricing.promotionName()).isNull();
+    @Test
+    void 온라인_두_아이와_키링은_각각_계산하고_배송비는_한번만_붙는다() {
+        GoodsOrderPricing pricing = orderService.priceFor(
+                GoodsSalesChannel.ONLINE, GoodsDeliveryMethod.SHIPPING, 2, 1);
+        assertThat(pricing.paymentAmountKrw()).isEqualTo(25_900 * 2 + 2_000 + 3_000);
     }
 
     @Test

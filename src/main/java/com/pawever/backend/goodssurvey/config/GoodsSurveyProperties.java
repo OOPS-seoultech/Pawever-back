@@ -32,15 +32,9 @@ public class GoodsSurveyProperties {
     // 유료 판매의 계약·결제·공급 기록 보존 기간. 전자상거래법이 5년을 요구한다.
     // 사진과 상세주소는 계약 기록이 아니라 personalDataRetentionMonths 로 먼저 지운다.
     private int contractRetentionDays = 1825;
-    /*
-     * 11차 회의록에서 정한 2차 가격.
-     *   설문을 거치지 않고 바로 신청 = 29,900 (2차 공개 사전판매가)
-     *   설문 참여자                  = 23,900
-     * 여기 기본값은 yaml 기본값과 같아야 한다. 다르면 시험은 통과하는데
-     * 실제로는 다른 금액이 청구된다.
-     */
+    /** 온라인 판매가는 29,900원에서 4,000원 할인한 25,900원이다. */
     private int listPriceKrw = 29_900;
-    private int surveyDiscountKrw = 6_000;
+    private int onlineDiscountKrw = 4_000;
 
     /**
      * 플리마켓 모집.
@@ -78,7 +72,7 @@ public class GoodsSurveyProperties {
      */
     private int keyringFeeKrw = 2_000;
     // 그 할인의 이름. 관리자 화면과 주문 기록에 그대로 남는다.
-    private String surveyPromotionName = "설문 참여 할인";
+    private String onlinePromotionName = "온라인 판매 할인";
     // 신청 후 7일 동안 수동 입금 확인을 기다린다. yaml 기본값과 일치해야 한다.
     private int paymentWindowMinutes = 10_080;
 
