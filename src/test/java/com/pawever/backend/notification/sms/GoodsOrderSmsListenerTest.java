@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,7 +35,7 @@ class GoodsOrderSmsListenerTest {
             "01012345678",
             "보리",
             "3D 전신 피규어",
-            11_900,
+            25_900,
             false,
             "qr",
             180
@@ -78,6 +79,9 @@ class GoodsOrderSmsListenerTest {
 
         listener.onGoodsOrderSubmitted(ORDER);
 
+        ArgumentCaptor<String> message = ArgumentCaptor.forClass(String.class);
+        verify(smsClient).sendLms(eq(ORDER.phone()), eq(PaymentGuideMessage.TITLE), message.capture());
+        assertThat(message.getValue()).contains("25,900원", "IBK기업은행", "256-126343-04-019", ORDER.orderNumber());
         verify(telegramClient, never()).sendHtml(any());
     }
 
