@@ -1737,9 +1737,7 @@ class GoodsSurveyServiceTest {
     }
 
     @Test
-    void 설문을_건너뛰고_신청하면_정가가_적용된다() {
-        // 설문에 답하는 대신 값을 더 내는 길이다. 여기서 할인가가 적용되면
-        // 설문을 끝까지 답할 이유가 사라진다.
+    void 바로_신청해도_온라인_25900원_할인을_적용한다() {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode tracking = objectMapper.createObjectNode().put("visitId", "visit-direct");
         GoodsSurveyDraftResponse draft = service.createDraft(
@@ -1762,12 +1760,11 @@ class GoodsSurveyServiceTest {
 
         verify(fulfillmentRepository).save(saved.capture());
         assertThat(saved.getValue().isSurveyParticipant()).isFalse();
-        // 정상가 그대로. 깎아 줄 근거가 없다.
-        // 제작비 29,900 + 배송비 3,000
+        // 제작비 25,900 + 배송비 3,000
         assertThat(saved.getValue().getPaymentAmountKrw()).isEqualTo(28_900);
         assertThat(saved.getValue().getShippingFeeKrw()).isEqualTo(3_000);
-        assertThat(saved.getValue().getDiscountAmountKrw()).isZero();
-        assertThat(saved.getValue().getPromotionName()).isNull();
+        assertThat(saved.getValue().getDiscountAmountKrw()).isEqualTo(4_000);
+        assertThat(saved.getValue().getPromotionName()).isEqualTo("온라인 판매 할인");
     }
 
     @Test
