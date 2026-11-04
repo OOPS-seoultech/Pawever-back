@@ -38,7 +38,7 @@ public enum AdminOrderView {
     IN_PRODUCTION("제작 중", GoodsOrderStatus.IN_PRODUCTION),
 
     /** 손을 뗀 것. 조회만 한다. */
-    DONE("완료", GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP),
+    DONE("완료", GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP, GoodsOrderStatus.ADMIN_COMPLETED),
 
     /** 어그러진 것. 사람이 들여다봐야 한다. */
     PROBLEM(

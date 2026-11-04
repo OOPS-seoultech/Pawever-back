@@ -45,7 +45,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     /** All existing writers go through this aggregate; status remains a compatibility projection. */
     private void synchronizeLifecycle() {
         lifecycleOrderStatus = switch(status) { case CANCELED,PAYMENT_FAILED -> "CANCELED";
-            case PAYMENT_EXPIRED -> "EXPIRED"; case PICKED_UP -> "COMPLETED"; default -> "ACTIVE"; };
+            case PAYMENT_EXPIRED -> "EXPIRED"; case PICKED_UP, ADMIN_COMPLETED -> "COMPLETED"; default -> "ACTIVE"; };
         lifecyclePaymentStatus = switch(status) { case PAYMENT_PENDING -> "PENDING";
             case PAYMENT_FAILED -> "FAILED"; case PAYMENT_EXPIRED -> "EXPIRED"; case CANCEL_FAILED -> "REFUND_PENDING";
             case CANCELED -> paidAt == null ? "NOT_REQUIRED" : "REFUNDED";
@@ -79,7 +79,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     public String orderStatus() {
         if (lifecycleOrderStatus != null) return lifecycleOrderStatus;
         return switch(status) {case CANCELED,PAYMENT_FAILED -> "CANCELED"; case PAYMENT_EXPIRED -> "EXPIRED";
-            case PICKED_UP -> "COMPLETED"; default -> "ACTIVE";};
+            case PICKED_UP, ADMIN_COMPLETED -> "COMPLETED"; default -> "ACTIVE";};
     }
     public String shipmentStatus() {
         if (lifecycleShipmentStatus != null) return lifecycleShipmentStatus;
@@ -408,6 +408,30 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
             else if (next == GoodsOrderStatus.CANCELED || next == GoodsOrderStatus.PAYMENT_EXPIRED || next == GoodsOrderStatus.PAYMENT_FAILED || next == GoodsOrderStatus.CANCEL_FAILED)
                 productionStage = com.pawever.backend.workflow.ProductionStage.BLOCKED;
         }
+    }
+
+    public record AdministrativeState(GoodsOrderStatus status, String orderStatus,
+            String paymentStatus, String shipmentStatus) {}
+
+    public AdministrativeState administrativeState() {
+        return new AdministrativeState(status, lifecycleOrderStatus,
+                lifecyclePaymentStatus, lifecycleShipmentStatus);
+    }
+
+    public void completeAdministratively() {
+        // Archive the order without fabricating payment, production, delivery or retention events.
+        String payment = paymentStatus(), shipment = shipmentStatus();
+        status = GoodsOrderStatus.ADMIN_COMPLETED;
+        lifecycleOrderStatus = "COMPLETED";
+        lifecyclePaymentStatus = payment;
+        lifecycleShipmentStatus = shipment;
+    }
+
+    public void restoreAdministrativeState(AdministrativeState before) {
+        status = before.status();
+        lifecycleOrderStatus = before.orderStatus();
+        lifecyclePaymentStatus = before.paymentStatus();
+        lifecycleShipmentStatus = before.shipmentStatus();
     }
 
     public void cancel(GoodsOrderStatus next, String reason) {

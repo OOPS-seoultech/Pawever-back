@@ -28,7 +28,8 @@ public class LegacyStaffBoundary implements WebMvcConfigurer {
                     && !path.endsWith("/payments/confirm")
                     && !path.contains("/workflow/")) {
                   String rest = path.substring("/api/admin/orders".length());
-                  if (rest.isEmpty() || rest.startsWith("/start-production")) {
+                  if (rest.isEmpty() || rest.startsWith("/start-production")
+                      || rest.equals("/administrative-completions")) {
                     permissions.require(VIEW_ALL_ORDERS);
                     permissions.require(VIEW_ORDER_BASIC);
                   } else {

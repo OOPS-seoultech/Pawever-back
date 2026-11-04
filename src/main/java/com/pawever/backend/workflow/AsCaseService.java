@@ -40,7 +40,7 @@ public class AsCaseService {
   public List<Map<String, Object>> completedOrders() {
     access.require(VIEW_ALL_ORDERS);
     return orders
-        .findByStatusInOrderByCreatedAtDesc(EnumSet.of(GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP))
+        .findByStatusInOrderByCreatedAtDesc(EnumSet.of(GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP, GoodsOrderStatus.ADMIN_COMPLETED))
         .stream()
         .map(
             order ->
@@ -49,6 +49,7 @@ public class AsCaseService {
                     "goodsType", order.getGoodsType(),
                     "deliveryMethod", order.getDeliveryMethod().name(),
                     "orderStatus", order.orderStatus(),
+                    "administrativelyCompleted", order.getStatus() == GoodsOrderStatus.ADMIN_COMPLETED,
                     "shipmentStatus", order.shipmentStatus(),
                     "trackingCompany", order.getTrackingCompany(),
                     "trackingNumber", order.getTrackingNumber(),
@@ -128,7 +129,7 @@ public class AsCaseService {
         orders
             .findByOrderNumber(orderNumber)
             .orElseThrow(() -> notFound("주문을 찾을 수 없습니다."));
-    if (!EnumSet.of(GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP).contains(order.getStatus()))
+    if (!EnumSet.of(GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP, GoodsOrderStatus.ADMIN_COMPLETED).contains(order.getStatus()))
       throw new WorkflowException(409, "ORDER_NOT_COMPLETED", "완료된 주문에서만 AS를 시작할 수 있습니다.");
     var value = cases.saveAndFlush(AsCase.open(orderNumber, reason, actor.getId(), clock.instant()));
     audit(value, "OPEN_AS_CASE", null, null);

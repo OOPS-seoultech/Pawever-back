@@ -632,7 +632,7 @@ class AdminOrderServiceTest {
                         GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.LEGACY_FREE);
         assertThat(AdminOrderView.DONE.statuses())
                 .containsExactlyInAnyOrder(
-                        GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP);
+                        GoodsOrderStatus.SHIPPED, GoodsOrderStatus.PICKED_UP, GoodsOrderStatus.ADMIN_COMPLETED);
         // 어느 뷰에도 안 들어가는 상태가 있으면 그 주문은 화면에서 사라진다.
         assertThat(Arrays.stream(AdminOrderView.values())
                 .flatMap(view -> view.statuses().stream())

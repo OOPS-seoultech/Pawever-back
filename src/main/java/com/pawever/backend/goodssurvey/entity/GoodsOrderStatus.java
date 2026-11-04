@@ -32,6 +32,9 @@ public enum GoodsOrderStatus {
      */
     PICKED_UP("수령 완료", true),
 
+    /** 관리자가 과거 주문을 종료했다. 실제 배송·수령 사실을 새로 만들지 않는다. */
+    ADMIN_COMPLETED("관리자 완료", true),
+
     /** 30분 안에 결제되지 않았다. 계약이 성립하지 않아 사진까지 파기한다. */
     PAYMENT_EXPIRED("결제 만료", false),
 
