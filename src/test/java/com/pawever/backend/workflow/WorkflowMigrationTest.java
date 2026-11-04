@@ -253,8 +253,12 @@ class WorkflowMigrationTest {
               + " delete_after='2096-05-01 03:00:00' WHERE order_number='PE-MIG-2'");
     }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(8);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(9);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
+    var deployedV29 = java.util.Arrays.stream(shippingVersion.info().applied())
+        .filter(migration -> migration.getVersion().toString().equals("29")).findFirst().orElseThrow();
+    assertThat(deployedV29.getChecksum()).isEqualTo(-1393156261);
+
     try (var c = DriverManager.getConnection(url, user, password);
         var statement = c.createStatement();
         var result = statement.executeQuery("SELECT COUNT(*) FROM goods_survey_fulfillments WHERE sale_price_krw IS NULL")) {
