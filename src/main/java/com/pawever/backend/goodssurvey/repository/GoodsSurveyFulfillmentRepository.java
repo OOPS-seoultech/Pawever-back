@@ -21,6 +21,22 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     @Query("select f from GoodsSurveyFulfillment f where f.orderNumber=:number")
     Optional<GoodsSurveyFulfillment> lockByOrderNumber(@Param("number") String number);
 
+    interface SaleEntry {
+        Instant getPaidAt();
+        Integer getSalePriceKrw();
+        GoodsOrderStatus getStatus();
+        String getLifecyclePaymentStatus();
+        String getLifecycleOrderStatus();
+    }
+
+    @Query("""
+        select f.paidAt as paidAt, f.salePriceKrw as salePriceKrw, f.status as status,
+               f.lifecyclePaymentStatus as lifecyclePaymentStatus,
+               f.lifecycleOrderStatus as lifecycleOrderStatus
+        from GoodsSurveyFulfillment f where f.paidAt is not null
+        """)
+    List<SaleEntry> findSaleEntries();
+
     Optional<GoodsSurveyFulfillment> findByResponseId(String responseId);
 
     /**

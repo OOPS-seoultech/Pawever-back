@@ -249,6 +249,17 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     @Column(nullable = false)
     private int paymentAmountKrw;
 
+    /** 관리용 판매가. null은 기본 18,900원이며 실제 청구·입금 기록과 분리한다. */
+    private Integer salePriceKrw;
+
+    public int salePriceKrw() { return salePriceKrw == null ? 18_900 : salePriceKrw; }
+
+    public void changeSalePrice(Integer value) {
+        if (value != null && (value < 0 || value > 100_000_000))
+            throw new IllegalArgumentException("판매가 범위를 확인해 주세요.");
+        salePriceKrw = value;
+    }
+
     /** 결제 대행사가 준 결제 식별값. */
     @Column(length = 200)
     private String paymentKey;

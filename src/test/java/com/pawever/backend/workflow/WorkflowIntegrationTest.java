@@ -53,6 +53,34 @@ class WorkflowIntegrationTest {
   @Autowired com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository completionNotifications;
 
   @Test
+  void salePriceIsOwnerControlledVersionedAndSeparateFromPayment() throws Exception {
+    String path = "/api/admin/orders/" + number + "/sale-price";
+    var before = orders.findByOrderNumber(number).orElseThrow();
+    var payment = before.administrativeState();
+    String body = jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", 24000));
+    expectAs(modeler, path, body, 403);
+    expectAs(owner, path, jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", -1)), 400);
+    expectAs(owner, path, jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", 10.5)), 400);
+    long notifications = completionNotifications.count();
+    String key = UUID.randomUUID().toString();
+    var saved = send(owner, path, body, key);
+    org.assertj.core.api.Assertions.assertThat(saved.get("salePriceKrw").asInt()).isEqualTo(24000);
+    org.assertj.core.api.Assertions.assertThat(saved.get("salePriceCustom").asBoolean()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(send(owner, path, body, key)).isEqualTo(saved);
+    expectAs(owner, path, body, 409);
+    var after = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(after.administrativeState()).isEqualTo(payment);
+    org.assertj.core.api.Assertions.assertThat(after.getPaymentAmountKrw()).isEqualTo(before.getPaymentAmountKrw());
+    org.assertj.core.api.Assertions.assertThat(after.getPaidAt()).isEqualTo(before.getPaidAt());
+    org.assertj.core.api.Assertions.assertThat(completionNotifications.count()).isEqualTo(notifications);
+    var reset = send(owner, path, jsonBody(Map.of("version", saved.get("version").asLong(), "custom", false)), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(reset.get("salePriceKrw").asInt()).isEqualTo(18900);
+    org.assertj.core.api.Assertions.assertThat(reset.get("salePriceCustom").asBoolean()).isFalse();
+    mvc.perform(get("/api/admin/workflow/sales-summary").header("Authorization", "Bearer " + modeler)).andExpect(status().isForbidden());
+    mvc.perform(get("/api/admin/workflow/sales-summary").header("Authorization", "Bearer " + owner)).andExpect(status().isOk()).andExpect(jsonPath("$.data.months.length()").value(12));
+  }
+
+  @Test
   void administrativeCompletionIsOwnerOnlyPreservesFactsAndRestoresFromAudit() throws Exception {
     var original = orders.findByOrderNumber(number).orElseThrow();
     original.confirmManually(1L, 18900, Instant.now());
