@@ -13,7 +13,7 @@ class OrderSalesServiceTest {
   @Test
   void sumsConfirmedSalesAtKoreanMonthBoundaryAndExcludesFreeRefundedAndCanceled() {
     var orders = mock(GoodsSurveyFulfillmentRepository.class);
-    when(orders.findSaleEntries()).thenReturn(List.of(
+    var entries = List.of(
         entry("2026-10-31T15:00:00Z", 24000, GoodsOrderStatus.ADMIN_COMPLETED, "CONFIRMED", "COMPLETED"),
         entry("2026-10-31T14:59:59Z", null, GoodsOrderStatus.PAYMENT_COMPLETED, null, null),
         entry("2025-01-01T00:00:00Z", 10000, GoodsOrderStatus.SHIPPED, "CONFIRMED", "ACTIVE"),
@@ -21,7 +21,8 @@ class OrderSalesServiceTest {
         entry("2026-11-01T00:00:00Z", null, GoodsOrderStatus.CANCELED, "REFUNDED", "CANCELED"),
         entry("2026-11-01T00:00:00Z", null, GoodsOrderStatus.IN_PRODUCTION, "REFUND_PENDING", "ACTIVE"),
         entry("2026-11-01T00:00:00Z", null, GoodsOrderStatus.IN_PRODUCTION, "CONFIRMED", "TRASHED")
-    ));
+    );
+    when(orders.findSaleEntries()).thenReturn(entries);
     var service = new OrderSalesService(mock(WorkflowService.class), mock(StaffPermissions.class), orders,
         Clock.fixed(Instant.parse("2026-11-04T00:00:00Z"), ZoneOffset.UTC));
     var result = service.summary();

@@ -58,7 +58,8 @@ class WorkflowIntegrationTest {
     var before = orders.findByOrderNumber(number).orElseThrow();
     var payment = before.administrativeState();
     String body = jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", 24000));
-    expectAs(modeler, path, body, 403);
+    expectAs(modeler, path, body, 404);
+    expectAs(account(AdminRole.ADMIN, Set.of()), path, body, 403);
     expectAs(owner, path, jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", -1)), 400);
     expectAs(owner, path, jsonBody(Map.of("version", before.getVersion(), "custom", true, "salePriceKrw", 10.5)), 400);
     long notifications = completionNotifications.count();
