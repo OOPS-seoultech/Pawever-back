@@ -79,6 +79,16 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(reset.get("salePriceCustom").asBoolean()).isFalse();
     mvc.perform(get("/api/admin/workflow/sales-summary").header("Authorization", "Bearer " + modeler)).andExpect(status().isForbidden());
     mvc.perform(get("/api/admin/workflow/sales-summary").header("Authorization", "Bearer " + owner)).andExpect(status().isOk()).andExpect(jsonPath("$.data.months.length()").value(12));
+    int paidEntries = orders.findSaleEntries().size();
+    var zeroPayment = orders.findByOrderNumber(number).orElseThrow();
+    zeroPayment.confirmManually(1L, 0, Instant.now());
+    orders.saveAndFlush(zeroPayment);
+    org.assertj.core.api.Assertions.assertThat(orders.findSaleEntries()).hasSize(paidEntries);
+    org.springframework.test.util.ReflectionTestUtils.setField(zeroPayment, "confirmedAmountKrw", null);
+    org.springframework.test.util.ReflectionTestUtils.setField(zeroPayment, "paymentAmountKrw", 0);
+    orders.saveAndFlush(zeroPayment);
+    org.assertj.core.api.Assertions.assertThat(orders.findSaleEntries()).hasSize(paidEntries);
+
   }
 
   @Test

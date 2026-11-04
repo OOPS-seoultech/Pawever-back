@@ -34,6 +34,8 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
                f.lifecyclePaymentStatus as lifecyclePaymentStatus,
                f.lifecycleOrderStatus as lifecycleOrderStatus
         from GoodsSurveyFulfillment f where f.paidAt is not null
+          and f.paymentAmountKrw > 0
+          and (f.confirmedAmountKrw is null or f.confirmedAmountKrw > 0)
         """)
     List<SaleEntry> findSaleEntries();
 
