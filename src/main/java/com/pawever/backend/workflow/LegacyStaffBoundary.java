@@ -40,6 +40,8 @@ public class LegacyStaffBoundary implements WebMvcConfigurer {
                     if (path.endsWith("/photo-links")) permissions.require(VIEW_CUSTOMER_PHOTOS);
                     else if (path.endsWith("/photos.zip"))
                       permissions.require(DOWNLOAD_CUSTOMER_PHOTOS);
+                    else if (path.endsWith("/sale-price"))
+                      permissions.require(MANAGE_OPERATION_SETTINGS);
                     else if (path.endsWith("/tracking"))
                       permissions.require(IMPORT_SHIPMENT_RESULTS);
                     else if (path.endsWith("/pickup-complete"))

@@ -727,6 +727,10 @@ public class WorkflowService {
         actions,
         "artifacts",
         fs,
+        "salePriceKrw",
+        permissions.contains(VIEW_PAYMENT) ? o.salePriceKrw() : null,
+        "salePriceCustom",
+        permissions.contains(VIEW_PAYMENT) && o.getSalePriceKrw() != null,
         "expectedAmount",
         permissions.contains(VIEW_PAYMENT) ? o.getPaymentAmountKrw() : null);
   }
