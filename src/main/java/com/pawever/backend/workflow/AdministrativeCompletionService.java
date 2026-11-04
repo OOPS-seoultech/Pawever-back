@@ -62,6 +62,7 @@ public class AdministrativeCompletionService {
         workflow.version(order, version);
         if (!order.orderStatus().equals("ACTIVE")
             || !order.shipmentStatus().equals("NOT_READY")
+            || !Set.of("CONFIRMED", "NOT_REQUIRED").contains(order.paymentStatus())
             || !Set.of(GoodsOrderStatus.PAYMENT_COMPLETED, GoodsOrderStatus.IN_PRODUCTION,
                 GoodsOrderStatus.LEGACY_FREE).contains(order.getStatus()))
           throw new WorkflowException(409, "ORDER_NOT_COMPLETABLE",
