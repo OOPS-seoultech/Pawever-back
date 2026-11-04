@@ -182,6 +182,8 @@ jobs:
             else
               echo "❌ ${NEW_COLOR}:${NEW_PORT} 가 이 커밋을 돌려주지 않는다 → 전환 안 함(기존 ${OLD_COLOR} 계속 서빙)"
               tail -50 /tmp/deploy.log
+              # 빌드 로그만으로는 부팅 실패 원인을 알 수 없다. 전환 전 컨테이너의 시작 로그만 확인한다.
+              docker compose logs --no-color --tail=100 "app-${NEW_COLOR}" 2>&1 | tail -80
               docker compose stop "app-${NEW_COLOR}" > /dev/null 2>&1 || true
               exit 1
             fi
