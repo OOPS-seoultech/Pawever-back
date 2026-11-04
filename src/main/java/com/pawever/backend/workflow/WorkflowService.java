@@ -625,6 +625,8 @@ public class WorkflowService {
         o.isKeyringAdded(),
         "orderStatus",
         o.orderStatus(),
+        "administrativelyCompleted",
+        o.getStatus() == GoodsOrderStatus.ADMIN_COMPLETED,
         "paymentStatus",
         o.paymentStatus(),
         "productionStage",

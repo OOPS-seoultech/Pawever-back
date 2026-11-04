@@ -49,6 +49,73 @@ class WorkflowIntegrationTest {
 
   String owner, modeler, stranger, number;
 
+  @Autowired WorkflowAuditRepository completionAudits;
+  @Autowired com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository completionNotifications;
+
+  @Test
+  void administrativeCompletionIsOwnerOnlyPreservesFactsAndRestoresFromAudit() throws Exception {
+    var original = orders.findByOrderNumber(number).orElseThrow();
+    original.confirmManually(1L, 18900, Instant.now());
+    orders.saveAndFlush(original);
+    original = orders.findByOrderNumber(number).orElseThrow();
+    var before = original.administrativeState();
+    String body = jsonBody(Map.of("orders", List.of(Map.of("orderNumber", number,
+        "version", original.getVersion())), "reason", "기존 주문 정리"));
+    String path = "/api/admin/orders/administrative-completions", key = UUID.randomUUID().toString();
+    expectAs(modeler, path, body, 403);
+    long notificationsBefore = completionNotifications.count();
+    var result = send(owner, path, body, key);
+    org.assertj.core.api.Assertions.assertThat(result.get("completed").asInt()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(send(owner, path, body, key)).isEqualTo(result);
+    var completed = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(completed.getStatus()).isEqualTo(GoodsOrderStatus.ADMIN_COMPLETED);
+    org.assertj.core.api.Assertions.assertThat(completed.orderStatus()).isEqualTo("COMPLETED");
+    org.assertj.core.api.Assertions.assertThat(completed.paymentStatus()).isEqualTo(original.paymentStatus());
+    org.assertj.core.api.Assertions.assertThat(completed.shipmentStatus()).isEqualTo(original.shipmentStatus());
+    org.assertj.core.api.Assertions.assertThat(completed.getProductionStage()).isEqualTo(original.getProductionStage());
+    org.assertj.core.api.Assertions.assertThat(completed.getPaidAt()).isEqualTo(original.getPaidAt());
+    org.assertj.core.api.Assertions.assertThat(completed.getPaymentAmountKrw()).isEqualTo(original.getPaymentAmountKrw());
+    org.assertj.core.api.Assertions.assertThat(completed.getDeliveryCompletedAt()).isNull();
+    org.assertj.core.api.Assertions.assertThat(completed.getDeleteAfter()).isNull();
+    org.assertj.core.api.Assertions.assertThat(completed.getTrackingNumber()).isNull();
+    org.assertj.core.api.Assertions.assertThat(completionNotifications.count()).isEqualTo(notificationsBefore);
+    org.assertj.core.api.Assertions.assertThat(completionAudits.findByResourceOrderByIdAsc(number)
+        .stream().filter(event -> event.getAction().equals("ADMIN_COMPLETE"))).hasSize(1);
+    mvc.perform(get("/api/admin/completed-orders").header("Authorization", "Bearer " + owner))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data[?(@.orderNumber == '" + number
+            + "')].administrativelyCompleted").value(org.hamcrest.Matchers.hasItem(true)));
+    String restorePath = "/api/admin/orders/" + number + "/restore-administrative-completion";
+    String restoreBody = jsonBody(Map.of("version", completed.getVersion(), "reason", "잘못 완료한 주문 복구"));
+    var restored = send(owner, restorePath, restoreBody, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(restored.get("administrativelyCompleted").asBoolean()).isFalse();
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().administrativeState()).isEqualTo(before);
+  }
+
+  @Test
+  void administrativeCompletionRejectsEntireBatchForUnpaidDuplicateOrChangedOrders() throws Exception {
+    var first = orders.findByOrderNumber(number).orElseThrow();
+    first.confirmManually(1L, 18900, Instant.now());
+    orders.saveAndFlush(first);
+    first = orders.findByOrderNumber(number).orElseThrow();
+    String firstNumber = number;
+    long firstVersion = first.getVersion();
+    setup();
+    var unpaid = orders.findByOrderNumber(number).orElseThrow();
+    String path = "/api/admin/orders/administrative-completions";
+    expectAs(owner, path, jsonBody(Map.of("orders", List.of(
+        Map.of("orderNumber", firstNumber, "version", firstVersion),
+        Map.of("orderNumber", number, "version", unpaid.getVersion())), "reason", "전체 검증")), 409);
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(firstNumber).orElseThrow().getStatus())
+        .isEqualTo(GoodsOrderStatus.PAYMENT_COMPLETED);
+    expectAs(owner, path, jsonBody(Map.of("orders", List.of(
+        Map.of("orderNumber", firstNumber, "version", firstVersion),
+        Map.of("orderNumber", firstNumber, "version", firstVersion)), "reason", "중복 검증")), 400);
+    expectAs(owner, path, jsonBody(Map.of("orders", List.of(
+        Map.of("orderNumber", firstNumber, "version", firstVersion + 1)), "reason", "버전 검증")), 409);
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(firstNumber).orElseThrow().getStatus())
+        .isEqualTo(GoodsOrderStatus.PAYMENT_COMPLETED);
+  }
+
   @Test
   void shippingPackingCannotStartRetentionThroughLegacyInternalDeliveryEndpoint() throws Exception {
     readyForPacking(true);
