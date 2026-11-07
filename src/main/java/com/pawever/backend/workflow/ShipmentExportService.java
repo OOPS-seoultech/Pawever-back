@@ -61,7 +61,7 @@ public class ShipmentExportService {
                 Map.<String, Object>of(
                     "orderNumber", o.getOrderNumber(),
                     "version", o.getVersion(),
-                    "petName", o.getPetName(),
+                    "petName", workflow.petNames(o),
                     "guardianName", o.getGuardianName(),
                     "productionStage", o.getProductionStage().name(),
                     "shipmentStatus", o.shipmentStatus(),
@@ -73,7 +73,7 @@ public class ShipmentExportService {
     var m = new LinkedHashMap<String, Object>();
     m.put("orderNumber", o.getOrderNumber());
     m.put("version", o.getVersion());
-    m.put("petName", o.getPetName());
+    m.put("petName", workflow.petNames(o));
     m.put("guardianName", o.getGuardianName());
     m.put("phone", o.getPhone());
     m.put("postalCode", o.getPostalCode());
@@ -99,7 +99,7 @@ public class ShipmentExportService {
     if (!value(o.getPhone()).matches("[0-9\\s().+\\-]+") || !phone(o).matches("010[0-9]{8}"))
       p.add("전화번호는 010으로 시작하는 11자리 숫자가 필요합니다.");
     if (value(o.getGuardianName()).isBlank()) p.add("보호자 이름을 확인해 주세요.");
-    if (value(o.getPetName()).isBlank()) p.add("반려동물 이름을 확인해 주세요.");
+    if (value(workflow.petNames(o)).isBlank()) p.add("반려동물 이름을 확인해 주세요.");
     if (value(o.getAddress()).isBlank()) p.add("기본 주소를 확인해 주세요.");
     if (exportValues(o).stream()
         .anyMatch(
@@ -139,7 +139,7 @@ public class ShipmentExportService {
         value(o.getAddress()),
         value(o.getAddressDetail()),
         phone(o),
-        value(o.getPetName()));
+        value(workflow.petNames(o)));
   }
 
   @SuppressWarnings("unchecked")

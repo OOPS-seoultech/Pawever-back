@@ -82,6 +82,8 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(second.get("artifacts").size()).isZero();
     org.assertj.core.api.Assertions.assertThat(second.get("salePriceKrw").asInt()).isEqualTo(37800);
     org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getPaymentAmountKrw()).isEqualTo(18900);
+    org.mockito.Mockito.when(storage.presignDownload(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new GoodsSurveyPhotoStorage.PresignedDownload("https://storage.example.test/photo.png", Instant.now().plusSeconds(300)));
     mvc.perform(post("/api/admin/orders/" + number + "/photo-links?petIndex=1")
         .header("Authorization", "Bearer " + owner)).andExpect(status().isOk())
         .andExpect(jsonPath("$.data.photos.length()").value(3));
@@ -141,6 +143,32 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(2);
     org.assertj.core.api.Assertions.assertThat(tasks.findByOrderNumberOrderByIdAsc(number).stream()
         .filter(t -> t.getStage() == ProductionStage.PACKING && !t.getStatus().equals("COMPLETED")).count()).isZero();
+  }
+
+  @Test
+  void ownerAddsPetWithItsOwnPhotosWithoutChangingBillingOrCustomTotal() throws Exception {
+    var original = orders.findByOrderNumber(number).orElseThrow();
+    original.changeSalePrice(35000);
+    orders.saveAndFlush(original);
+    var photoIds = new ArrayList<String>();
+    for (int i=0; i<3; i++) {
+      var photo = GoodsSurveyPhoto.pending(UUID.randomUUID().toString(), original.getResponseId(), "extra-"+i,
+          "extra/"+UUID.randomUUID(), "image/png", 10, Instant.now().plusSeconds(600));
+      photo.confirm(10, Instant.now());
+      photos.saveAndFlush(photo);
+      photoIds.add(photo.getId());
+    }
+    String path = "/api/admin/orders/" + number + "/workflow/pets";
+    String body = jsonBody(Map.of("version", original.getVersion(), "petName", "별이", "photoIds", photoIds));
+    expectAs(modeler, path, body, 403);
+    var added = send(owner, path, body, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(added.get("petIndex").asInt()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(added.get("petCount").asInt()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(added.get("salePriceKrw").asInt()).isEqualTo(35000);
+    var order = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(order.getPaymentAmountKrw()).isEqualTo(18900);
+    org.assertj.core.api.Assertions.assertThat(photos.findByResponseId(order.getResponseId()).stream()
+        .filter(photo -> Integer.valueOf(1).equals(photo.getPetIndex())).count()).isEqualTo(3);
   }
 
   @Test
@@ -2637,7 +2665,7 @@ class WorkflowIntegrationTest {
         send(
             owner,
             "/api/admin/orders/" + number + "/payments/confirm",
-            "{\"version\":0,\"amount\":18900}",
+            jsonBody(Map.of("version", orders.findByOrderNumber(number).orElseThrow().getVersion(), "amount", 18900)),
             UUID.randomUUID().toString());
     String path = "/api/production/tasks/" + row.get("taskId");
     row = send(modeler, path + "/start", versionBody(row), UUID.randomUUID().toString());

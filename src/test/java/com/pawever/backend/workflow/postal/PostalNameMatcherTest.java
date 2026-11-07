@@ -15,6 +15,15 @@ import org.junit.jupiter.api.Test;
  */
 class PostalNameMatcherTest {
 
+    @Test
+    void 두_아이를_같이_포장한_주문도_모든_이름이_같아야_자동_연결한다() {
+        var candidate = new Candidate("PE-TWO", "보호자", "뚜비 별이", "01755");
+        assertThat(PostalNameMatcher.match("보호자 뚜비 별이", "01755", List.of(candidate)).kind()).isEqualTo(Kind.AUTO);
+        assertThat(PostalNameMatcher.match("뚜비 별이 보호자", "01755", List.of(candidate)).kind()).isEqualTo(Kind.AUTO);
+        assertThat(PostalNameMatcher.match("보호자 뚜비", "01755", List.of(candidate)).kind()).isEqualTo(Kind.NO_CANDIDATE);
+        assertThat(PostalNameMatcher.match("보호자 뚜비 별희", "01755", List.of(candidate)).kind()).isEqualTo(Kind.NO_CANDIDATE);
+    }
+
     private static final Candidate BORI = new Candidate("PE-2026-000001", "황성욱", "보리", "01811");
     private static final Candidate CHOCO = new Candidate("PE-2026-000002", "김민지", "초코", "06236");
 

@@ -271,7 +271,7 @@ public class PostalImportService {
                 .map(
                         o ->
                                 new PostalNameMatcher.Candidate(
-                                        o.getOrderNumber(), o.getGuardianName(), o.getPetName(), o.getPostalCode()))
+                                        o.getOrderNumber(), o.getGuardianName(), workflow.petNames(o), o.getPostalCode()))
                 .toList();
     }
 

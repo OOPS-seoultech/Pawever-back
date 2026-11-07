@@ -59,9 +59,9 @@ public final class PostalNameMatcher {
 
         // 이름이 둘이면 보호자+아이 순서와 아이+보호자 역순을 함께 본다.
         // 역순으로 적혀 오는 일이 실제로 있고, 그것만으로 사람을 부를 이유는 없다.
-        if (parts.length == 2) {
-            Set<String> normal = orderNumbersOf(pool, c -> eq(c.guardianName(), parts[0]) && eq(c.petName(), parts[1]));
-            Set<String> reversed = orderNumbersOf(pool, c -> eq(c.petName(), parts[0]) && eq(c.guardianName(), parts[1]));
+        if (parts.length >= 2) {
+            Set<String> normal = orderNumbersOf(pool, c -> eq(c.guardianName(), parts[0]) && eq(c.petName(), String.join(" ", java.util.Arrays.copyOfRange(parts, 1, parts.length))));
+            Set<String> reversed = orderNumbersOf(pool, c -> eq(c.petName(), String.join(" ", java.util.Arrays.copyOfRange(parts, 0, parts.length - 1))) && eq(c.guardianName(), parts[parts.length - 1]));
             Set<String> both = new LinkedHashSet<>(normal);
             both.addAll(reversed);
             if (!both.isEmpty()) {

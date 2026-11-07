@@ -111,12 +111,16 @@ public class WorkflowService {
     return Set.of("CONFIRMED", "NOT_REQUIRED").contains(o.paymentStatus());
   }
 
+  public String petNames(GoodsSurveyFulfillment order) {
+    var names = pets.findByOrderNumberOrderByPetIndexAsc(order.getOrderNumber()).stream()
+        .map(GoodsOrderPet::getPetName).toList();
+    return names.isEmpty() ? order.getPetName() : String.join(" ", names);
+  }
+
   List<ProductionTask> history(String number, int petIndex) {
     return tasks.findByOrderNumberOrderByIdAsc(number).stream()
         .filter(t -> t.getPetIndex() == petIndex).toList();
   }
-
-  ProductionTask currentTask(String number) { return currentTask(number, 0); }
 
   ProductionTask currentTask(String number, int petIndex) {
     return history(number, petIndex).stream()
