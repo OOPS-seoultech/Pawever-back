@@ -30,6 +30,7 @@ class WorkflowIntegrationTest {
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository responses;
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository photos;
   @Autowired ProductionTaskRepository tasks;
+  @Autowired AdminNoticeRepository noticeRows;
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRows;
   @Autowired ProductionArtifactRepository artifacts;
   @Autowired AsCaseAccessGrantRepository asGrants;
@@ -52,6 +53,61 @@ class WorkflowIntegrationTest {
 
   @Autowired WorkflowAuditRepository completionAudits;
   @Autowired com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository completionNotifications;
+
+  @Test
+  void noticesAreStaffOnlyAndOnlyOwnerCanPublishOrEdit() throws Exception {
+    mvc.perform(get("/api/admin/notices")).andExpect(status().isUnauthorized());
+    String body = jsonBody(Map.of("title", "작업 안내", "body", "## 안내\n![이미지](https://example.com/photo.png)\n[설명](https://example.com)"));
+    expectAs(stranger, "/api/admin/notices", body, 403);
+    expectAs(owner, "/api/admin/notices", "{\"title\":\"\",\"body\":\"본문\"}", 400);
+    String key = UUID.randomUUID().toString();
+    var notice = send(owner, "/api/admin/notices", body, key);
+    org.assertj.core.api.Assertions.assertThat(send(owner, "/api/admin/notices", body, key)).isEqualTo(notice);
+    var detail = readJson(stranger, "/api/admin/notices/" + notice.get("id"));
+    org.assertj.core.api.Assertions.assertThat(detail.get("body").asText()).contains("![이미지]");
+    String edit = jsonBody(Map.of("title", "수정 안내", "body", "수정 내용", "version", notice.get("version").asLong()));
+    mvc.perform(put("/api/admin/notices/"+notice.get("id")).header("Authorization", "Bearer "+owner)
+        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json").content(edit))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.data.title").value("수정 안내"));
+    mvc.perform(put("/api/admin/notices/"+notice.get("id")).header("Authorization", "Bearer "+owner)
+        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json").content(edit))
+        .andExpect(status().isConflict());
+  }
+
+  @Test
+  void firstGuideDecisionIsStoredPerAccountWithoutHidingTheNotice() throws Exception {
+    var guide = noticeRows.findByGuideKey("local-folder-guide").orElseGet(() -> {
+      var item = AdminNotice.create("PC 폴더 연결", "연결 안내", null, Instant.now());
+      org.springframework.test.util.ReflectionTestUtils.setField(item, "guideKey", "local-folder-guide");
+      return noticeRows.saveAndFlush(item);
+    });
+    org.assertj.core.api.Assertions.assertThat(readJson(modeler, "/api/admin/notices/onboarding").get("notice").get("id").asLong()).isEqualTo(guide.getId());
+    var decision = send(modeler, "/api/admin/notices/onboarding", "{\"decision\":\"DEFERRED\"}", UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(decision.get("recorded").asBoolean()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(readJson(modeler, "/api/admin/notices/onboarding").get("notice").isNull()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(readJson(stranger, "/api/admin/notices/onboarding").get("notice").get("id").asLong()).isEqualTo(guide.getId());
+    org.assertj.core.api.Assertions.assertThat(readJson(modeler, "/api/admin/notices/"+guide.getId()).get("body").asText()).isNotBlank();
+  }
+
+  void localUploadStorage() {
+    org.mockito.Mockito.when(storage.presignUpload(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new GoodsSurveyPhotoStorage.PresignedUpload("https://storage.example.test/put", Map.of(), Instant.now().plusSeconds(600)));
+    org.mockito.Mockito.when(storage.head(org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(new GoodsSurveyPhotoStorage.StoredObject(10, "application/octet-stream", new byte[]{80,75,3,4}));
+  }
+
+  @Test
+  void colored3mfAttachesToCurrentPetWithoutAdvancingOrUsingAnotherStage() throws Exception {
+    var row = readyForMapping();
+    localUploadStorage();
+    var request = send(owner, "/api/production/tasks/"+row.get("taskId")+"/artifacts/upload-requests",
+        jsonBody(Map.of("version", row.get("version").asLong(), "kind", "COLORED_MODEL", "fileName", "color.3mf", "size", 10)), UUID.randomUUID().toString());
+    var confirmed = send(owner, "/api/production/artifacts/"+request.get("artifactId").asText()+"/confirm", versionBody(request), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(confirmed.get("productionStage").asText()).isEqualTo("COLOR_MAPPING");
+    org.assertj.core.api.Assertions.assertThat(confirmed.get("artifacts").toString()).contains("COLORED_MODEL");
+    expectAs(owner, "/api/production/tasks/"+confirmed.get("taskId")+"/artifacts/upload-requests",
+        jsonBody(Map.of("version", confirmed.get("version").asLong(), "kind", "PRINT_MODEL", "fileName", "wrong.3mf", "size", 10)), 400);
+  }
 
   void addSecondPetFixture() {
     var order = orders.findByOrderNumber(number).orElseThrow();
