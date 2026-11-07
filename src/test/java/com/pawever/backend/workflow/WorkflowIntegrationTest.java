@@ -100,6 +100,7 @@ class WorkflowIntegrationTest {
   void colored3mfAttachesToCurrentPetWithoutAdvancingOrUsingAnotherStage() throws Exception {
     var row = readyForMapping();
     localUploadStorage();
+    org.assertj.core.api.Assertions.assertThat(readJson(owner, "/api/production/file-targets").get("orders").toString()).contains("COLORED_MODEL");
     var request = send(owner, "/api/production/tasks/"+row.get("taskId")+"/artifacts/upload-requests",
         jsonBody(Map.of("version", row.get("version").asLong(), "kind", "COLORED_MODEL", "fileName", "color.3mf", "size", 10)), UUID.randomUUID().toString());
     var confirmed = send(owner, "/api/production/artifacts/"+request.get("artifactId").asText()+"/confirm", versionBody(request), UUID.randomUUID().toString());

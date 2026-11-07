@@ -30,7 +30,7 @@ public class AdminNoticeService {
     result.put("id", item.getId()); result.put("version", item.getVersion());
     result.put("title", item.getTitle()); result.put("guideKey", item.getGuideKey());
     result.put("authorName", "PAW-EVER 운영팀");
-    result.put("createdAt", item.getCreatedAt()); result.put("updatedAt", item.getUpdatedAt());
+    result.put("createdAt", item.getCreatedAt().toString()); result.put("updatedAt", item.getUpdatedAt().toString());
     if (full) result.put("body", item.getBody());
     return result;
   }
@@ -38,7 +38,7 @@ public class AdminNoticeService {
   @Transactional(readOnly = true)
   public List<Map<String, Object>> list() {
     access.current();
-    return notices.findAllByOrderByIdDesc().stream().map(n -> view(n, false)).toList();
+    return notices.findAllByOrderByIdDesc().stream().sorted(Comparator.comparing(n -> n.getGuideKey() == null)).map(n -> view(n, false)).toList();
   }
 
   @Transactional(readOnly = true)
