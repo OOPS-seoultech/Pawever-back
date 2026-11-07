@@ -252,7 +252,7 @@ public class GoodsSurveyFulfillment extends BaseTimeEntity {
     /** 관리용 판매가. null은 기본 18,900원이며 실제 청구·입금 기록과 분리한다. */
     private Integer salePriceKrw;
 
-    public int salePriceKrw() { return salePriceKrw == null ? 18_900 : salePriceKrw; }
+    public int salePriceKrw() { return salePriceKrw == null ? Math.multiplyExact(18_900, petCount) : salePriceKrw; }
 
     public void changeSalePrice(Integer value) {
         if (value != null && (value < 0 || value > 100_000_000))

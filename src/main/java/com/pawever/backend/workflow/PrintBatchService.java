@@ -149,25 +149,36 @@ public class PrintBatchService {
     var result = new TreeMap<String, Map<String, Object>>();
     for (var item : entries(input, "orders", 1, 50)) {
       String n = text(item, "orderNumber", 20);
-      if (n.isBlank() || result.put(n, item) != null) throw bad("주문이 비어 있거나 중복됐습니다.");
+      if (n.isBlank() || result.put(workKey(n, workflow.petIndex(item)), item) != null) throw bad("주문이 비어 있거나 중복됐습니다.");
       access.read(n);
     }
     return result;
   }
 
-  private ProductionTask eligible(GoodsSurveyFulfillment o, Long batchId) {
-    var t = workflow.currentTask(o.getOrderNumber());
+  String workKey(String number, int petIndex) { return number + ":" + petIndex; }
+
+  int petIndex(PrintBatchItem item) {
+    return tasks.findById(item.getPlateTaskId()).orElseThrow().getPetIndex();
+  }
+
+  String workKey(PrintBatchItem item) { return workKey(item.getOrderNumber(), petIndex(item)); }
+
+  Map<String, GoodsSurveyFulfillment> lockSelected(Map<String, Map<String, Object>> selected) {
+    return lock(selected.values().stream().map(body -> text(body, "orderNumber", 20)).toList());
+  }
+
+  private ProductionTask eligible(GoodsSurveyFulfillment o, int petIndex, Long batchId) {
+    var t = workflow.currentTask(o.getOrderNumber(), petIndex);
     if (t != null) entityManager.refresh(t);
     if (!workflow.active(o)
         || !workflow.paid(o)
-        || o.getProductionStage() != ProductionStage.PLATE_PREPARATION
         || t == null
         || t.getStage() != ProductionStage.PLATE_PREPARATION
         || !t.getStatus().equals("WAITING")) throw bad("색상 지정이 완료된 플레이트 준비 주문만 선택해 주세요.");
     // 색상 지정이 끝난 주문은 공동 작업함에 있다. 역할이 맞는 활성
     // 실무자면 누구나 자기 플레이트에 담을 수 있다.
     access.take(t, WorkRole.DESIGN_QC, "색상");
-    if (!workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber())).isEmpty())
+    if (!workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber(), petIndex)).isEmpty())
       throw bad("주문의 차단 문제를 먼저 해결해 주세요.");
     var reservation = items.findByPlateTaskId(t.getId()).orElse(null);
     if (reservation != null && !reservation.getBatchId().equals(batchId))
@@ -179,7 +190,8 @@ public class PrintBatchService {
     return tasks.findByOrderNumberOrderByIdAsc(plate.getOrderNumber()).stream()
         .filter(
             t ->
-                t.getStage() == ProductionStage.COLOR_MAPPING
+                t.getPetIndex() == plate.getPetIndex()
+                    && t.getStage() == ProductionStage.COLOR_MAPPING
                     && t.getStatus().equals("COMPLETED")
                     && t.getAttempt() <= plate.getAttempt()
                     && t.getId() < plate.getId())
@@ -246,28 +258,15 @@ public class PrintBatchService {
 
   public List<Map<String, Object>> candidates() {
     creator();
-    return tasks
-        .findByAssigneeIdAndStatusNotOrderByIdAsc(access.current().getId(), "COMPLETED")
-        .stream()
-        .filter(
-            t ->
-                t.getStage() == ProductionStage.PLATE_PREPARATION
-                    && items.findByPlateTaskId(t.getId()).isEmpty())
-        .map(t -> orders.findByOrderNumber(t.getOrderNumber()).orElse(null))
-        .filter(Objects::nonNull)
-        .filter(
-            o ->
-                workflow.active(o)
-                    && workflow.paid(o)
-                    && workflow.currentTask(o.getOrderNumber()) != null
-                    && workflow.currentTask(o.getOrderNumber()).getStage()
-                        == ProductionStage.PLATE_PREPARATION
-                    && workflow
-                        .actionableBlockers(
-                            workflow.currentTask(o.getOrderNumber()),
-                            workflow.codes(o.getOrderNumber()))
-                        .isEmpty())
-        .map(workflow::view)
+    return tasks.findByAssigneeIdAndStatusNotOrderByIdAsc(access.current().getId(), "COMPLETED").stream()
+        .filter(t -> t.getStage() == ProductionStage.PLATE_PREPARATION
+            && items.findByPlateTaskId(t.getId()).isEmpty())
+        .filter(t -> {
+          var o = orders.findByOrderNumber(t.getOrderNumber()).orElse(null);
+          return o != null && workflow.active(o) && workflow.paid(o)
+              && workflow.actionableBlockers(t, workflow.codes(t.getOrderNumber(), t.getPetIndex())).isEmpty();
+        })
+        .map(t -> workflow.view(orders.findByOrderNumber(t.getOrderNumber()).orElseThrow(), t.getPetIndex()))
         .toList();
   }
 
@@ -307,8 +306,7 @@ public class PrintBatchService {
     var problems = new ArrayList<String>();
     var memberViews =
         members.stream()
-            .map(i -> orders.findByOrderNumber(i.getOrderNumber()).orElseThrow(this::missing))
-            .map(workflow::view)
+            .map(i -> workflow.view(orders.findByOrderNumber(i.getOrderNumber()).orElseThrow(this::missing), petIndex(i)))
             .toList();
     if (memberViews.stream()
         .anyMatch(
@@ -341,6 +339,7 @@ public class PrintBatchService {
                         r.getId(),
                         "orderNumber",
                         r.getOrderNumber(),
+                        "petIndex", tasks.findById(r.getTaskId()).orElseThrow().getPetIndex(),
                         "attempt",
                         r.getAttempt(),
                         "result",
@@ -447,14 +446,14 @@ public class PrintBatchService {
           var selected = selected(input);
           var previous =
               id == null ? List.<PrintBatchItem>of() : items.findByBatchIdOrderByIdAsc(id);
-          var all = new TreeSet<>(selected.keySet());
+          var all = new TreeSet<>(selected.values().stream().map(e -> text(e, "orderNumber", 20)).toList());
           previous.forEach(i -> all.add(i.getOrderNumber()));
           var locked = lock(all);
           var newItems = new ArrayList<PrintBatchItem>();
           for (var entry : selected.entrySet()) {
-            var o = locked.get(entry.getKey());
+            var o = locked.get(text(entry.getValue(), "orderNumber", 20));
             workflow.version(o, entry.getValue());
-            var t = eligible(o, id);
+            var t = eligible(o, workflow.petIndex(entry.getValue()), id);
             newItems.add(PrintBatchItem.of(id, t, mappingTask(t)));
           }
           var used = materials(newItems);
@@ -564,13 +563,13 @@ public class PrintBatchService {
     var members = items.findByBatchIdOrderByIdAsc(b.getId());
     if (!selected
         .keySet()
-        .equals(new TreeSet<>(members.stream().map(PrintBatchItem::getOrderNumber).toList())))
+        .equals(new TreeSet<>(members.stream().map(this::workKey).toList())))
       throw bad("플레이트의 모든 주문을 확인해 주세요.");
-    var locked = lock(selected.keySet());
+    var locked = lockSelected(selected);
     for (var entry : selected.entrySet())
-      workflow.version(locked.get(entry.getKey()), entry.getValue());
+      workflow.version(locked.get(text(entry.getValue(), "orderNumber", 20)), entry.getValue());
     for (var i : members) {
-      var task = eligible(locked.get(i.getOrderNumber()), b.getId());
+      var task = eligible(locked.get(i.getOrderNumber()), petIndex(i), b.getId());
       if (!task.getId().equals(i.getPlateTaskId())) throw bad("플레이트의 작업 회차가 변경됐습니다.");
     }
     return locked;
@@ -604,12 +603,12 @@ public class PrintBatchService {
             t.complete(clock.instant());
             tasks.saveAndFlush(
                 ProductionTask.create(
-                    i.getOrderNumber(),
+                    i.getOrderNumber(), t.getPetIndex(),
                     ProductionStage.PRINT_QUEUE,
                     b.getPrintingAssigneeId(),
                     t.getAttempt()));
             var o = locked.get(i.getOrderNumber());
-            o.moveProduction(ProductionStage.PRINT_QUEUE);
+            workflow.updateStage(o);
             workflow.touch(o);
             workflow.audit(
                 i.getOrderNumber(),
@@ -677,12 +676,13 @@ public class PrintBatchService {
           var members = items.findByBatchIdOrderByIdAsc(id);
           if (!expected
               .keySet()
-              .equals(new TreeSet<>(members.stream().map(PrintBatchItem::getOrderNumber).toList())))
+              .equals(new TreeSet<>(members.stream().map(this::workKey).toList())))
             throw bad("모든 포함 주문을 확인해 주세요.");
-          var locked = lock(expected.keySet());
-          for (var o : locked.values()) {
-            workflow.version(o, expected.get(o.getOrderNumber()));
-            var t = workflow.currentTask(o.getOrderNumber());
+          var locked = lockSelected(expected);
+          for (var entry : expected.values()) workflow.version(locked.get(text(entry, "orderNumber", 20)), entry);
+          for (var member : members) {
+            var o = locked.get(member.getOrderNumber());
+            var t = workflow.currentTask(o.getOrderNumber(), petIndex(member));
             if (t == null
                 || t.getStage()
                     != (b.getStatus().equals("PRINTING")

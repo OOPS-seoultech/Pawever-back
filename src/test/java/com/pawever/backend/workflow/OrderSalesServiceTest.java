@@ -35,11 +35,27 @@ class OrderSalesServiceTest {
     assertThat(months.get(11)).containsEntry("month", "2026-11").containsEntry("amountKrw", 24000L);
   }
 
+  @Test
+  void countsTwoPetsOncePerOrderAndPreservesCustomOrderTotal() {
+    var orders = mock(GoodsSurveyFulfillmentRepository.class);
+    var twoPets = entry("2026-11-01T00:00:00Z", null, GoodsOrderStatus.PAYMENT_COMPLETED, "CONFIRMED", "ACTIVE");
+    when(twoPets.getPetCount()).thenReturn(2);
+    var custom = entry("2026-11-01T00:00:00Z", 30000, GoodsOrderStatus.IN_PRODUCTION, "CONFIRMED", "ACTIVE");
+    when(custom.getPetCount()).thenReturn(2);
+    when(orders.findSaleEntries()).thenReturn(List.of(twoPets, custom));
+    var result = new OrderSalesService(mock(WorkflowService.class), mock(StaffPermissions.class), orders,
+        Clock.fixed(Instant.parse("2026-11-07T00:00:00Z"), ZoneOffset.UTC)).summary();
+    assertThat(result.get("totalKrw")).isEqualTo(67800L);
+    assertThat(result.get("monthKrw")).isEqualTo(67800L);
+    assertThat(result.get("paidOrderCount")).isEqualTo(2L);
+  }
+
   private GoodsSurveyFulfillmentRepository.SaleEntry entry(String at, Integer price,
       GoodsOrderStatus status, String payment, String order) {
     var value = mock(GoodsSurveyFulfillmentRepository.SaleEntry.class);
     when(value.getPaidAt()).thenReturn(Instant.parse(at));
     when(value.getSalePriceKrw()).thenReturn(price);
+    when(value.getPetCount()).thenReturn(1);
     when(value.getStatus()).thenReturn(status);
     when(value.getLifecyclePaymentStatus()).thenReturn(payment);
     when(value.getLifecycleOrderStatus()).thenReturn(order);

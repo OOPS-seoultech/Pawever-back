@@ -77,8 +77,8 @@ public class ProductionFinishingService {
                   o,
                   t,
                   ProductionStage.PLATE_PREPARATION,
-                  designer(o.getOrderNumber()),
-                  nextAttempt(o.getOrderNumber()));
+                  designer(o.getOrderNumber(), t.getPetIndex()),
+                  nextAttempt(o.getOrderNumber(), t.getPetIndex()));
             else {
               t.complete(clock.instant());
               workflow.touch(o);
@@ -102,16 +102,16 @@ public class ProductionFinishingService {
     var members = items.findByBatchIdOrderByIdAsc(b.getId());
     if (!selected
         .keySet()
-        .equals(new TreeSet<>(members.stream().map(PrintBatchItem::getOrderNumber).toList())))
+        .equals(new TreeSet<>(members.stream().map(plates::workKey).toList())))
       throw plates.bad("포함 주문 전체의 최신 결과를 확인해 주세요.");
-    var locked = plates.lock(selected.keySet());
-    selected.forEach((n, body) -> workflow.version(locked.get(n), body));
+    var locked = plates.lockSelected(selected);
+    selected.values().forEach(body -> workflow.version(locked.get(plates.text(body, "orderNumber", 20)), body));
     return locked;
   }
 
   private ProductionTask batchTask(PrintBatchItem item, ProductionStage stage) {
     var plateTask = tasks.findById(item.getPlateTaskId()).orElseThrow();
-    var t = workflow.currentTask(item.getOrderNumber());
+    var t = workflow.currentTask(item.getOrderNumber(), plateTask.getPetIndex());
     if (t != null) em.refresh(t);
     if (t == null || t.getStage() != stage || t.getAttempt() != plateTask.getAttempt())
       throw plates.bad("포함 주문의 작업 단계나 시도가 변경됐습니다.");
@@ -129,23 +129,23 @@ public class ProductionFinishingService {
       Long assignee,
       int attempt) {
     previous.complete(clock.instant());
-    tasks.saveAndFlush(ProductionTask.create(o.getOrderNumber(), next, assignee, attempt));
-    o.moveProduction(next == ProductionStage.MODELING ? ProductionStage.MODELING_QUEUE : next);
+    tasks.saveAndFlush(ProductionTask.create(o.getOrderNumber(), previous.getPetIndex(), next, assignee, attempt));
+    workflow.updateStage(o);
     workflow.issue(
-        o.getOrderNumber(), "UNASSIGNED", assignee == null && next != ProductionStage.PACKING);
+        o.getOrderNumber(), previous.getPetIndex(), "UNASSIGNED", assignee == null && next != ProductionStage.PACKING);
     workflow.touch(o);
   }
 
-  private int nextAttempt(String number) {
-    return tasks.findByOrderNumberOrderByIdAsc(number).stream()
+  private int nextAttempt(String number, int petIndex) {
+    return workflow.history(number, petIndex).stream()
             .mapToInt(ProductionTask::getAttempt)
             .max()
             .orElse(0)
         + 1;
   }
 
-  private Long designer(String number) {
-    var history = tasks.findByOrderNumberOrderByIdAsc(number);
+  private Long designer(String number, int petIndex) {
+    var history = workflow.history(number, petIndex);
     Long former =
         history.stream()
             .filter(t -> t.getStage() == ProductionStage.PLATE_PREPARATION)
@@ -179,10 +179,10 @@ public class ProductionFinishingService {
             active(o);
             var t = batchTask(i, ProductionStage.PRINT_QUEUE);
             if (!Objects.equals(t.getAssigneeId(), b.getPrintingAssigneeId())
-                || !workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber())).isEmpty())
+                || !workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
               throw plates.bad("포함 주문의 담당자와 차단 문제를 확인해 주세요.");
             advance(o, t, ProductionStage.PRINTING, b.getPrintingAssigneeId(), t.getAttempt());
-            workflow.currentTask(o.getOrderNumber()).start(clock.instant());
+            workflow.currentTask(o.getOrderNumber(), t.getPetIndex()).start(clock.instant());
             workflow.audit(
                 o.getOrderNumber(), "START_PRINT_BATCH", "PRINT_QUEUE", "PRINTING", "PB-" + id);
           }
@@ -229,12 +229,14 @@ public class ProductionFinishingService {
           var clean = new ArrayList<Map<String, Object>>();
           for (var row : problemRows) {
             String n = plates.text(row, "orderNumber", 20), reason = plates.text(row, "note", 1000);
-            if (!all.containsKey(n) || !seen.add(n) || reason.isBlank())
+            int petIndex = workflow.petIndex(row);
+            if (!all.containsKey(n) || !seen.add(plates.workKey(n, petIndex)) || reason.isBlank()
+                || items.findByBatchIdOrderByIdAsc(id).stream().noneMatch(i -> i.getOrderNumber().equals(n) && plates.petIndex(i) == petIndex))
               throw plates.bad("이상이 있는 포함 주문과 사유를 확인해 주세요.");
             active(all.get(n));
-            workflow.issue(n, "PRINT_ANOMALY", true);
+            workflow.issue(n, petIndex, "PRINT_ANOMALY", true);
             workflow.touch(all.get(n));
-            clean.add(plates.map("orderNumber", n, "note", reason));
+            clean.add(plates.map("orderNumber", n, "petIndex", petIndex, "note", reason));
           }
           String json;
           try {
@@ -268,8 +270,8 @@ public class ProductionFinishingService {
           for (var i : items.findByBatchIdOrderByIdAsc(id)) {
             var o = locked.get(i.getOrderNumber());
             var t = batchTask(i, ProductionStage.PRINTING);
-            String result = plates.text(selected.get(o.getOrderNumber()), "result", 20),
-                note = plates.text(selected.get(o.getOrderNumber()), "note", 1000);
+            String result = plates.text(selected.get(plates.workKey(i)), "result", 20),
+                note = plates.text(selected.get(plates.workKey(i)), "note", 1000);
             if (!Set.of("SUCCESS", "FAILED").contains(result)
                 || result.equals("FAILED") && note.isBlank())
               throw plates.bad("주문별 성공·실패와 실패 사유를 확인해 주세요.");
@@ -283,17 +285,17 @@ public class ProductionFinishingService {
             } else if (result.equals("SUCCESS")) {
               advance(
                   o, t, ProductionStage.POST_PROCESSING, b.getPrintingAssigneeId(), t.getAttempt());
-              workflow.issue(o.getOrderNumber(), "PRINT_FAILED", false);
+              workflow.issue(o.getOrderNumber(), t.getPetIndex(), "PRINT_FAILED", false);
             } else {
               advance(
                   o,
                   t,
                   ProductionStage.PLATE_PREPARATION,
-                  designer(o.getOrderNumber()),
-                  nextAttempt(o.getOrderNumber()));
-              workflow.issue(o.getOrderNumber(), "PRINT_FAILED", true);
+                  designer(o.getOrderNumber(), t.getPetIndex()),
+                  nextAttempt(o.getOrderNumber(), t.getPetIndex()));
+              workflow.issue(o.getOrderNumber(), t.getPetIndex(), "PRINT_FAILED", true);
             }
-            workflow.issue(o.getOrderNumber(), "PRINT_ANOMALY", false);
+            workflow.issue(o.getOrderNumber(), t.getPetIndex(), "PRINT_ANOMALY", false);
             results.saveAndFlush(
                 PrintRunResult.of(id, t, result, note, access.current().getId(), clock.instant()));
             workflow.audit(o.getOrderNumber(), "FINISH_PRINT_BATCH", "PRINTING", result, note);
@@ -321,12 +323,11 @@ public class ProductionFinishingService {
     var o = workflow.locked(t.getOrderNumber());
     workflow.version(o, input);
     active(o);
-    var current = workflow.currentTask(o.getOrderNumber());
+    var current = workflow.currentTask(o.getOrderNumber(), t.getPetIndex());
     if (current == null
         || !current.getId().equals(t.getId())
         || t.getStage() != stage
-        || o.getProductionStage() != stage
-        || !workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber())).isEmpty())
+        || !workflow.actionableBlockers(t, workflow.codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
       throw plates.bad("현재 단계와 차단 문제를 확인해 주세요.");
     return o;
   }
@@ -367,7 +368,7 @@ public class ProductionFinishingService {
           advance(o, t, ProductionStage.QC, t.getAssigneeId(), t.getAttempt());
           workflow.audit(
               o.getOrderNumber(), "COMPLETE_POST_PROCESSING", "POST_PROCESSING", "QC", note);
-          return workflow.view(o);
+          return workflow.view(o, t.getPetIndex());
         });
   }
 
@@ -391,7 +392,7 @@ public class ProductionFinishingService {
             checked = checks(input, Set.of("SHAPE_COLOR", "SURFACE", "EYES_NOSE"));
             settlement = "PENDING_FULFILLMENT";
             advance(o, t, ProductionStage.PACKING, null, t.getAttempt());
-            workflow.issue(o.getOrderNumber(), "QC_FAILED", false);
+            workflow.issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", false);
           } else if (decision.equals("FAILED")) {
             reason = plates.text(input, "reasonCode", 40);
             route = plates.text(input, "reworkStage", 30);
@@ -401,10 +402,10 @@ public class ProductionFinishingService {
               throw plates.bad("불합격 사유·보정 경로·메모를 입력해 주세요.");
             ProductionStage next = ProductionStage.valueOf(route);
             Long worker = t.getAssigneeId();
-            if (next == ProductionStage.PLATE_PREPARATION) worker = designer(o.getOrderNumber());
+            if (next == ProductionStage.PLATE_PREPARATION) worker = designer(o.getOrderNumber(), t.getPetIndex());
             if (next == ProductionStage.MODELING) {
               Long former =
-                  tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                  workflow.history(o.getOrderNumber(), t.getPetIndex()).stream()
                       .filter(x -> x.getStage() == ProductionStage.MODELING)
                       .reduce((a, b) -> b)
                       .map(ProductionTask::getAssigneeId)
@@ -416,8 +417,8 @@ public class ProductionFinishingService {
                         settings.findById(1L).map(WorkflowSettings::getModeling).orElse(null),
                         WorkRole.MODELING);
             }
-            advance(o, t, next, worker, nextAttempt(o.getOrderNumber()));
-            workflow.issue(o.getOrderNumber(), "QC_FAILED", true);
+            advance(o, t, next, worker, nextAttempt(o.getOrderNumber(), t.getPetIndex()));
+            workflow.issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", true);
           } else throw plates.bad("검수 통과 또는 불합격을 선택해 주세요.");
           records.saveAndFlush(
               FinishingRecord.of(
@@ -436,7 +437,7 @@ public class ProductionFinishingService {
               "QC",
               o.getProductionStage().name(),
               note);
-          return workflow.view(o);
+          return workflow.view(o, t.getPetIndex());
         });
   }
 

@@ -253,7 +253,7 @@ class WorkflowMigrationTest {
               + " delete_after='2096-05-01 03:00:00' WHERE order_number='PE-MIG-2'");
     }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(9);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(10);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     var deployedV29 = java.util.Arrays.stream(shippingVersion.info().applied())
         .filter(migration -> migration.getVersion().toString().equals("29")).findFirst().orElseThrow();

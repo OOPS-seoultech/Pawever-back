@@ -7,7 +7,7 @@ import lombok.*;
 @Entity
 @Table(
     name = "production_tasks",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"order_number", "stage", "attempt"}))
+    uniqueConstraints = @UniqueConstraint(columnNames = {"order_number", "pet_index", "stage", "attempt"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProductionTask {
@@ -17,6 +17,9 @@ public class ProductionTask {
 
   @Column(nullable = false, length = 20)
   private String orderNumber;
+
+  @Column(nullable = false)
+  private int petIndex;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
@@ -39,7 +42,13 @@ public class ProductionTask {
 
   public static ProductionTask create(
       String number, ProductionStage stage, Long assignee, int attempt) {
+    return create(number, 0, stage, assignee, attempt);
+  }
+
+  public static ProductionTask create(
+      String number, int petIndex, ProductionStage stage, Long assignee, int attempt) {
     var t = new ProductionTask();
+    t.petIndex = petIndex;
     t.orderNumber = number;
     t.stage = stage;
     t.assigneeId = assignee;

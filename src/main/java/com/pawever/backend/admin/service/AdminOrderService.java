@@ -233,6 +233,11 @@ public class AdminOrderService {
      */
     @Transactional
     public AdminPhotoDownloadResponse photoLinks(AdminPrincipal principal, String orderNumber) {
+        return photoLinks(principal, orderNumber, null);
+    }
+
+    @Transactional
+    public AdminPhotoDownloadResponse photoLinks(AdminPrincipal principal, String orderNumber, Integer petIndex) {
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
         List<GoodsSurveyPhoto> photos =
                 photoRepository.findByResponseId(fulfillment.getResponseId());
@@ -269,6 +274,11 @@ public class AdminOrderService {
      */
     @Transactional
     public PhotoArchive photoArchive(AdminPrincipal principal, String orderNumber) {
+        return photoArchive(principal, orderNumber, null);
+    }
+
+    @Transactional
+    public PhotoArchive photoArchive(AdminPrincipal principal, String orderNumber, Integer petIndex) {
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
         List<GoodsSurveyPhoto> photos =
                 photoRepository.findByResponseId(fulfillment.getResponseId());
