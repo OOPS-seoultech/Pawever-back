@@ -7,7 +7,7 @@ ALTER TABLE workflow_issues
   ADD COLUMN pet_index INT NOT NULL DEFAULT 0,
   DROP INDEX uk_order_issue,
   ADD UNIQUE KEY uk_order_pet_issue(order_number, pet_index, code);
-UPDATE workflow_issues SET pet_index=-1 WHERE code='PAYMENT_MISMATCH';
+UPDATE workflow_issues SET pet_index=-1 WHERE code IN ('PAYMENT_MISMATCH','NOTIFICATION_FAILED');
 ALTER TABLE production_settlements
   ADD COLUMN pet_index INT NOT NULL DEFAULT 0,
   DROP INDEX order_number,

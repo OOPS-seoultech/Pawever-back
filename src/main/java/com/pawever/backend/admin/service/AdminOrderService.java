@@ -251,7 +251,7 @@ public class AdminOrderService {
                     PHOTO_LINK_TTL,
                     expiresAt
             );
-            items.add(new AdminPhotoDownloadResponse.Item(index + 1, link.url(), link.expiresAt()));
+            items.add(new AdminPhotoDownloadResponse.Item(index + 1, link.url(), link.expiresAt(), photos.get(index).getId(), photos.get(index).getPetIndex()));
         }
 
         accessLogRepository.save(AdminAccessLog.of(

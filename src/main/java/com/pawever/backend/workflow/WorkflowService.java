@@ -835,20 +835,40 @@ public class WorkflowService {
   public Map<String, Object> addPet(String number, String key, Map<String, Object> body) {
     access.require(MANAGE_OPERATION_SETTINGS);
     access.require(VIEW_ALL_ORDERS);
+    access.require(VIEW_CUSTOMER_PHOTOS);
     access.read(number);
     return command("add-pet:" + number, key, body, () -> {
       access.require(MANAGE_OPERATION_SETTINGS);
       access.require(VIEW_ALL_ORDERS);
+      access.require(VIEW_CUSTOMER_PHOTOS);
       var o = locked(number);
       version(o, body);
       if (!active(o) || o.getPetCount() >= 10 || o.getProductionStage() == ProductionStage.PACKING)
         throw bad("포장 전 진행 주문에 10마리까지 추가할 수 있습니다.");
+      if (tasks.findByOrderNumberOrderByIdAsc(number).stream().anyMatch(t ->
+          t.getStage() != ProductionStage.MODELING || !t.getStatus().equals("WAITING")))
+        throw bad("제작 시작 전만 아이를 추가할 수 있습니다. 기존 제작 자료를 먼저 확인해 주세요.");
+      if (!(body.get("photoIds") instanceof List<?> ids) || ids.size() < 3 || ids.size() > 5
+          || new HashSet<>(ids).size() != ids.size()) throw bad("추가할 아이의 사진을 3~5장 선택해 주세요.");
+      var sourcePhotos = photos.findByResponseId(o.getResponseId());
+      var selectedPhotos = sourcePhotos.stream().filter(p -> ids.contains(p.getId())
+          && p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED).toList();
+      if (selectedPhotos.size() != ids.size()) throw bad("이 주문에 등록된 사진을 선택해 주세요.");
+      for (int i = 0; i < o.getPetCount(); i++) {
+        final int sourceIndex = i;
+        long remaining = sourcePhotos.stream().filter(p -> !ids.contains(p.getId())
+            && (Objects.equals(p.getPetIndex(), sourceIndex) || p.getPetIndex() == null && sourceIndex == 0)
+            && p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED).count();
+        if (remaining < 3) throw bad("기존 아이의 사진도 3장 이상 남겨 주세요.");
+      }
       String name = text(body, "petName", 80);
       if (name.isBlank() || name.chars().anyMatch(Character::isISOControl)) throw bad("아이 이름을 입력해 주세요.");
       int index = o.getPetCount();
       if (pets.findByOrderNumberOrderByPetIndexAsc(number).isEmpty())
         pets.saveAndFlush(GoodsOrderPet.of(number, 0, o.getPetName(), o.isKeyringAdded(), false, 0));
-      pets.saveAndFlush(GoodsOrderPet.of(number, index, name, false, false, 0));
+      pets.saveAndFlush(GoodsOrderPet.of(number, index, name, false, false, selectedPhotos.size()));
+      selectedPhotos.forEach(photo -> photo.assignToPet(index));
+      photos.saveAllAndFlush(selectedPhotos);
       o.recordPetCount(index + 1);
       if (paid(o)) createModeling(o);
       touch(o);

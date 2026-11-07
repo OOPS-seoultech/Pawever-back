@@ -508,6 +508,7 @@ public class ProductionFinishingService {
                     r.getId(),
                     "orderNumber",
                     r.getOrderNumber(),
+                    "petIndex", r.getPetIndex(),
                     "workerName",
                     accounts.findById(r.getWorkerId()).map(a -> a.getName()).orElse("이전 담당자"),
                     "amountKrw",
