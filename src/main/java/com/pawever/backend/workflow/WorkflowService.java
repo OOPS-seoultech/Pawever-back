@@ -625,6 +625,14 @@ public class WorkflowService {
       if (t.getStage() == ProductionStage.POST_PROCESSING) actions.add("COMPLETE_POST_PROCESSING");
       if (t.getStage() == ProductionStage.QC) actions.add("COMPLETE_QUALITY_CHECK");
     }
+    if (t != null && active(o) && paid(o) && permissions.contains(VIEW_PRODUCTION_FILES)) {
+      boolean owner = actor.getRole() == AdminRole.OWNER;
+      if (artifactReady(o, t, "PRINT_MODEL") && (owner || permissions.contains(COMPLETE_MODELING)
+          && access.canTake(t, WorkRole.MODELING, actor.getId())) && !actions.contains("UPLOAD_ARTIFACT"))
+        actions.add("UPLOAD_ARTIFACT");
+      if (artifactReady(o, t, "COLORED_MODEL") && (owner || permissions.contains(MAP_FILAMENT)
+          && access.canTake(t, WorkRole.DESIGN_QC, actor.getId()))) actions.add("UPLOAD_COLORED_MODEL");
+    }
     // Packaging is a later workflow; do not offer an assignment using a modeling role.
     if (t != null && t.getStage() == ProductionStage.PACKING) actions.remove("ASSIGN_TASK");
     var batchItem =
@@ -1230,9 +1238,50 @@ public class WorkflowService {
         });
   }
 
+  private void artifactActor(ProductionTask task, String kind) {
+    access.read(task.getOrderNumber());
+    access.require(VIEW_PRODUCTION_FILES);
+    if (access.current().getRole() == AdminRole.OWNER) return;
+    if (kind.equals("COLORED_MODEL")) ownMapping(task); else own(task);
+  }
+
+  private boolean artifactReady(GoodsSurveyFulfillment order, ProductionTask task, String kind) {
+    var current = currentTask(order.getOrderNumber(), task.getPetIndex());
+    if (!active(order) || !paid(order) || current == null || !current.getId().equals(task.getId())) return false;
+    if (kind.equals("COLORED_MODEL"))
+      return Set.of(ProductionStage.COLOR_MAPPING, ProductionStage.PLATE_PREPARATION).contains(task.getStage())
+          && task.getStatus().equals("WAITING");
+    return KINDS.contains(kind) && task.getStage() == ProductionStage.MODELING
+        && Set.of("WAITING", "IN_PROGRESS").contains(task.getStatus());
+  }
+
+  public List<Map<String, Object>> fileTargets() {
+    access.current();
+    if (!access.has(VIEW_ORDER_BASIC) || !access.has(VIEW_PRODUCTION_FILES)) return List.of();
+    var result = new ArrayList<Map<String, Object>>();
+    var pending = orders.findByStatusInOrderByCreatedAtDesc(Set.of(GoodsOrderStatus.PAYMENT_COMPLETED,
+        GoodsOrderStatus.IN_PRODUCTION, GoodsOrderStatus.LEGACY_FREE));
+    for (var order : pending) {
+      if (!active(order) || !paid(order) || !access.canRead(order.getOrderNumber())) continue;
+      for (int index = 0; index < order.getPetCount(); index++) {
+        var row = view(order, index);
+        var actions = (List<?>) row.get("allowedActions");
+        var kinds = new ArrayList<String>();
+        if (actions.contains("UPLOAD_ARTIFACT")) kinds.addAll(List.of("MULTIVIEW", "MODEL_SOURCE", "PRINT_MODEL"));
+        if (actions.contains("UPLOAD_COLORED_MODEL")) kinds.add("COLORED_MODEL");
+        if (kinds.isEmpty()) continue;
+        result.add(map("orderNumber", order.getOrderNumber(), "petIndex", index,
+            "petName", row.get("petName"), "guardianName", row.get("guardianName"),
+            "taskId", row.get("taskId"), "version", order.getVersion(), "kinds", kinds,
+            "artifacts", row.get("artifacts")));
+      }
+    }
+    return result;
+  }
+
   public Map<String, Object> upload(Long taskId, String key, Map<String, Object> b) {
     var t = task(taskId);
-    own(t);
+    artifactActor(t, text(b, "kind", 30));
     access.require(VIEW_PRODUCTION_FILES);
     var result =
         command(
@@ -1241,17 +1290,17 @@ public class WorkflowService {
             b,
             () -> {
               entityManager.refresh(t);
-              own(t);
+              artifactActor(t, text(b, "kind", 30));
               access.require(VIEW_PRODUCTION_FILES);
               var o = locked(t.getOrderNumber());
               version(o, b);
-              if (!active(o) || !paid(o) || !t.getStatus().equals("IN_PROGRESS"))
+              if (!artifactReady(o, t, text(b, "kind", 30)))
                 throw bad("진행 중인 작업에 파일을 등록해 주세요.");
               String kind = text(b, "kind", 30),
                   name = text(b, "fileName", 200),
                   type = text(b, "contentType", 100);
               long size = number(b, "size");
-              if (!KINDS.contains(kind)
+              if (!(KINDS.contains(kind) || kind.equals("COLORED_MODEL"))
                   || size < 1
                   || size > 100L * 1024 * 1024
                   || !name.matches("[^/\\\\\\p{Cntrl}]+")
@@ -1259,7 +1308,7 @@ public class WorkflowService {
                   || name.equals("..")) throw bad("파일 종류·이름·크기를 확인해 주세요.");
               String ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
               Set<String> extensions =
-                  kind.equals("MULTIVIEW")
+                  kind.equals("COLORED_MODEL") ? Set.of("3mf") : kind.equals("MULTIVIEW")
                       ? Set.of("png", "jpg", "jpeg", "webp")
                       : kind.equals("PRINT_MODEL")
                           ? Set.of("stl", "3mf")
@@ -1305,7 +1354,7 @@ public class WorkflowService {
   public Map<String, Object> confirmArtifact(String artifactId, String key, Map<String, Object> b) {
     var a = artifacts.findById(artifactId).orElseThrow(() -> bad("파일을 찾을 수 없습니다."));
     var t = task(a.getTaskId());
-    own(t);
+    artifactActor(t, a.getKind());
     return command(
         "confirm-artifact:" + artifactId,
         key,
@@ -1313,12 +1362,11 @@ public class WorkflowService {
         () -> {
           entityManager.refresh(t);
           entityManager.refresh(a);
-          own(t);
+          artifactActor(t, a.getKind());
           access.require(VIEW_PRODUCTION_FILES);
           var o = locked(a.getOrderNumber());
           version(o, b);
-          if (!active(o)
-              || !t.getStatus().equals("IN_PROGRESS")
+          if (!artifactReady(o, t, a.getKind())
               || !a.getUploaderId().equals(access.current().getId())) throw bad("파일을 확정할 수 없습니다.");
           var stored = storage.head(a.getObjectKey());
           if (stored.contentLength() != a.getExpectedSize()

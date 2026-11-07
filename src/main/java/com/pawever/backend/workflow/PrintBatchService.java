@@ -4,6 +4,7 @@ import static com.pawever.backend.admin.entity.PermissionKey.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pawever.backend.admin.entity.WorkRole;
+import com.pawever.backend.admin.entity.AdminRole;
 import com.pawever.backend.admin.repository.AdminAccountRepository;
 import com.pawever.backend.goodssurvey.entity.GoodsSurveyFulfillment;
 import com.pawever.backend.goodssurvey.repository.GoodsSurveyFulfillmentRepository;
@@ -123,6 +124,11 @@ public class PrintBatchService {
   }
 
   private void edit(PrintBatch b) {
+    if (access.current().getRole() == AdminRole.OWNER) {
+      requireData();
+      if (!readable(b)) throw missing();
+      return;
+    }
     creator();
     if (!b.getCreatorId().equals(access.current().getId()))
       throw new WorkflowException(403, "FORBIDDEN", "플레이트 구성 담당자만 변경할 수 있습니다.");
@@ -270,6 +276,14 @@ public class PrintBatchService {
         .toList();
   }
 
+  public List<Map<String, Object>> fileTargets() {
+    access.current();
+    if (!access.has(MANAGE_PRINT_BATCH)) return List.of();
+    return batches.findAllByOrderByIdDesc().stream().filter(b -> b.getStatus().equals("DRAFT"))
+        .filter(this::readable).map(this::view)
+        .filter(b -> ((List<?>) b.get("allowedActions")).contains("UPLOAD_BATCH_FILE")).toList();
+  }
+
   public List<Map<String, Object>> list() {
     requireData();
     return batches.findAllByOrderByIdDesc().stream()
@@ -287,8 +301,9 @@ public class PrintBatchService {
     var used = materials(members);
     boolean canEdit =
         b.getStatus().equals("DRAFT")
-            && b.getCreatorId().equals(access.current().getId())
-            && access.eligible(access.current().getId(), WorkRole.DESIGN_QC) != null;
+            && (access.current().getRole() == AdminRole.OWNER
+                || b.getCreatorId().equals(access.current().getId())
+                    && access.eligible(access.current().getId(), WorkRole.DESIGN_QC) != null);
     var actions = new ArrayList<String>();
     if (canEdit) actions.addAll(List.of("EDIT_BATCH", "UPLOAD_BATCH_FILE", "CONFIRM_BATCH"));
     if (b.getStatus().equals("DRAFT") && (canEdit || access.has(ASSIGN_WORK)))

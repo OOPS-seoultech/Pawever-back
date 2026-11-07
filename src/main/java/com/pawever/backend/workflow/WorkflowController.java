@@ -11,6 +11,10 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class WorkflowController {
   private final WorkflowService service;
+  private final PrintBatchService batches;
+
+  @GetMapping("/api/production/file-targets")
+  public Object fileTargets() { return ApiResponse.ok(Map.of("orders", service.fileTargets(), "plates", batches.fileTargets())); }
 
   @GetMapping("/api/admin/filaments")
   public Object filaments() {
