@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class WorkflowService {
   private final GoodsSurveyFulfillmentRepository orders;
   private final ProductionTaskRepository tasks;
+  private final GoodsOrderPetRepository pets;
   private final ModelReviewRepository reviews;
   private final FilamentRepository filaments;
   private final OrderFilamentMappingRepository filamentMappings;
@@ -110,11 +111,60 @@ public class WorkflowService {
     return Set.of("CONFIRMED", "NOT_REQUIRED").contains(o.paymentStatus());
   }
 
-  ProductionTask currentTask(String number) {
+  public String petNames(GoodsSurveyFulfillment order) {
+    var names = pets.findByOrderNumberOrderByPetIndexAsc(order.getOrderNumber()).stream()
+        .map(GoodsOrderPet::getPetName).toList();
+    return names.isEmpty() ? order.getPetName() : String.join(" ", names);
+  }
+
+  List<ProductionTask> history(String number, int petIndex) {
     return tasks.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(t -> t.getPetIndex() == petIndex).toList();
+  }
+
+  ProductionTask currentTask(String number, int petIndex) {
+    return history(number, petIndex).stream()
         .filter(t -> !t.getStatus().equals("COMPLETED"))
-        .reduce((a, b) -> b)
-        .orElse(null);
+        .reduce((a, b) -> b).orElse(null);
+  }
+
+  int petIndex(Map<String, Object> body) {
+    long index = body.containsKey("petIndex") ? number(body, "petIndex") : 0;
+    if (index > 99) throw bad("반려동물을 확인해 주세요.");
+    return (int) index;
+  }
+
+  ProductionStage stage(ProductionTask t) {
+    return t.getStage() == ProductionStage.MODELING && t.getStatus().equals("WAITING")
+        ? ProductionStage.MODELING_QUEUE : t.getStage();
+  }
+
+  void updateStage(GoodsSurveyFulfillment order) {
+    var current = new ArrayList<ProductionTask>();
+    for (int i = 0; i < order.getPetCount(); i++) {
+      var t = currentTask(order.getOrderNumber(), i);
+      if (t == null) { order.moveProduction(ProductionStage.BLOCKED); return; }
+      current.add(t);
+    }
+    order.moveProduction(current.stream().map(this::stage)
+        .min(Comparator.naturalOrder()).orElse(ProductionStage.BLOCKED));
+  }
+
+  boolean readyToPack(GoodsSurveyFulfillment order) {
+    for (int i = 0; i < order.getPetCount(); i++) {
+      var t = currentTask(order.getOrderNumber(), i);
+      if (t == null || t.getStage() != ProductionStage.PACKING) return false;
+    }
+    return true;
+  }
+
+  void completePacking(GoodsSurveyFulfillment order, Instant at) {
+    if (!readyToPack(order)) throw bad("모든 아이의 검수가 완료되어야 포장할 수 있습니다.");
+    for (int i = 0; i < order.getPetCount(); i++) {
+      var t = currentTask(order.getOrderNumber(), i);
+      t.assign(access.current().getId());
+      t.complete(at);
+    }
   }
 
   private ProductionTask task(Long id) {
@@ -188,24 +238,28 @@ public class WorkflowService {
   }
 
   List<String> codes(String number) {
-    return issues.findByOrderNumber(number).stream().map(WorkflowIssue::getCode).toList();
+    return issues.findByOrderNumber(number).stream().map(WorkflowIssue::getCode).distinct().toList();
   }
 
-  void issue(String number, String code, boolean present) {
-    var existing =
-        issues.findByOrderNumber(number).stream().filter(i -> i.getCode().equals(code)).toList();
-    if (present && existing.isEmpty()) issues.saveAndFlush(WorkflowIssue.of(number, code));
-    if (!present && !existing.isEmpty()) {
-      issues.deleteAll(existing);
-      issues.flush();
-    }
+  List<String> codes(String number, int petIndex) {
+    return issues.findByOrderNumber(number).stream()
+        .filter(i -> i.getPetIndex() == -1 || i.getPetIndex() == petIndex)
+        .map(WorkflowIssue::getCode).toList();
   }
 
-  private boolean enoughPhotos(GoodsSurveyFulfillment o) {
+  void issue(String number, String code, boolean present) { issue(number, -1, code, present); }
+
+  void issue(String number, int petIndex, String code, boolean present) {
+    var existing = issues.findByOrderNumber(number).stream()
+        .filter(i -> i.getPetIndex() == petIndex && i.getCode().equals(code)).toList();
+    if (present && existing.isEmpty()) issues.saveAndFlush(WorkflowIssue.of(number, petIndex, code));
+    if (!present && !existing.isEmpty()) { issues.deleteAll(existing); issues.flush(); }
+  }
+
+  private boolean enoughPhotos(GoodsSurveyFulfillment o, int petIndex) {
     return photos.findByResponseId(o.getResponseId()).stream()
-            .filter(p -> p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED)
-            .count()
-        >= 3;
+        .filter(p -> Objects.equals(p.getPetIndex(), petIndex) || p.getPetIndex() == null && petIndex == 0)
+        .filter(p -> p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED).count() >= 3;
   }
 
   public void audit(String resource, String action, String before, String after, String reason) {
@@ -425,15 +479,14 @@ public class WorkflowService {
           ownMapping(t);
           var o = locked(t.getOrderNumber());
           version(o, b);
-          var current = currentTask(o.getOrderNumber());
+          var current = currentTask(o.getOrderNumber(), t.getPetIndex());
           if (!active(o)
               || !paid(o)
-              || o.getProductionStage() != ProductionStage.COLOR_MAPPING
               || t.getStage() != ProductionStage.COLOR_MAPPING
               || !t.getStatus().equals("WAITING")
               || current == null
               || !current.getId().equals(taskId)) throw bad("현재 색상 지정 작업만 저장할 수 있습니다.");
-          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          if (!codes(o.getOrderNumber(), t.getPetIndex()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
           boolean complete = bool(b, "complete");
           if (!(b.get("mappings") instanceof List<?> entries)
               || entries.isEmpty()
@@ -473,11 +526,11 @@ public class WorkflowService {
             t.complete(clock.instant());
             tasks.saveAndFlush(
                 ProductionTask.create(
-                    o.getOrderNumber(),
+                    o.getOrderNumber(), t.getPetIndex(),
                     ProductionStage.PLATE_PREPARATION,
                     t.getAssigneeId(),
                     t.getAttempt()));
-            o.moveProduction(ProductionStage.PLATE_PREPARATION);
+            updateStage(o);
           }
           touch(o);
           audit(
@@ -486,7 +539,7 @@ public class WorkflowService {
               before,
               snapshot(saved.stream().map(this::mappingView).toList()),
               null);
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 
@@ -495,10 +548,20 @@ public class WorkflowService {
     return view(order(number));
   }
 
-  Map<String, Object> view(GoodsSurveyFulfillment o) {
+  public Map<String, Object> detail(String number, int petIndex) {
+    access.read(number);
+    return view(order(number), petIndex);
+  }
+
+  Map<String, Object> view(GoodsSurveyFulfillment o) { return view(o, 0); }
+
+  Map<String, Object> view(GoodsSurveyFulfillment o, int petIndex) {
+    if (petIndex < 0 || petIndex >= o.getPetCount()) throw bad("반려동물을 확인해 주세요.");
+    var petRows = pets.findByOrderNumberOrderByPetIndexAsc(o.getOrderNumber());
+    var pet = petRows.stream().filter(p -> p.getPetIndex() == petIndex).findFirst().orElse(null);
     var actor = access.current();
     var permissions = access.effective(actor);
-    var history = tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber());
+    var history = history(o.getOrderNumber(), petIndex);
     var t =
         history.stream()
             .filter(item -> !item.getStatus().equals("COMPLETED"))
@@ -506,11 +569,13 @@ public class WorkflowService {
             .orElse(null);
     var modeling =
         t != null && t.getStage() == ProductionStage.MODELING ? t : submittedModeling(history, t);
-    var block = new ArrayList<>(codes(o.getOrderNumber()));
+    var block = new ArrayList<>(codes(o.getOrderNumber(), petIndex));
     if (t != null
         && t.getStage() != ProductionStage.PACKING
         && access.eligible(t.getAssigneeId(), workRole(t.getStage())) == null
         && !block.contains("UNASSIGNED")) block.add("UNASSIGNED");
+    if (t != null && t.getStage() == ProductionStage.MODELING && !enoughPhotos(o, petIndex)
+        && !block.contains("PHOTO_INSUFFICIENT")) block.add("PHOTO_INSUFFICIENT");
     var actions = new ArrayList<String>();
     if (active(o)
         && paid(o)
@@ -527,7 +592,6 @@ public class WorkflowService {
         actions.add("ASSIGN_TASK");
       if (permissions.contains(ASSIGN_WORK)
           && paid(o)
-          && o.getStatus() != GoodsOrderStatus.IN_PRODUCTION
           && t == null) actions.add("ENROLL");
       if (t != null
           && access.canTake(t, WorkRole.MODELING, actor.getId())
@@ -562,9 +626,10 @@ public class WorkflowService {
       if (t.getStage() == ProductionStage.QC) actions.add("COMPLETE_QUALITY_CHECK");
     }
     // Packaging is a later workflow; do not offer an assignment using a modeling role.
-    if (o.getProductionStage() == ProductionStage.PACKING) actions.remove("ASSIGN_TASK");
+    if (t != null && t.getStage() == ProductionStage.PACKING) actions.remove("ASSIGN_TASK");
     var batchItem =
         printBatchItems.findByOrderNumberOrderByIdDesc(o.getOrderNumber()).stream()
+            .filter(i -> history.stream().anyMatch(h -> h.getId().equals(i.getPlateTaskId())))
             .findFirst()
             .orElse(null);
     var batch =
@@ -588,6 +653,7 @@ public class WorkflowService {
     var fs =
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .filter(a -> history.stream().anyMatch(h -> h.getId().equals(a.getTaskId())))
                 .filter(ProductionArtifact::isConfirmed)
                 .map(
                     a ->
@@ -614,7 +680,12 @@ public class WorkflowService {
         "orderNumber",
         o.getOrderNumber(),
         "petName",
-        o.getPetName(),
+        pet == null ? o.getPetName() : pet.getPetName(),
+        "petIndex", petIndex,
+        "petCount", o.getPetCount(),
+        "pets", petRows.stream().map(p -> map("petIndex", p.getPetIndex(), "petName", p.getPetName(),
+            "productionStage", currentTask(o.getOrderNumber(), p.getPetIndex()) == null ? "BLOCKED"
+                : stage(currentTask(o.getOrderNumber(), p.getPetIndex())).name())).toList(),
         "guardianName",
         permissions.contains(VIEW_CUSTOMER_IDENTITY) ? o.getGuardianName() : null,
         "goodsType",
@@ -622,7 +693,7 @@ public class WorkflowService {
         "customGoods",
         o.getCustomGoods(),
         "keyringAdded",
-        o.isKeyringAdded(),
+        pet == null ? o.isKeyringAdded() : pet.isKeyringAdded(),
         "orderStatus",
         o.orderStatus(),
         "administrativelyCompleted",
@@ -630,7 +701,7 @@ public class WorkflowService {
         "paymentStatus",
         o.paymentStatus(),
         "productionStage",
-        o.getProductionStage() == null ? "BLOCKED" : o.getProductionStage().name(),
+        t != null ? stage(t).name() : (o.getProductionStage() == null ? "BLOCKED" : o.getProductionStage().name()),
         "requiresMigrationReview",
         o.getStatus() == GoodsOrderStatus.IN_PRODUCTION && o.getProductionStage() == null,
         "shipmentStatus",
@@ -648,6 +719,7 @@ public class WorkflowService {
         "finishingHistory",
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? finishingRecords.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .filter(r -> history.stream().anyMatch(h -> h.getId().equals(r.getTaskId())))
                 .map(
                     r ->
                         map(
@@ -679,6 +751,7 @@ public class WorkflowService {
         "reviews",
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? reviews.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .filter(r -> history.stream().anyMatch(h -> h.getId().equals(r.getReviewTaskId())))
                 .map(
                     r ->
                         map(
@@ -714,6 +787,7 @@ public class WorkflowService {
         "filamentMappings",
         permissions.contains(VIEW_FILAMENT)
             ? filamentMappings.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .filter(r -> history.stream().anyMatch(h -> h.getId().equals(r.getTaskId())))
                 .map(this::mappingView)
                 .toList()
             : List.of(),
@@ -739,31 +813,72 @@ public class WorkflowService {
     access.require(VIEW_ALL_ORDERS);
     access.require(VIEW_ORDER_BASIC);
     return orders.findByStatusInOrderByCreatedAtDesc(EnumSet.allOf(GoodsOrderStatus.class)).stream()
-        .map(this::view)
+        .flatMap(o -> java.util.stream.IntStream.range(0, o.getPetCount()).mapToObj(i -> view(o, i)))
         .toList();
   }
 
   public List<Map<String, Object>> mine() {
     var a = access.require(VIEW_ORDER_BASIC);
     return tasks.findByAssigneeIdAndStatusNotOrderByIdAsc(a.getId(), "COMPLETED").stream()
-        .map(t -> orders.findByOrderNumber(t.getOrderNumber()).orElse(null))
-        .filter(Objects::nonNull)
-        .filter(this::active)
-        .map(this::view)
-        .toList();
+        .filter(t -> { var o = orders.findByOrderNumber(t.getOrderNumber()).orElse(null);
+          return o != null && active(o); })
+        .map(t -> view(order(t.getOrderNumber()), t.getPetIndex())).toList();
   }
 
-  private ProductionTask createModeling(GoodsSurveyFulfillment o) {
-    var t = currentTask(o.getOrderNumber());
-    if (t != null) return t;
-    Long assignee = access.eligible(config().getModeling(), WorkRole.MODELING);
-    t =
-        tasks.saveAndFlush(
-            ProductionTask.create(o.getOrderNumber(), ProductionStage.MODELING, assignee));
-    o.moveProduction(ProductionStage.MODELING_QUEUE);
-    issue(o.getOrderNumber(), "UNASSIGNED", assignee == null);
-    issue(o.getOrderNumber(), "PHOTO_INSUFFICIENT", !enoughPhotos(o));
-    return t;
+  private void createModeling(GoodsSurveyFulfillment o) {
+    for (int i = 0; i < o.getPetCount(); i++) {
+      if (!history(o.getOrderNumber(), i).isEmpty()) continue;
+      Long assignee = access.eligible(config().getModeling(), WorkRole.MODELING);
+      tasks.saveAndFlush(ProductionTask.create(o.getOrderNumber(), i, ProductionStage.MODELING, assignee, 1));
+      issue(o.getOrderNumber(), i, "UNASSIGNED", assignee == null);
+      issue(o.getOrderNumber(), i, "PHOTO_INSUFFICIENT", !enoughPhotos(o, i));
+    }
+    updateStage(o);
+  }
+
+  public Map<String, Object> addPet(String number, String key, Map<String, Object> body) {
+    access.require(MANAGE_OPERATION_SETTINGS);
+    access.require(VIEW_ALL_ORDERS);
+    access.require(VIEW_CUSTOMER_PHOTOS);
+    access.read(number);
+    return command("add-pet:" + number, key, body, () -> {
+      access.require(MANAGE_OPERATION_SETTINGS);
+      access.require(VIEW_ALL_ORDERS);
+      access.require(VIEW_CUSTOMER_PHOTOS);
+      var o = locked(number);
+      version(o, body);
+      if (!active(o) || o.getPetCount() >= 10 || o.getProductionStage() == ProductionStage.PACKING)
+        throw bad("포장 전 진행 주문에 10마리까지 추가할 수 있습니다.");
+      if (tasks.findByOrderNumberOrderByIdAsc(number).stream().anyMatch(t ->
+          t.getStage() != ProductionStage.MODELING || !t.getStatus().equals("WAITING")))
+        throw bad("제작 시작 전만 아이를 추가할 수 있습니다. 기존 제작 자료를 먼저 확인해 주세요.");
+      if (!(body.get("photoIds") instanceof List<?> ids) || ids.size() < 3 || ids.size() > 5
+          || new HashSet<>(ids).size() != ids.size()) throw bad("추가할 아이의 사진을 3~5장 선택해 주세요.");
+      var sourcePhotos = photos.findByResponseId(o.getResponseId());
+      var selectedPhotos = sourcePhotos.stream().filter(p -> ids.contains(p.getId())
+          && p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED).toList();
+      if (selectedPhotos.size() != ids.size()) throw bad("이 주문에 등록된 사진을 선택해 주세요.");
+      for (int i = 0; i < o.getPetCount(); i++) {
+        final int sourceIndex = i;
+        long remaining = sourcePhotos.stream().filter(p -> !ids.contains(p.getId())
+            && (Objects.equals(p.getPetIndex(), sourceIndex) || p.getPetIndex() == null && sourceIndex == 0)
+            && p.getStatus() == GoodsSurveyPhotoStatus.CONFIRMED).count();
+        if (remaining < 3) throw bad("기존 아이의 사진도 3장 이상 남겨 주세요.");
+      }
+      String name = text(body, "petName", 80);
+      if (name.isBlank() || name.chars().anyMatch(Character::isISOControl)) throw bad("아이 이름을 입력해 주세요.");
+      int index = o.getPetCount();
+      if (pets.findByOrderNumberOrderByPetIndexAsc(number).isEmpty())
+        pets.saveAndFlush(GoodsOrderPet.of(number, 0, o.getPetName(), o.isKeyringAdded(), false, 0));
+      pets.saveAndFlush(GoodsOrderPet.of(number, index, name, false, false, selectedPhotos.size()));
+      selectedPhotos.forEach(photo -> photo.assignToPet(index));
+      photos.saveAllAndFlush(selectedPhotos);
+      o.recordPetCount(index + 1);
+      if (paid(o)) createModeling(o);
+      touch(o);
+      audit(number, "ADD_PRODUCTION_PET", String.valueOf(index), String.valueOf(index + 1), name);
+      return view(o, index);
+    });
   }
 
   public Map<String, Object> confirm(String number, String key, Map<String, Object> b) {
@@ -790,14 +905,14 @@ public class WorkflowService {
                 o.paymentStatus(),
                 o.paymentStatus(),
                 text(b, "memo", 300));
-            return view(o);
+            return view(o, petIndex(b));
           }
           o.confirmManually(access.current().getId(), o.getPaymentAmountKrw(), clock.instant());
           issue(number, "PAYMENT_MISMATCH", false);
           createModeling(o);
           touch(o);
           audit(number, "CONFIRM_PAYMENT", "PENDING", "CONFIRMED", text(b, "memo", 300));
-          return view(o);
+          return view(o, petIndex(b));
         });
   }
 
@@ -818,7 +933,7 @@ public class WorkflowService {
           createModeling(o);
           touch(o);
           audit(number, "ENROLL", null, "MODELING_QUEUE", null);
-          return view(o);
+          return view(o, petIndex(b));
         });
   }
 
@@ -844,14 +959,14 @@ public class WorkflowService {
               || !paid(o)
               || t.getStage() != ProductionStage.MODELING
               || !t.getStatus().equals("WAITING")) throw bad("시작할 수 없는 작업입니다.");
-          issue(o.getOrderNumber(), "PHOTO_INSUFFICIENT", !enoughPhotos(o));
-          if (!actionableBlockers(t, codes(o.getOrderNumber())).isEmpty())
+          issue(o.getOrderNumber(), t.getPetIndex(), "PHOTO_INSUFFICIENT", !enoughPhotos(o, t.getPetIndex()));
+          if (!actionableBlockers(t, codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
             throw bad("차단 문제를 먼저 해결해 주세요.");
           t.start(clock.instant());
-          o.moveProduction(ProductionStage.MODELING);
+          updateStage(o);
           touch(o);
           audit(o.getOrderNumber(), "START_TASK", "MODELING_QUEUE", "MODELING", null);
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 
@@ -872,21 +987,21 @@ public class WorkflowService {
               || !t.getStatus().equals("IN_PROGRESS")
               || t.getStage() != ProductionStage.MODELING) throw bad("완료할 수 없는 작업입니다.");
           requireModelFiles(taskId, o.getOrderNumber());
-          if (!actionableBlockers(t, codes(o.getOrderNumber())).isEmpty())
+          if (!actionableBlockers(t, codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
             throw bad("차단 문제를 먼저 해결해 주세요.");
           t.complete(clock.instant());
           Long reviewer = access.eligible(config().getReview(), WorkRole.DESIGN_QC);
           ProductionTask reviewTask =
               tasks.saveAndFlush(
                   ProductionTask.create(
-                      o.getOrderNumber(), ProductionStage.MODEL_REVIEW, reviewer, t.getAttempt()));
-          o.moveProduction(ProductionStage.MODEL_REVIEW);
-          issue(o.getOrderNumber(), "QC_FAILED", false);
-          issue(o.getOrderNumber(), "UNASSIGNED", reviewer == null);
+                      o.getOrderNumber(), t.getPetIndex(), ProductionStage.MODEL_REVIEW, reviewer, t.getAttempt()));
+          updateStage(o);
+          issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", false);
+          issue(o.getOrderNumber(), t.getPetIndex(), "UNASSIGNED", reviewer == null);
           touch(o);
           audit(o.getOrderNumber(), "COMPLETE_MODELING", "MODELING", "MODEL_REVIEW", null);
           eventPublisher.publishEvent(new ModelReviewRequestedEvent(o.getOrderNumber(), reviewTask.getId()));
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 
@@ -910,14 +1025,13 @@ public class WorkflowService {
           version(o, b);
           if (!active(o)
               || !paid(o)
-              || o.getProductionStage() != ProductionStage.MODEL_REVIEW
               || t.getStage() != ProductionStage.MODEL_REVIEW
               || !t.getStatus().equals("WAITING")
-              || !t.getId().equals(currentTask(o.getOrderNumber()).getId()))
+              || !t.getId().equals(currentTask(o.getOrderNumber(), t.getPetIndex()).getId()))
             throw bad("현재 검수 대기 작업만 결정할 수 있습니다.");
-          if (!codes(o.getOrderNumber()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
-          if (!enoughPhotos(o)) throw bad("고객 사진이 3장 이상 필요합니다.");
-          var history = tasks.findByOrderNumberOrderByIdAsc(o.getOrderNumber());
+          if (!codes(o.getOrderNumber(), t.getPetIndex()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
+          if (!enoughPhotos(o, t.getPetIndex())) throw bad("고객 사진이 3장 이상 필요합니다.");
+          var history = history(o.getOrderNumber(), t.getPetIndex());
           var source = submittedModeling(history, t);
           if (source == null) throw bad("검수할 모델링 제출 자료가 없습니다.");
           requireModelFiles(source.getId(), o.getOrderNumber());
@@ -948,21 +1062,21 @@ public class WorkflowService {
           if (approved) {
             tasks.saveAndFlush(
                 ProductionTask.create(
-                    o.getOrderNumber(),
+                    o.getOrderNumber(), t.getPetIndex(),
                     ProductionStage.COLOR_MAPPING,
                     t.getAssigneeId(),
                     source.getAttempt()));
-            o.moveProduction(ProductionStage.COLOR_MAPPING);
-            issue(o.getOrderNumber(), "QC_FAILED", false);
+            updateStage(o);
+            issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", false);
           } else {
             Long modeler = access.eligible(source.getAssigneeId(), WorkRole.MODELING);
             int attempt = history.stream().mapToInt(ProductionTask::getAttempt).max().orElse(0) + 1;
             tasks.saveAndFlush(
                 ProductionTask.create(
-                    o.getOrderNumber(), ProductionStage.MODELING, modeler, attempt));
-            o.moveProduction(ProductionStage.MODELING_QUEUE);
-            issue(o.getOrderNumber(), "QC_FAILED", true);
-            issue(o.getOrderNumber(), "UNASSIGNED", modeler == null);
+                    o.getOrderNumber(), t.getPetIndex(), ProductionStage.MODELING, modeler, attempt));
+            updateStage(o);
+            issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", true);
+            issue(o.getOrderNumber(), t.getPetIndex(), "UNASSIGNED", modeler == null);
           }
           touch(o);
           audit(
@@ -971,7 +1085,7 @@ public class WorkflowService {
               "MODEL_REVIEW",
               o.getProductionStage().name(),
               note);
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 
@@ -987,7 +1101,7 @@ public class WorkflowService {
           access.read(number);
           var o = locked(number);
           version(o, b);
-          var t = currentTask(number);
+          var t = currentTask(number, petIndex(b));
           if (t == null || t.getStage() == ProductionStage.PACKING || !active(o) || !paid(o))
             throw bad("배정할 활성 작업이 없습니다.");
           if (printBatchItems.findByPlateTaskId(t.getId()).isPresent()
@@ -996,17 +1110,22 @@ public class WorkflowService {
             throw bad("플레이트에 연결된 작업입니다. 플레이트 담당자를 변경하거나 임시 구성을 취소한 뒤 배정해 주세요.");
           Long target = id(b, "assigneeId");
           WorkRole role = workRole(t.getStage());
+          if (b.containsKey("useDefault") && bool(b, "useDefault")) {
+            var defaults = config();
+            target = role == WorkRole.MODELING ? defaults.getModeling()
+                : role == WorkRole.DESIGN_QC ? defaults.getReview() : defaults.getPrinting();
+          }
           if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
           String before = String.valueOf(t.getAssigneeId());
           t.assign(target);
-          issue(number, "UNASSIGNED", false);
+          issue(number, t.getPetIndex(), "UNASSIGNED", false);
           issue(
-              number,
+              number, t.getPetIndex(),
               "PHOTO_INSUFFICIENT",
-              t.getStage() == ProductionStage.MODELING && !enoughPhotos(o));
+              t.getStage() == ProductionStage.MODELING && !enoughPhotos(o, t.getPetIndex()));
           touch(o);
           audit(number, "ASSIGN_TASK", before, String.valueOf(target), text(b, "reason", 300));
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 
@@ -1215,7 +1334,7 @@ public class WorkflowService {
           artifacts.saveAndFlush(a);
           touch(o);
           audit(a.getOrderNumber(), "CONFIRM_ARTIFACT", null, a.getId(), null);
-          return view(o);
+          return view(o, t.getPetIndex());
         });
   }
 

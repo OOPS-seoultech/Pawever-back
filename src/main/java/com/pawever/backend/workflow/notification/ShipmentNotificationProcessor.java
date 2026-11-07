@@ -90,7 +90,7 @@ public class ShipmentNotificationProcessor {
         issues.findByOrderNumber(orderNumber).stream()
             .filter(issue -> "NOTIFICATION_FAILED".equals(issue.getCode()))
             .toList();
-    if (present && existing.isEmpty()) issues.save(WorkflowIssue.of(orderNumber, "NOTIFICATION_FAILED"));
+    if (present && existing.isEmpty()) issues.save(WorkflowIssue.of(orderNumber, -1, "NOTIFICATION_FAILED"));
     if (!present && !existing.isEmpty()) issues.deleteAll(existing);
   }
 }

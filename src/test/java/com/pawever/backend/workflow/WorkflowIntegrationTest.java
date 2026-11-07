@@ -30,6 +30,7 @@ class WorkflowIntegrationTest {
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyResponseRepository responses;
   @Autowired com.pawever.backend.goodssurvey.repository.GoodsSurveyPhotoRepository photos;
   @Autowired ProductionTaskRepository tasks;
+  @Autowired com.pawever.backend.goodssurvey.repository.GoodsOrderPetRepository petRows;
   @Autowired ProductionArtifactRepository artifacts;
   @Autowired AsCaseAccessGrantRepository asGrants;
   @Autowired WorkflowSettingsRepository settings;
@@ -51,6 +52,127 @@ class WorkflowIntegrationTest {
 
   @Autowired WorkflowAuditRepository completionAudits;
   @Autowired com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository completionNotifications;
+
+  void addSecondPetFixture() {
+    var order = orders.findByOrderNumber(number).orElseThrow();
+    order.recordPetCount(2);
+    orders.saveAndFlush(order);
+    petRows.saveAndFlush(GoodsOrderPet.of(number, 0, "초코", false, false, 3));
+    petRows.saveAndFlush(GoodsOrderPet.of(number, 1, "별이", false, false, 3));
+    for (int i=0; i<3; i++) {
+      var photo = GoodsSurveyPhoto.pending(UUID.randomUUID().toString(), order.getResponseId(),
+          "second-" + i, "second/" + UUID.randomUUID(), "image/png", 10, Instant.now().plusSeconds(600));
+      photo.assignToPet(1);
+      photo.confirm(10, Instant.now());
+      photos.saveAndFlush(photo);
+    }
+  }
+
+  com.fasterxml.jackson.databind.JsonNode petRow(int petIndex) throws Exception {
+    return readJson(owner, "/api/admin/orders/" + number + "/workflow?petIndex=" + petIndex);
+  }
+
+  @Test
+  void eachPetOwnsItsModelsReviewsFilesAndPhotosWithinOnePaidOrder() throws Exception {
+    addSecondPetFixture();
+    var firstReview = readyForReview();
+    var second = petRow(1);
+    org.assertj.core.api.Assertions.assertThat(second.get("petName").asText()).isEqualTo("별이");
+    org.assertj.core.api.Assertions.assertThat(second.get("productionStage").asText()).isEqualTo("MODELING_QUEUE");
+    org.assertj.core.api.Assertions.assertThat(second.get("artifacts").size()).isZero();
+    org.assertj.core.api.Assertions.assertThat(second.get("salePriceKrw").asInt()).isEqualTo(37800);
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getPaymentAmountKrw()).isEqualTo(18900);
+    org.mockito.Mockito.when(storage.presignDownload(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new GoodsSurveyPhotoStorage.PresignedDownload("https://storage.example.test/photo.png", Instant.now().plusSeconds(300)));
+    mvc.perform(post("/api/admin/orders/" + number + "/photo-links?petIndex=1")
+        .header("Authorization", "Bearer " + owner)).andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.photos.length()").value(3));
+    second = send(owner, "/api/admin/orders/" + number + "/workflow/assign",
+        jsonBody(Map.of("version", second.get("version").asLong(), "petIndex", 1, "useDefault", true)), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(second.get("assignee").get("id").asLong()).isEqualTo(modelerId);
+    var secondStarted = send(modeler, "/api/production/tasks/" + second.get("taskId") + "/start", versionBody(second), UUID.randomUUID().toString());
+    // Missing files of pet 2 cannot be satisfied by pet 1's submitted files.
+    expectAs(modeler, "/api/production/tasks/" + secondStarted.get("taskId") + "/complete", versionBody(secondStarted), 422);
+    var currentFirst = petRow(0);
+    var approved = send(stranger, reviewPath(currentFirst), reviewBody(currentFirst, "APPROVED", null, ""), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(approved.get("productionStage").asText()).isEqualTo("COLOR_MAPPING");
+    org.assertj.core.api.Assertions.assertThat(petRow(1).get("productionStage").asText()).isEqualTo("MODELING");
+    org.assertj.core.api.Assertions.assertThat(petRow(1).get("reviews").size()).isZero();
+    org.assertj.core.api.Assertions.assertThat(tasks.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(t -> t.getStage() == ProductionStage.MODELING).count()).isEqualTo(2);
+  }
+
+  @Test
+  void siblingPetsShareAPlateButFailuresAndPackingRemainIndependent() throws Exception {
+    addSecondPetFixture();
+    readyForPlate();
+    var second = petRow(1);
+    second = send(modeler, "/api/production/tasks/" + second.get("taskId") + "/start", versionBody(second), UUID.randomUUID().toString());
+    seedSubmittedFiles(second.get("taskId").asLong());
+    second = send(modeler, "/api/production/tasks/" + second.get("taskId") + "/complete", versionBody(second), UUID.randomUUID().toString());
+    second = send(stranger, reviewPath(second), reviewBody(second, "APPROVED", null, ""), UUID.randomUUID().toString());
+    var filament = createFilament();
+    second = send(stranger, "/api/production/tasks/" + second.get("taskId") + "/filament-mappings", mappingBody(second, filament, true), UUID.randomUUID().toString());
+    var plate = confirmedPlate(List.of(petRow(0), petRow(1)));
+    String firstPrinter = printerToken;
+    String path = "/api/production/print-batches/" + plate.get("id");
+    plate = send(printerToken, path + "/start", confirmation(plate), UUID.randomUUID().toString());
+    var results = new ArrayList<Map<String,Object>>();
+    for (var row : plate.get("orders")) results.add(Map.of("orderNumber", number,
+        "petIndex", row.get("petIndex").asInt(), "version", row.get("version").asLong(),
+        "result", row.get("petIndex").asInt() == 1 ? "FAILED" : "SUCCESS", "note", "검증"));
+    plate = send(printerToken, path + "/finish", jsonBody(Map.of("version", plate.get("version").asLong(), "orders", results)), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(petRow(0).get("productionStage").asText()).isEqualTo("POST_PROCESSING");
+    org.assertj.core.api.Assertions.assertThat(petRow(0).get("blockingIssues").size()).isZero();
+    org.assertj.core.api.Assertions.assertThat(petRow(1).get("productionStage").asText()).isEqualTo("PLATE_PREPARATION");
+    var first = petRow(0);
+    first = send(firstPrinter, "/api/production/tasks/" + first.get("taskId") + "/post-processing", postBody(first), UUID.randomUUID().toString());
+    first = send(firstPrinter, "/api/production/tasks/" + first.get("taskId") + "/quality-check", qcBody(first), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(first.get("productionStage").asText()).isEqualTo("PACKING");
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getProductionStage()).isEqualTo(ProductionStage.PLATE_PREPARATION);
+    expectAs(owner, "/api/admin/shipments/pickup-completions", exportBody(first), 422);
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isZero();
+    // Reprint only the failed sibling on another plate, then converge at one packing gate.
+    var retry = confirmedPlate(List.of(petRow(1)));
+    enableCompensationFor(readJson(firstPrinter, "/api/admin/me").get("id").asLong(), readJson(printerToken, "/api/admin/me").get("id").asLong());
+    path = "/api/production/print-batches/" + retry.get("id");
+    retry = send(printerToken, path + "/start", confirmation(retry), UUID.randomUUID().toString());
+    retry = send(printerToken, path + "/finish", finishBody(retry, null), UUID.randomUUID().toString());
+    second = petRow(1);
+    second = send(printerToken, "/api/production/tasks/" + second.get("taskId") + "/post-processing", postBody(second), UUID.randomUUID().toString());
+    second = send(printerToken, "/api/production/tasks/" + second.get("taskId") + "/quality-check", qcBody(second), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getProductionStage()).isEqualTo(ProductionStage.PACKING);
+    send(owner, "/api/admin/shipments/pickup-completions", exportBody(second), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(settlementCount(number)).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(tasks.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(t -> t.getStage() == ProductionStage.PACKING && !t.getStatus().equals("COMPLETED")).count()).isZero();
+  }
+
+  @Test
+  void ownerAddsPetWithItsOwnPhotosWithoutChangingBillingOrCustomTotal() throws Exception {
+    var original = orders.findByOrderNumber(number).orElseThrow();
+    original.changeSalePrice(35000);
+    original = orders.saveAndFlush(original);
+    var photoIds = new ArrayList<String>();
+    for (int i=0; i<3; i++) {
+      var photo = GoodsSurveyPhoto.pending(UUID.randomUUID().toString(), original.getResponseId(), "extra-"+i,
+          "extra/"+UUID.randomUUID(), "image/png", 10, Instant.now().plusSeconds(600));
+      photo.confirm(10, Instant.now());
+      photos.saveAndFlush(photo);
+      photoIds.add(photo.getId());
+    }
+    String path = "/api/admin/orders/" + number + "/workflow/pets";
+    String body = jsonBody(Map.of("version", original.getVersion(), "petName", "별이", "photoIds", photoIds));
+    expectAs(modeler, path, body, 403);
+    var added = send(owner, path, body, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(added.get("petIndex").asInt()).isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(added.get("petCount").asInt()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(added.get("salePriceKrw").asInt()).isEqualTo(35000);
+    var order = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(order.getPaymentAmountKrw()).isEqualTo(18900);
+    org.assertj.core.api.Assertions.assertThat(photos.findByResponseId(order.getResponseId()).stream()
+        .filter(photo -> Integer.valueOf(1).equals(photo.getPetIndex())).count()).isEqualTo(3);
+  }
 
   @Test
   void salePriceIsOwnerControlledVersionedAndSeparateFromPayment() throws Exception {
@@ -421,7 +543,7 @@ class WorkflowIntegrationTest {
                     row.get("version").asLong()))));
   }
 
-  void enableCompensationFor(Long workerId) throws Exception {
+  void enableCompensationFor(Long... workerIds) throws Exception {
     var config = readJson(owner, "/api/admin/production-compensation");
     send(
         owner,
@@ -433,7 +555,7 @@ class WorkflowIntegrationTest {
                 "enabled",
                 true,
                 "paidWorkerIds",
-                List.of(workerId))),
+                List.of(workerIds))),
         UUID.randomUUID().toString());
   }
 
@@ -1248,6 +1370,7 @@ class WorkflowIntegrationTest {
           Map.of(
               "orderNumber",
               row.get("orderNumber").asText(),
+              "petIndex", row.get("petIndex").asInt(),
               "version",
               row.get("version").asLong(),
               "result",
@@ -1606,6 +1729,7 @@ class WorkflowIntegrationTest {
           Map.of(
               "orderNumber",
               row.get("orderNumber").asText(),
+              "petIndex", row.get("petIndex").asInt(),
               "version",
               row.get("version").asLong()));
       for (var mapping : row.get("filamentMappings"))
@@ -2544,7 +2668,7 @@ class WorkflowIntegrationTest {
         send(
             owner,
             "/api/admin/orders/" + number + "/payments/confirm",
-            "{\"version\":0,\"amount\":18900}",
+            jsonBody(Map.of("version", orders.findByOrderNumber(number).orElseThrow().getVersion(), "amount", 18900)),
             UUID.randomUUID().toString());
     String path = "/api/production/tasks/" + row.get("taskId");
     row = send(modeler, path + "/start", versionBody(row), UUID.randomUUID().toString());

@@ -13,8 +13,11 @@ public class ProductionSettlement {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(nullable = false, unique = true, length = 20)
+  @Column(nullable = false, length = 20)
   private String orderNumber;
+
+  @Column(nullable = false)
+  private int petIndex;
 
   @Column(nullable = false, unique = true)
   private Long qcTaskId;
@@ -35,6 +38,7 @@ public class ProductionSettlement {
     var r = new ProductionSettlement();
     r.orderNumber = task.getOrderNumber();
     r.qcTaskId = task.getId();
+    r.petIndex = task.getPetIndex();
     r.workerId = worker;
     r.createdAt = at;
     return r;

@@ -24,13 +24,14 @@ public interface GoodsSurveyFulfillmentRepository extends JpaRepository<GoodsSur
     interface SaleEntry {
         Instant getPaidAt();
         Integer getSalePriceKrw();
+        int getPetCount();
         GoodsOrderStatus getStatus();
         String getLifecyclePaymentStatus();
         String getLifecycleOrderStatus();
     }
 
     @Query("""
-        select f.paidAt as paidAt, f.salePriceKrw as salePriceKrw, f.status as status,
+        select f.paidAt as paidAt, f.salePriceKrw as salePriceKrw, f.petCount as petCount, f.status as status,
                f.lifecyclePaymentStatus as lifecyclePaymentStatus,
                f.lifecycleOrderStatus as lifecycleOrderStatus
         from GoodsSurveyFulfillment f where f.paidAt is not null

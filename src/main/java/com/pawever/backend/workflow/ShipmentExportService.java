@@ -61,7 +61,7 @@ public class ShipmentExportService {
                 Map.<String, Object>of(
                     "orderNumber", o.getOrderNumber(),
                     "version", o.getVersion(),
-                    "petName", o.getPetName(),
+                    "petName", workflow.petNames(o),
                     "guardianName", o.getGuardianName(),
                     "productionStage", o.getProductionStage().name(),
                     "shipmentStatus", o.shipmentStatus(),
@@ -73,7 +73,7 @@ public class ShipmentExportService {
     var m = new LinkedHashMap<String, Object>();
     m.put("orderNumber", o.getOrderNumber());
     m.put("version", o.getVersion());
-    m.put("petName", o.getPetName());
+    m.put("petName", workflow.petNames(o));
     m.put("guardianName", o.getGuardianName());
     m.put("phone", o.getPhone());
     m.put("postalCode", o.getPostalCode());
@@ -92,15 +92,14 @@ public class ShipmentExportService {
         || o.getProductionStage() != ProductionStage.PACKING
         || o.getDeliveryMethod() != GoodsDeliveryMethod.SHIPPING)
       p.add("검수를 통과한 배송 주문만 포장할 수 있습니다.");
-    var task = workflow.currentTask(o.getOrderNumber());
-    if (task == null || task.getStage() != ProductionStage.PACKING) p.add("포장 작업을 확인해 주세요.");
+    if (!workflow.readyToPack(o)) p.add("포장 작업을 확인해 주세요.");
     if (!workflow.codes(o.getOrderNumber()).isEmpty()) p.add("먼저 주문의 차단 이슈를 해결해 주세요.");
     if (items.existsByOrderNumber(o.getOrderNumber())) p.add("이미 내보낸 주문입니다. 기존 배치 파일을 다시 받아 주세요.");
     if (!value(o.getPostalCode()).matches("[0-9]{5}")) p.add("우편번호는 5자리 숫자가 필요합니다.");
     if (!value(o.getPhone()).matches("[0-9\\s().+\\-]+") || !phone(o).matches("010[0-9]{8}"))
       p.add("전화번호는 010으로 시작하는 11자리 숫자가 필요합니다.");
     if (value(o.getGuardianName()).isBlank()) p.add("보호자 이름을 확인해 주세요.");
-    if (value(o.getPetName()).isBlank()) p.add("반려동물 이름을 확인해 주세요.");
+    if (value(workflow.petNames(o)).isBlank()) p.add("반려동물 이름을 확인해 주세요.");
     if (value(o.getAddress()).isBlank()) p.add("기본 주소를 확인해 주세요.");
     if (exportValues(o).stream()
         .anyMatch(
@@ -118,8 +117,7 @@ public class ShipmentExportService {
         || o.getProductionStage() != ProductionStage.PACKING
         || o.getDeliveryMethod() != GoodsDeliveryMethod.PICKUP)
       p.add("검수를 통과한 직접 수령 주문만 포장할 수 있습니다.");
-    var task = workflow.currentTask(o.getOrderNumber());
-    if (task == null || task.getStage() != ProductionStage.PACKING)
+    if (!workflow.readyToPack(o))
       p.add("포장 작업을 확인해 주세요.");
     if (!workflow.codes(o.getOrderNumber()).isEmpty())
       p.add("먼저 주문의 차단 이슈를 해결해 주세요.");
@@ -141,7 +139,7 @@ public class ShipmentExportService {
         value(o.getAddress()),
         value(o.getAddressDetail()),
         phone(o),
-        value(o.getPetName()));
+        value(workflow.petNames(o)));
   }
 
   @SuppressWarnings("unchecked")
@@ -220,9 +218,7 @@ public class ShipmentExportService {
                 } catch (java.io.IOException | java.security.NoSuchAlgorithmException e) {
                   throw new IllegalStateException(e);
                 }
-                var task = workflow.currentTask(o.getOrderNumber());
-                task.assign(access.current().getId());
-                task.complete(at);
+                workflow.completePacking(o, at);
                 o.completePackingForPostOffice();
                 workflow.touch(o);
                 workflow.audit(
@@ -279,9 +275,7 @@ public class ShipmentExportService {
           var at = clock.instant();
           var settlementResults = new LinkedHashMap<String, String>();
           for (var order : requested.stream().map(r -> locked.get(r.get("orderNumber"))).toList()) {
-            var task = workflow.currentTask(order.getOrderNumber());
-            task.assign(access.current().getId());
-            task.complete(at);
+            workflow.completePacking(order, at);
             order.completePackingForPickup();
             workflow.touch(order);
             String settlement = compensation.recordAtFulfillment(order.getOrderNumber());

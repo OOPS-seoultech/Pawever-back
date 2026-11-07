@@ -82,8 +82,8 @@ public class AdminOrderController {
 
     /** 사진 링크는 잠깐만 열린다. 누가 가져갔는지 이력에 남는다. */
     @PostMapping("/{orderNumber}/photo-links")
-    public ApiResponse<AdminPhotoDownloadResponse> photoLinks(@PathVariable String orderNumber) {
-        return ApiResponse.ok(orderService.photoLinks(currentPrincipal(), orderNumber));
+    public ApiResponse<AdminPhotoDownloadResponse> photoLinks(@PathVariable String orderNumber, @RequestParam(required = false) Integer petIndex) {
+        return ApiResponse.ok(orderService.photoLinks(currentPrincipal(), orderNumber, petIndex));
     }
 
     /**
@@ -92,9 +92,9 @@ public class AdminOrderController {
      * 파일이 그대로 나가는 통로라 링크를 내줄 때와 같은 이력을 남긴다.
      */
     @PostMapping("/{orderNumber}/photos.zip")
-    public ResponseEntity<byte[]> photoArchive(@PathVariable String orderNumber) {
+    public ResponseEntity<byte[]> photoArchive(@PathVariable String orderNumber, @RequestParam(required = false) Integer petIndex) {
         AdminOrderService.PhotoArchive archive =
-                orderService.photoArchive(currentPrincipal(), orderNumber);
+                orderService.photoArchive(currentPrincipal(), orderNumber, petIndex);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION,

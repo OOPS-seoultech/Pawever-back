@@ -55,8 +55,14 @@ public class WorkflowController {
   }
 
   @GetMapping("/api/admin/orders/{number}/workflow")
-  public Object detail(@PathVariable String number) {
-    return ApiResponse.ok(service.detail(number));
+  public Object detail(@PathVariable String number, @RequestParam(defaultValue = "0") int petIndex) {
+    return ApiResponse.ok(service.detail(number, petIndex));
+  }
+
+  @PostMapping("/api/admin/orders/{number}/workflow/pets")
+  public Object addPet(@PathVariable String number, @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> body) {
+    return ApiResponse.ok(service.addPet(number, key, body));
   }
 
   @GetMapping("/api/admin/orders/{number}/workflow/timeline")

@@ -233,9 +233,18 @@ public class AdminOrderService {
      */
     @Transactional
     public AdminPhotoDownloadResponse photoLinks(AdminPrincipal principal, String orderNumber) {
+        return photoLinks(principal, orderNumber, null);
+    }
+
+    @Transactional
+    public AdminPhotoDownloadResponse photoLinks(AdminPrincipal principal, String orderNumber, Integer petIndex) {
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
         List<GoodsSurveyPhoto> photos =
-                photoRepository.findByResponseId(fulfillment.getResponseId());
+                photoRepository.findByResponseId(fulfillment.getResponseId()).stream()
+                        .filter(p -> petIndex == null || java.util.Objects.equals(p.getPetIndex(), petIndex)
+                            || p.getPetIndex() == null && petIndex == 0).toList();
+        if (petIndex != null && (petIndex < 0 || petIndex >= fulfillment.getPetCount()))
+            throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
 
         Instant now = clock.instant();
         Instant expiresAt = now.plus(PHOTO_LINK_TTL);
@@ -246,7 +255,7 @@ public class AdminOrderService {
                     PHOTO_LINK_TTL,
                     expiresAt
             );
-            items.add(new AdminPhotoDownloadResponse.Item(index + 1, link.url(), link.expiresAt()));
+            items.add(new AdminPhotoDownloadResponse.Item(index + 1, link.url(), link.expiresAt(), photos.get(index).getId(), photos.get(index).getPetIndex()));
         }
 
         accessLogRepository.save(AdminAccessLog.of(
@@ -269,9 +278,18 @@ public class AdminOrderService {
      */
     @Transactional
     public PhotoArchive photoArchive(AdminPrincipal principal, String orderNumber) {
+        return photoArchive(principal, orderNumber, null);
+    }
+
+    @Transactional
+    public PhotoArchive photoArchive(AdminPrincipal principal, String orderNumber, Integer petIndex) {
         GoodsSurveyFulfillment fulfillment = findVisible(principal, orderNumber);
         List<GoodsSurveyPhoto> photos =
-                photoRepository.findByResponseId(fulfillment.getResponseId());
+                photoRepository.findByResponseId(fulfillment.getResponseId()).stream()
+                        .filter(p -> petIndex == null || java.util.Objects.equals(p.getPetIndex(), petIndex)
+                            || p.getPetIndex() == null && petIndex == 0).toList();
+        if (petIndex != null && (petIndex < 0 || petIndex >= fulfillment.getPetCount()))
+            throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
         if (photos.isEmpty()) {
             throw new CustomException(ErrorCode.SURVEY_INVALID_STATE);
         }
@@ -283,7 +301,7 @@ public class AdminOrderService {
                 // 자리 번호를 파일 이름에 넣는다. 압축을 풀면 순서가 섞이는데,
                 // 제작 화면에서 부르는 번호와 맞아야 어느 사진인지 알 수 있다.
                 zip.putNextEntry(new ZipEntry(
-                        orderNumber + "_" + (index + 1) + extensionOf(photo.getContentType())));
+                        orderNumber + (petIndex == null ? "" : "_pet" + (petIndex + 1)) + "_" + (index + 1) + extensionOf(photo.getContentType())));
                 zip.write(photoStorage.download(photo.getObjectKey()));
                 zip.closeEntry();
             }
@@ -297,7 +315,7 @@ public class AdminOrderService {
                 orderNumber,
                 clock.instant()
         ));
-        return new PhotoArchive(orderNumber + "_photos.zip", buffer.toByteArray());
+        return new PhotoArchive(orderNumber + (petIndex == null ? "" : "_pet" + (petIndex + 1)) + "_photos.zip", buffer.toByteArray());
     }
 
     /** 압축 파일 하나. */

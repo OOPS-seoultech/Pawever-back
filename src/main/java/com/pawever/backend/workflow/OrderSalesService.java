@@ -47,7 +47,7 @@ public class OrderSalesService {
       order.changeSalePrice(price);
       workflow.touch(order);
       workflow.audit(number, "SALE_PRICE_CHANGE", before, String.valueOf(price), "관리용 판매가 변경");
-      return workflow.view(order);
+      return workflow.detail(number, workflow.petIndex(body));
     });
   }
 
@@ -68,7 +68,7 @@ public class OrderSalesService {
       if (!included.contains(entry.getStatus())
           || (entry.getLifecyclePaymentStatus() != null && !entry.getLifecyclePaymentStatus().equals("CONFIRMED"))
           || Set.of("CANCELED", "EXPIRED", "TRASHED").contains(Objects.toString(entry.getLifecycleOrderStatus(), ""))) continue;
-      long price = entry.getSalePriceKrw() == null ? 18_900L : entry.getSalePriceKrw();
+      long price = entry.getSalePriceKrw() == null ? 18_900L * entry.getPetCount() : entry.getSalePriceKrw();
       var paidMonth = YearMonth.from(entry.getPaidAt().atZone(ZoneId.of("Asia/Seoul")));
       total += price;
       count++;

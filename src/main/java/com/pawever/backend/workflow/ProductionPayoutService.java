@@ -140,6 +140,7 @@ public class ProductionPayoutService {
     return plates.map(
         "id", s.getId(),
         "orderNumber", s.getOrderNumber(),
+        "petIndex", s.getPetIndex(),
         "workerId", s.getWorkerId(),
         "workerName", accounts.findById(s.getWorkerId()).map(a -> a.getName()).orElse("이전 담당자"),
         "amountKrw", s.getAmountKrw(),
