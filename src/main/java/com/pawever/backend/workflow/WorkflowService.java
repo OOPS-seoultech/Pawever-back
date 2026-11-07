@@ -905,14 +905,14 @@ public class WorkflowService {
                 o.paymentStatus(),
                 o.paymentStatus(),
                 text(b, "memo", 300));
-            return view(o);
+            return view(o, petIndex(b));
           }
           o.confirmManually(access.current().getId(), o.getPaymentAmountKrw(), clock.instant());
           issue(number, "PAYMENT_MISMATCH", false);
           createModeling(o);
           touch(o);
           audit(number, "CONFIRM_PAYMENT", "PENDING", "CONFIRMED", text(b, "memo", 300));
-          return view(o);
+          return view(o, petIndex(b));
         });
   }
 
@@ -933,7 +933,7 @@ public class WorkflowService {
           createModeling(o);
           touch(o);
           audit(number, "ENROLL", null, "MODELING_QUEUE", null);
-          return view(o);
+          return view(o, petIndex(b));
         });
   }
 
@@ -1110,6 +1110,11 @@ public class WorkflowService {
             throw bad("플레이트에 연결된 작업입니다. 플레이트 담당자를 변경하거나 임시 구성을 취소한 뒤 배정해 주세요.");
           Long target = id(b, "assigneeId");
           WorkRole role = workRole(t.getStage());
+          if (b.containsKey("useDefault") && bool(b, "useDefault")) {
+            var defaults = config();
+            target = role == WorkRole.MODELING ? defaults.getModeling()
+                : role == WorkRole.DESIGN_QC ? defaults.getReview() : defaults.getPrinting();
+          }
           if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
           String before = String.valueOf(t.getAssigneeId());
           t.assign(target);

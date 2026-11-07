@@ -87,6 +87,9 @@ class WorkflowIntegrationTest {
     mvc.perform(post("/api/admin/orders/" + number + "/photo-links?petIndex=1")
         .header("Authorization", "Bearer " + owner)).andExpect(status().isOk())
         .andExpect(jsonPath("$.data.photos.length()").value(3));
+    second = send(owner, "/api/admin/orders/" + number + "/workflow/assign",
+        jsonBody(Map.of("version", second.get("version").asLong(), "petIndex", 1, "useDefault", true)), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(second.get("assignee").get("id").asLong()).isEqualTo(modelerId);
     var secondStarted = send(modeler, "/api/production/tasks/" + second.get("taskId") + "/start", versionBody(second), UUID.randomUUID().toString());
     // Missing files of pet 2 cannot be satisfied by pet 1's submitted files.
     expectAs(modeler, "/api/production/tasks/" + secondStarted.get("taskId") + "/complete", versionBody(secondStarted), 422);
