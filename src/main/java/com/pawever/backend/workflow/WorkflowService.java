@@ -1255,6 +1255,30 @@ public class WorkflowService {
         && Set.of("WAITING", "IN_PROGRESS").contains(task.getStatus());
   }
 
+  public List<Map<String, Object>> fileTargets() {
+    access.current();
+    if (!access.has(VIEW_ORDER_BASIC) || !access.has(VIEW_PRODUCTION_FILES)) return List.of();
+    var result = new ArrayList<Map<String, Object>>();
+    var pending = orders.findByStatusInOrderByCreatedAtDesc(Set.of(GoodsOrderStatus.PAYMENT_COMPLETED,
+        GoodsOrderStatus.IN_PRODUCTION, GoodsOrderStatus.LEGACY_FREE));
+    for (var order : pending) {
+      if (!active(order) || !paid(order) || !access.canRead(order.getOrderNumber())) continue;
+      for (int index = 0; index < order.getPetCount(); index++) {
+        var row = view(order, index);
+        var actions = (List<?>) row.get("allowedActions");
+        var kinds = new ArrayList<String>();
+        if (actions.contains("UPLOAD_ARTIFACT")) kinds.addAll(List.of("MULTIVIEW", "MODEL_SOURCE", "PRINT_MODEL"));
+        if (actions.contains("UPLOAD_COLORED_MODEL")) kinds.add("COLORED_MODEL");
+        if (kinds.isEmpty()) continue;
+        result.add(map("orderNumber", order.getOrderNumber(), "petIndex", index,
+            "petName", row.get("petName"), "guardianName", row.get("guardianName"),
+            "taskId", row.get("taskId"), "version", order.getVersion(), "kinds", kinds,
+            "artifacts", row.get("artifacts")));
+      }
+    }
+    return result;
+  }
+
   public Map<String, Object> upload(Long taskId, String key, Map<String, Object> b) {
     var t = task(taskId);
     artifactActor(t, text(b, "kind", 30));

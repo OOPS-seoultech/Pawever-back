@@ -276,6 +276,14 @@ public class PrintBatchService {
         .toList();
   }
 
+  public List<Map<String, Object>> fileTargets() {
+    access.current();
+    if (!access.has(MANAGE_PRINT_BATCH)) return List.of();
+    return batches.findAllByOrderByIdDesc().stream().filter(b -> b.getStatus().equals("DRAFT"))
+        .filter(this::readable).map(this::view)
+        .filter(b -> ((List<?>) b.get("allowedActions")).contains("UPLOAD_BATCH_FILE")).toList();
+  }
+
   public List<Map<String, Object>> list() {
     requireData();
     return batches.findAllByOrderByIdDesc().stream()
