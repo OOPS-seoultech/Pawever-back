@@ -149,7 +149,7 @@ class WorkflowIntegrationTest {
   void ownerAddsPetWithItsOwnPhotosWithoutChangingBillingOrCustomTotal() throws Exception {
     var original = orders.findByOrderNumber(number).orElseThrow();
     original.changeSalePrice(35000);
-    orders.saveAndFlush(original);
+    original = orders.saveAndFlush(original);
     var photoIds = new ArrayList<String>();
     for (int i=0; i<3; i++) {
       var photo = GoodsSurveyPhoto.pending(UUID.randomUUID().toString(), original.getResponseId(), "extra-"+i,
