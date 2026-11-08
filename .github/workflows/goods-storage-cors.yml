@@ -1,0 +1,55 @@
+name: Configure goods storage browser reads
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: goods-storage-cors
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.NCP_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.NCP_SECRET_KEY }}
+      AWS_DEFAULT_REGION: ap-northeast-2
+      GOODS_BUCKET: ${{ secrets.GOODS_SURVEY_S3_BUCKET }}
+    steps:
+      - name: Preserve existing rules and allow production browser reads
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GOODS_BUCKET"
+          aws s3api get-bucket-cors --bucket "$GOODS_BUCKET" > cors-before.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path('cors-before.json').read_text())
+          rule = {"AllowedOrigins": ["https://www.pawever.kr"], "AllowedMethods": ["GET"], "MaxAgeSeconds": 300}
+          if not any("https://www.pawever.kr" in r["AllowedOrigins"] and "GET" in r["AllowedMethods"] for r in config["CORSRules"]):
+              config["CORSRules"].append(rule)
+          Path('cors-requested.json').write_text(json.dumps(config))
+          PY
+          aws s3api put-bucket-cors --bucket "$GOODS_BUCKET" --cors-configuration file://cors-requested.json
+          aws s3api get-bucket-cors --bucket "$GOODS_BUCKET" > cors-after.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          before = json.loads(Path('cors-before.json').read_text())["CORSRules"]
+          after = json.loads(Path('cors-after.json').read_text())["CORSRules"]
+          assert all(rule in after for rule in before), 'Existing CORS rules changed'
+          assert any('https://www.pawever.kr' in r['AllowedOrigins'] and 'GET' in r['AllowedMethods'] for r in after)
+          print('Existing rules preserved; production browser GET allowed')
+          PY
+      - name: Preserve CORS configuration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: goods-storage-cors
+          path: cors-*.json
+          if-no-files-found: ignore
+          retention-days: 30
