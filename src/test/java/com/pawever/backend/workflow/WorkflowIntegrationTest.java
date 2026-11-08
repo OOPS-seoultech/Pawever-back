@@ -96,6 +96,59 @@ class WorkflowIntegrationTest {
         .thenReturn(new GoodsSurveyPhotoStorage.StoredObject(10, "application/octet-stream", new byte[]{80,75,3,4}));
   }
 
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(ints = {0, 3, 4, 6})
+  void fourImageSetPublishesAtomicallyAndReplacesAllCurrentImages(int oldCount) throws Exception {
+    var row = send(owner, "/api/admin/orders/" + number + "/payments/confirm",
+        jsonBody(Map.of("version", orders.findByOrderNumber(number).orElseThrow().getVersion(), "amount", 18900)), UUID.randomUUID().toString());
+    Long taskId = row.get("taskId").asLong();
+    var ownerId = readJson(owner, "/api/admin/me").get("id").asLong();
+    var oldIds = new ArrayList<String>();
+    for (int i = 0; i < oldCount; i++) {
+      var old = ProductionArtifact.pending(UUID.randomUUID().toString(), number, taskId, ownerId,
+          "MULTIVIEW", "old-" + i + ".png", "image/png", 10, Instant.now().plusSeconds(600));
+      old.confirm(); artifactRecords.saveAndFlush(old); oldIds.add(old.getId());
+    }
+    localUploadStorage();
+    org.mockito.Mockito.when(storage.head(org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(new GoodsSurveyPhotoStorage.StoredObject(10, "image/png", new byte[]{(byte)137,80,78,71,13,10,26,10}));
+    String uploadPath = "/api/production/tasks/" + taskId + "/artifacts/upload-requests";
+    String publishPath = "/api/production/tasks/" + taskId + "/artifacts/multiview-set";
+    var ids = new ArrayList<String>();
+    for (int i = 0; i < 4; i++) {
+      row = readJson(owner, "/api/admin/orders/" + number + "/workflow");
+      var uploaded = send(owner, uploadPath, jsonBody(Map.of("version", row.get("version").asLong(),
+          "kind", "MULTIVIEW", "fileName", "new-" + i + ".png", "size", 10, "contentType", "image/png", "stageMultiview", true)), UUID.randomUUID().toString());
+      ids.add(uploaded.get("artifactId").asText());
+      if (i == 3) {
+        expectAs(owner, publishPath, jsonBody(Map.of("version", uploaded.get("version").asLong(), "artifactIds", ids)), 400);
+      }
+      row = send(owner, "/api/production/artifacts/" + ids.get(i) + "/confirm", versionBody(uploaded), UUID.randomUUID().toString());
+      org.assertj.core.api.Assertions.assertThat(row.get("artifacts").size()).isEqualTo(oldCount);
+    }
+    var body = jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", ids));
+    expectAs(owner, publishPath, jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", ids.subList(0, 3))), 400);
+    expectAs(owner, publishPath, jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", List.of(ids.get(0), ids.get(0), ids.get(1), ids.get(2)))), 400);
+    expectAs(stranger, publishPath, body, 403);
+    String key = UUID.randomUUID().toString();
+    var published = send(owner, publishPath, body, key);
+    org.assertj.core.api.Assertions.assertThat(published.get("artifacts").size()).isEqualTo(4);
+    org.assertj.core.api.Assertions.assertThat(published.get("productionStage")).isEqualTo(row.get("productionStage"));
+    org.assertj.core.api.Assertions.assertThat(send(owner, publishPath, body, key)).isEqualTo(published);
+    for (var id : oldIds) org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(id).orElseThrow().getMultiviewState()).isEqualTo("RETIRED");
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findByOrderNumberOrderByIdAsc(number)).hasSize(oldCount + 4);
+    expectAs(owner, uploadPath, jsonBody(Map.of("version", published.get("version").asLong(), "kind", "MULTIVIEW",
+        "fileName", "fifth.png", "size", 10, "contentType", "image/png")), 400);
+    org.mockito.Mockito.when(storage.download(org.mockito.ArgumentMatchers.anyString())).thenReturn(new byte[]{1,2,3});
+    var archive = mvc.perform(post("/api/production/tasks/" + taskId + "/artifacts/multiview.zip")
+        .header("Authorization", "Bearer " + owner)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+    try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(archive))) {
+      int count = 0; java.util.zip.ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null) { org.assertj.core.api.Assertions.assertThat(entry.getName()).contains("new-"); count++; }
+      org.assertj.core.api.Assertions.assertThat(count).isEqualTo(4);
+    }
+  }
+
   @Test
   void multiviewReplacementPreservesOriginalAndRejectsWrongOrAlreadyReplacedFiles() throws Exception {
     var row = send(owner, "/api/admin/orders/" + number + "/payments/confirm",

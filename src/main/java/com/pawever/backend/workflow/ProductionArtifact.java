@@ -38,6 +38,9 @@ public class ProductionArtifact {
   @Column(length = 255)
   private String replacesArtifactId;
 
+  @Column(length = 16)
+  private String multiviewState;
+
   @Column(nullable = false)
   private boolean confirmed;
 
@@ -72,7 +75,14 @@ public class ProductionArtifact {
     replacesArtifactId = artifactId;
   }
 
+  public void stageMultiview() { multiviewState = "STAGED"; }
+
+  public void publishMultiview() { multiviewState = null; confirmed = true; }
+
+  public void retireMultiview() { multiviewState = "RETIRED"; }
+
   public void confirm() {
-    confirmed = true;
+    if ("STAGED".equals(multiviewState) || "READY".equals(multiviewState)) multiviewState = "READY";
+    else confirmed = true;
   }
 }

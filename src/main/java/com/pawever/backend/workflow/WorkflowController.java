@@ -13,6 +13,12 @@ public class WorkflowController {
   private final WorkflowService service;
   private final PrintBatchService batches;
 
+  @PostMapping("/api/production/tasks/{taskId}/artifacts/multiview-set")
+  public Object multiviewSet(@PathVariable Long taskId,
+      @RequestHeader("Idempotency-Key") String key, @RequestBody Map<String, Object> body) {
+    return ApiResponse.ok(service.publishMultiviewSet(taskId, key, body));
+  }
+
   @PostMapping("/api/production/tasks/{taskId}/artifacts/multiview.zip")
   public ResponseEntity<byte[]> multiviewArchive(@PathVariable Long taskId) {
     var archive = service.multiviewArchive(taskId);
