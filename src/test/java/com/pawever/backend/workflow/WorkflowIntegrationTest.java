@@ -97,6 +97,56 @@ class WorkflowIntegrationTest {
   }
 
   @Test
+  void multiviewReplacementPreservesOriginalAndRejectsWrongOrAlreadyReplacedFiles() throws Exception {
+    var row = send(owner, "/api/admin/orders/" + number + "/payments/confirm",
+        jsonBody(Map.of("version", orders.findByOrderNumber(number).orElseThrow().getVersion(), "amount", 18900)), UUID.randomUUID().toString());
+    expectAs(owner, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests", jsonBody(Map.of("version", row.get("version").asLong(), "kind", "PRINT_MODEL", "fileName", "model.3mf", "size", 10, "contentType", "application/octet-stream")), 400);
+    expectAs(owner, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests", jsonBody(Map.of("version", row.get("version").asLong(), "kind", "MODEL_SOURCE", "fileName", "plate.gcode.3mf", "size", 10, "contentType", "application/octet-stream")), 400);
+    seedSubmittedFiles(row.get("taskId").asLong());
+    var original = artifactRecords.findByOrderNumberOrderByIdAsc(number).stream().filter(a -> a.getKind().equals("MULTIVIEW")).findFirst().orElseThrow();
+    var wrongKind = artifactRecords.findByOrderNumberOrderByIdAsc(number).stream().filter(a -> a.getKind().equals("MODEL_SOURCE")).findFirst().orElseThrow();
+    localUploadStorage();
+    String path = "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests";
+    expectAs(owner, path, jsonBody(Map.of("version", row.get("version").asLong(), "kind", "MULTIVIEW", "fileName", "new.png", "size", 10, "contentType", "image/png", "replacesArtifactId", wrongKind.getId())), 400);
+    var request = send(owner, path, jsonBody(Map.of("version", row.get("version").asLong(), "kind", "MULTIVIEW", "fileName", "new.png", "size", 10, "contentType", "image/png", "replacesArtifactId", original.getId())), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(original.isConfirmed()).isTrue();
+    expectAs(owner, "/api/production/artifacts/" + request.get("artifactId").asText() + "/confirm", versionBody(request), 400);
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(original.getId()).orElseThrow().isConfirmed()).isTrue();
+    org.mockito.Mockito.when(storage.head(org.mockito.ArgumentMatchers.anyString()))
+        .thenReturn(new GoodsSurveyPhotoStorage.StoredObject(10, "image/png", new byte[]{(byte)137,80,78,71,13,10,26,10}));
+    String key = UUID.randomUUID().toString();
+    var confirmed = send(owner, "/api/production/artifacts/" + request.get("artifactId").asText() + "/confirm", versionBody(request), key);
+    org.assertj.core.api.Assertions.assertThat(send(owner, "/api/production/artifacts/" + request.get("artifactId").asText() + "/confirm", versionBody(request), key)).isEqualTo(confirmed);
+    org.assertj.core.api.Assertions.assertThat(confirmed.get("productionStage")).isEqualTo(row.get("productionStage"));
+    org.assertj.core.api.Assertions.assertThat(confirmed.get("artifacts").size()).isEqualTo(4);
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(request.get("artifactId").asText()).orElseThrow().getReplacesArtifactId()).isEqualTo(original.getId());
+    org.mockito.Mockito.when(storage.download(org.mockito.ArgumentMatchers.anyString())).thenReturn(new byte[]{1,2,3});
+    byte[] archive = mvc.perform(post("/api/production/tasks/" + row.get("taskId") + "/artifacts/multiview.zip")
+        .header("Authorization", "Bearer " + owner)).andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+        .andReturn().getResponse().getContentAsByteArray();
+    try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(archive), java.nio.charset.StandardCharsets.UTF_8)) {
+      org.assertj.core.api.Assertions.assertThat(zip.getNextEntry().getName()).isEqualTo("1_new.png");
+      org.assertj.core.api.Assertions.assertThat(zip.readAllBytes()).containsExactly(new byte[] {1,2,3});
+      org.assertj.core.api.Assertions.assertThat(zip.getNextEntry()).isNull();
+    }
+    mvc.perform(post("/api/production/tasks/" + row.get("taskId") + "/artifacts/multiview.zip")).andExpect(status().isUnauthorized());
+
+    expectAs(owner, path, jsonBody(Map.of("version", confirmed.get("version").asLong(), "kind", "MULTIVIEW", "fileName", "again.png", "size", 10, "contentType", "image/png", "replacesArtifactId", original.getId())), 400);
+  }
+
+  @Test
+  void slicedOutputCanBeRegisteredAfterModelApprovalWithoutReplacingModelSource() throws Exception {
+    var row = readyForPlate();
+    org.assertj.core.api.Assertions.assertThat(readJson(owner, "/api/admin/orders/" + number + "/workflow").get("allowedActions").toString()).contains("UPLOAD_PRINT_FILE");
+    localUploadStorage();
+    var pending = send(owner, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests",
+        jsonBody(Map.of("version", row.get("version").asLong(), "kind", "PRINT_MODEL", "fileName", "plate.gcode.3mf", "size", 10, "contentType", "application/octet-stream")), UUID.randomUUID().toString());
+    var next = send(owner, "/api/production/artifacts/" + pending.get("artifactId").asText() + "/confirm", versionBody(pending), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(next.get("productionStage")).isEqualTo(row.get("productionStage"));
+    org.assertj.core.api.Assertions.assertThat(next.get("artifacts").toString()).contains("MODEL_SOURCE", "plate.gcode.3mf");
+  }
+
+  @Test
   void colored3mfAttachesToCurrentPetWithoutAdvancingOrUsingAnotherStage() throws Exception {
     var row = readyForMapping();
     localUploadStorage();
@@ -2686,7 +2736,8 @@ class WorkflowIntegrationTest {
   @Test
   void reviewChecksSubmittedFilesAndKeepsFullLengthCorrectionNote() throws Exception {
     var row = readyForReview();
-    var sourceFile = artifactRecords.findByOrderNumberOrderByIdAsc(number).get(0);
+    var sourceFile = artifactRecords.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(artifact -> artifact.getKind().equals("MODEL_SOURCE")).findFirst().orElseThrow();
     org.springframework.test.util.ReflectionTestUtils.setField(sourceFile, "confirmed", false);
     artifactRecords.saveAndFlush(sourceFile);
     mvc.perform(
@@ -2807,7 +2858,7 @@ class WorkflowIntegrationTest {
         .thenReturn(
             new GoodsSurveyPhotoStorage.PresignedUpload(
                 "https://storage.example.test/upload", Map.of(), Instant.now().plusSeconds(600)));
-    for (String kind : List.of("MULTIVIEW", "MODEL_SOURCE", "PRINT_MODEL")) {
+    for (String kind : List.of("MULTIVIEW", "MODEL_SOURCE")) {
       String type = kind.equals("MULTIVIEW") ? "image/png" : "application/octet-stream";
       String file = kind.equals("MULTIVIEW") ? "view.png" : "model.stl";
       var pending =

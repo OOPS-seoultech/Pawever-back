@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ProductionArtifactRepository extends JpaRepository<ProductionArtifact, String> {
   List<ProductionArtifact> findByOrderNumberOrderByIdAsc(String number);
 
+  boolean existsByReplacesArtifactIdAndConfirmedTrue(String artifactId);
+
   @org.springframework.data.jpa.repository.Query(
       """
 select a from ProductionArtifact a left join GoodsSurveyFulfillment o on a.orderNumber=o.orderNumber
