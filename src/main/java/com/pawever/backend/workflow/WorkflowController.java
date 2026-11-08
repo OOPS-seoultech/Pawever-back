@@ -13,6 +13,14 @@ public class WorkflowController {
   private final WorkflowService service;
   private final PrintBatchService batches;
 
+  @PostMapping("/api/production/tasks/{taskId}/artifacts/multiview.zip")
+  public ResponseEntity<byte[]> multiviewArchive(@PathVariable Long taskId) {
+    var archive = service.multiviewArchive(taskId);
+    return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType("application/zip"))
+        .header("Content-Disposition", org.springframework.http.ContentDisposition.attachment().filename(archive.fileName(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+        .cacheControl(CacheControl.noStore()).body(archive.bytes());
+  }
+
   @GetMapping("/api/production/file-targets")
   public Object fileTargets() { return ApiResponse.ok(Map.of("orders", service.fileTargets(), "plates", batches.fileTargets())); }
 

@@ -35,6 +35,9 @@ public class ProductionArtifact {
   @Column(nullable = false)
   private long expectedSize;
 
+  @Column(length = 255)
+  private String replacesArtifactId;
+
   @Column(nullable = false)
   private boolean confirmed;
 
@@ -63,6 +66,10 @@ public class ProductionArtifact {
     a.expiresAt = expires;
     a.objectKey = "production/" + number + "/" + id + "/" + name;
     return a;
+  }
+
+  public void replaces(String artifactId) {
+    replacesArtifactId = artifactId;
   }
 
   public void confirm() {

@@ -221,7 +221,7 @@ public class WorkflowService {
     artifacts.findByOrderNumberOrderByIdAsc(number).stream()
         .filter(a -> a.isConfirmed() && a.getTaskId().equals(taskId))
         .forEach(a -> present.add(a.getKind()));
-    var missing = new TreeSet<>(KINDS);
+    var missing = new TreeSet<>(Set.of("MULTIVIEW", "MODEL_SOURCE"));
     missing.removeAll(present);
     if (!missing.isEmpty())
       throw new WorkflowException(
@@ -627,9 +627,15 @@ public class WorkflowService {
     }
     if (t != null && active(o) && paid(o) && permissions.contains(VIEW_PRODUCTION_FILES)) {
       boolean owner = actor.getRole() == AdminRole.OWNER;
-      if (artifactReady(o, t, "PRINT_MODEL") && (owner || permissions.contains(COMPLETE_MODELING)
+      if (artifactReady(o, t, "MODEL_SOURCE") && (owner || permissions.contains(COMPLETE_MODELING)
           && access.canTake(t, WorkRole.MODELING, actor.getId())) && !actions.contains("UPLOAD_ARTIFACT"))
         actions.add("UPLOAD_ARTIFACT");
+      if (artifactReady(o, t, "PRINT_MODEL") && t.getStage() != ProductionStage.MODELING
+          && (owner || t.getStage() == ProductionStage.PLATE_PREPARATION
+              && permissions.contains(MAP_FILAMENT) && access.canTake(t, WorkRole.DESIGN_QC, actor.getId())
+              || Set.of(ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING).contains(t.getStage())
+              && permissions.contains(MANAGE_PRINT_BATCH) && access.canTake(t, WorkRole.PRINT_FINISHING, actor.getId())))
+        actions.add("UPLOAD_PRINT_FILE");
       if (artifactReady(o, t, "COLORED_MODEL") && (owner || permissions.contains(MAP_FILAMENT)
           && access.canTake(t, WorkRole.DESIGN_QC, actor.getId()))) actions.add("UPLOAD_COLORED_MODEL");
     }
@@ -680,6 +686,8 @@ public class WorkflowService {
                                 .findFirst()
                                 .map(ProductionTask::getAttempt)
                                 .orElse(1),
+                            "replacesArtifactId",
+                            a.getReplacesArtifactId(),
                             "size",
                             a.getExpectedSize()))
                 .toList()
@@ -1242,12 +1250,18 @@ public class WorkflowService {
     access.read(task.getOrderNumber());
     access.require(VIEW_PRODUCTION_FILES);
     if (access.current().getRole() == AdminRole.OWNER) return;
-    if (kind.equals("COLORED_MODEL")) ownMapping(task); else own(task);
+    if (kind.equals("COLORED_MODEL") || kind.equals("PRINT_MODEL") && task.getStage() == ProductionStage.PLATE_PREPARATION) ownMapping(task);
+    else if (kind.equals("PRINT_MODEL") && Set.of(ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING).contains(task.getStage())) {
+      access.require(MANAGE_PRINT_BATCH);
+      access.take(task, WorkRole.PRINT_FINISHING, "출력");
+    } else own(task);
   }
 
   private boolean artifactReady(GoodsSurveyFulfillment order, ProductionTask task, String kind) {
     var current = currentTask(order.getOrderNumber(), task.getPetIndex());
     if (!active(order) || !paid(order) || current == null || !current.getId().equals(task.getId())) return false;
+    if (kind.equals("PRINT_MODEL") && Set.of(ProductionStage.PLATE_PREPARATION, ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING).contains(task.getStage()))
+      return Set.of("WAITING", "IN_PROGRESS").contains(task.getStatus());
     if (kind.equals("COLORED_MODEL"))
       return Set.of(ProductionStage.COLOR_MAPPING, ProductionStage.PLATE_PREPARATION).contains(task.getStage())
           && task.getStatus().equals("WAITING");
@@ -1268,6 +1282,7 @@ public class WorkflowService {
         var actions = (List<?>) row.get("allowedActions");
         var kinds = new ArrayList<String>();
         if (actions.contains("UPLOAD_ARTIFACT")) kinds.addAll(List.of("MULTIVIEW", "MODEL_SOURCE", "PRINT_MODEL"));
+        if (actions.contains("UPLOAD_PRINT_FILE") && !kinds.contains("PRINT_MODEL")) kinds.add("PRINT_MODEL");
         if (actions.contains("UPLOAD_COLORED_MODEL")) kinds.add("COLORED_MODEL");
         if (kinds.isEmpty()) continue;
         result.add(map("orderNumber", order.getOrderNumber(), "petIndex", index,
@@ -1277,6 +1292,16 @@ public class WorkflowService {
       }
     }
     return result;
+  }
+
+  private void validateReplacement(ProductionTask task, String kind, String replaces) {
+    if (replaces == null) return;
+    var original = artifacts.findById(replaces).orElseThrow(() -> bad("교체할 이미지를 찾을 수 없습니다."));
+    if (!kind.equals("MULTIVIEW") || !original.getKind().equals(kind)
+        || !original.isConfirmed() || !original.getTaskId().equals(task.getId())
+        || !original.getOrderNumber().equals(task.getOrderNumber())
+        || artifacts.existsByReplacesArtifactIdAndConfirmedTrue(replaces))
+      throw bad("같은 아이·현재 모델링 회차의 최신 4면도만 교체할 수 있습니다.");
   }
 
   public Map<String, Object> upload(Long taskId, String key, Map<String, Object> b) {
@@ -1296,6 +1321,8 @@ public class WorkflowService {
               version(o, b);
               if (!artifactReady(o, t, text(b, "kind", 30)))
                 throw bad("진행 중인 작업에 파일을 등록해 주세요.");
+              String replaces = b.containsKey("replacesArtifactId") ? text(b, "replacesArtifactId", 255) : null;
+              validateReplacement(t, text(b, "kind", 30), replaces);
               String kind = text(b, "kind", 30),
                   name = text(b, "fileName", 200),
                   type = text(b, "contentType", 100);
@@ -1311,9 +1338,14 @@ public class WorkflowService {
                   kind.equals("COLORED_MODEL") ? Set.of("3mf") : kind.equals("MULTIVIEW")
                       ? Set.of("png", "jpg", "jpeg", "webp")
                       : kind.equals("PRINT_MODEL")
-                          ? Set.of("stl", "3mf")
+                          ? Set.of("3mf")
                           : Set.of("blend", "obj", "stl", "3mf", "fbx", "glb", "gltf");
               if (!extensions.contains(ext)) throw bad("허용되지 않은 파일 형식입니다.");
+              boolean sliced = name.toLowerCase(Locale.ROOT).endsWith(".gcode.3mf");
+              if (kind.equals("PRINT_MODEL") && !sliced)
+                throw bad("출력 파일은 .gcode.3mf로 등록해 주세요. 일반 .3mf는 모델 원본입니다.");
+              if ((kind.equals("MODEL_SOURCE") || kind.equals("COLORED_MODEL")) && sliced)
+                throw bad(".gcode.3mf는 출력 파일로 등록해 주세요.");
               if (kind.equals("MULTIVIEW")
                   && !Set.of("image/png", "image/jpeg", "image/webp").contains(type))
                 throw bad("사진 형식을 확인해 주세요.");
@@ -1330,6 +1362,8 @@ public class WorkflowService {
                           type,
                           size,
                           clock.instant().plusSeconds(600)));
+              a.replaces(replaces);
+              artifacts.saveAndFlush(a);
               touch(o);
               audit(o.getOrderNumber(), "REQUEST_ARTIFACT", null, a.getId(), null);
               return map("artifactId", a.getId(), "version", o.getVersion());
@@ -1368,6 +1402,7 @@ public class WorkflowService {
           version(o, b);
           if (!artifactReady(o, t, a.getKind())
               || !a.getUploaderId().equals(access.current().getId())) throw bad("파일을 확정할 수 없습니다.");
+          validateReplacement(t, a.getKind(), a.getReplacesArtifactId());
           var stored = storage.head(a.getObjectKey());
           if (stored.contentLength() != a.getExpectedSize()
               || !Objects.equals(stored.contentType(), a.getContentType()))
@@ -1384,6 +1419,41 @@ public class WorkflowService {
           audit(a.getOrderNumber(), "CONFIRM_ARTIFACT", null, a.getId(), null);
           return view(o, t.getPetIndex());
         });
+  }
+
+  public record MultiviewArchive(String fileName, byte[] bytes) {}
+
+  public MultiviewArchive multiviewArchive(Long taskId) {
+    var task = task(taskId);
+    access.read(task.getOrderNumber());
+    access.require(DOWNLOAD_PRODUCTION_FILES);
+    var order = order(task.getOrderNumber());
+    if (Set.of("CANCELED", "EXPIRED").contains(order.orderStatus())
+        || order.getDeleteAfter() != null && !order.getDeleteAfter().isAfter(clock.instant()))
+      throw bad("자료 열람 기간이 끝났습니다.");
+    var all = artifacts.findByOrderNumberOrderByIdAsc(task.getOrderNumber()).stream()
+        .filter(ProductionArtifact::isConfirmed).filter(a -> a.getTaskId().equals(taskId)).toList();
+    var replaced = all.stream().map(ProductionArtifact::getReplacesArtifactId).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+    var selected = all.stream().filter(a -> a.getKind().equals("MULTIVIEW") && !replaced.contains(a.getId())).toList();
+    if (selected.isEmpty()) throw bad("내려받을 4면도가 없습니다.");
+    long limit = 100L * 1024 * 1024;
+    if (selected.stream().mapToLong(ProductionArtifact::getExpectedSize).sum() > limit)
+      throw new WorkflowException(413, "ARCHIVE_TOO_LARGE", "합계 100MB 이하의 4면도만 ZIP으로 받을 수 있습니다. 큰 파일은 개별로 저장해 주세요.");
+    var buffer = new java.io.ByteArrayOutputStream();
+    try (var zip = new java.util.zip.ZipOutputStream(buffer, java.nio.charset.StandardCharsets.UTF_8)) {
+      long total = 0;
+      for (int i = 0; i < selected.size(); i++) {
+        var artifact = selected.get(i);
+        byte[] bytes = storage.download(artifact.getObjectKey());
+        total += bytes.length;
+        if (total > limit) throw new WorkflowException(413, "ARCHIVE_TOO_LARGE", "4면도 합계가 100MB를 초과합니다.");
+        String name = artifact.getFileName().replaceAll("[\\\\/\\p{Cntrl}:<>|?*]", "_");
+        zip.putNextEntry(new java.util.zip.ZipEntry((i + 1) + "_" + name));
+        zip.write(bytes); zip.closeEntry();
+      }
+    } catch (java.io.IOException error) { throw new WorkflowException(500, "ARCHIVE_FAILED", "4면도를 압축하지 못했습니다. 다시 시도해 주세요."); }
+    audit(task.getOrderNumber(), "DOWNLOAD_MULTIVIEW_ARCHIVE", null, taskId.toString(), null);
+    return new MultiviewArchive(task.getOrderNumber() + "_pet" + (task.getPetIndex() + 1) + "_multiview.zip", buffer.toByteArray());
   }
 
   public Map<String, Object> download(String artifactId) {
