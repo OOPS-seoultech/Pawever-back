@@ -2736,7 +2736,8 @@ class WorkflowIntegrationTest {
   @Test
   void reviewChecksSubmittedFilesAndKeepsFullLengthCorrectionNote() throws Exception {
     var row = readyForReview();
-    var sourceFile = artifactRecords.findByOrderNumberOrderByIdAsc(number).get(0);
+    var sourceFile = artifactRecords.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(artifact -> artifact.getKind().equals("MODEL_SOURCE")).findFirst().orElseThrow();
     org.springframework.test.util.ReflectionTestUtils.setField(sourceFile, "confirmed", false);
     artifactRecords.saveAndFlush(sourceFile);
     mvc.perform(
