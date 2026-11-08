@@ -219,7 +219,7 @@ public class WorkflowService {
   private void requireModelFiles(Long taskId, String number) {
     var present = new HashSet<String>();
     artifacts.findByOrderNumberOrderByIdAsc(number).stream()
-        .filter(a -> a.isConfirmed() && a.getTaskId().equals(taskId))
+        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && a.getTaskId().equals(taskId))
         .forEach(a -> present.add(a.getKind()));
     var missing = new TreeSet<>(Set.of("MULTIVIEW", "MODEL_SOURCE"));
     missing.removeAll(present);
@@ -668,7 +668,7 @@ public class WorkflowService {
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
                 .filter(a -> history.stream().anyMatch(h -> h.getId().equals(a.getTaskId())))
-                .filter(ProductionArtifact::isConfirmed)
+                .filter(a -> a.isConfirmed() && a.getMultiviewState() == null)
                 .map(
                     a ->
                         map(
@@ -1298,10 +1298,53 @@ public class WorkflowService {
     if (replaces == null) return;
     var original = artifacts.findById(replaces).orElseThrow(() -> bad("교체할 이미지를 찾을 수 없습니다."));
     if (!kind.equals("MULTIVIEW") || !original.getKind().equals(kind)
-        || !original.isConfirmed() || !original.getTaskId().equals(task.getId())
+        || !original.isConfirmed() || original.getMultiviewState() != null || !original.getTaskId().equals(task.getId())
         || !original.getOrderNumber().equals(task.getOrderNumber())
         || artifacts.existsByReplacesArtifactIdAndConfirmedTrue(replaces))
       throw bad("같은 아이·현재 모델링 회차의 최신 4면도만 교체할 수 있습니다.");
+  }
+
+  private List<ProductionArtifact> currentMultiviews(Long taskId, String number) {
+    var all = artifacts.findByOrderNumberOrderByIdAsc(number).stream()
+        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && a.getTaskId().equals(taskId)
+            && a.getKind().equals("MULTIVIEW")).toList();
+    var replaced = all.stream().map(ProductionArtifact::getReplacesArtifactId)
+        .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+    return all.stream().filter(a -> !replaced.contains(a.getId())).toList();
+  }
+
+  public Map<String, Object> publishMultiviewSet(Long taskId, String key, Map<String, Object> b) {
+    var t = task(taskId);
+    artifactActor(t, "MULTIVIEW");
+    return command("multiview-set:" + taskId, key, b, () -> {
+      entityManager.refresh(t);
+      artifactActor(t, "MULTIVIEW");
+      access.require(VIEW_PRODUCTION_FILES);
+      var o = locked(t.getOrderNumber());
+      version(o, b);
+      if (!artifactReady(o, t, "MULTIVIEW")) throw bad("현재 모델링 작업에 등록해 주세요.");
+      if (!(b.get("artifactIds") instanceof List<?> ids) || ids.size() != 4
+          || new HashSet<>(ids).size() != 4 || ids.stream().anyMatch(id -> !(id instanceof String)))
+        throw bad("4면도는 서로 다른 이미지 4장을 선택해 주세요.");
+      var selected = ids.stream().map(id -> artifacts.findById((String) id)
+          .orElseThrow(() -> bad("등록할 이미지를 찾을 수 없습니다."))).toList();
+      for (var a : selected) {
+        entityManager.refresh(a);
+        if (!a.getTaskId().equals(taskId) || !a.getOrderNumber().equals(o.getOrderNumber())
+            || !a.getUploaderId().equals(access.current().getId()) || !a.getKind().equals("MULTIVIEW")
+            || !"READY".equals(a.getMultiviewState()) || !a.getExpiresAt().isAfter(clock.instant()))
+          throw bad("같은 아이·현재 회차에 업로드가 완료된 4장만 등록할 수 있습니다. 만료됐다면 4장을 다시 선택해 주세요.");
+      }
+      artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+          .filter(a -> a.getTaskId().equals(taskId) && a.getKind().equals("MULTIVIEW")
+              && a.isConfirmed() && a.getMultiviewState() == null)
+          .forEach(ProductionArtifact::retireMultiview);
+      selected.forEach(ProductionArtifact::publishMultiview);
+      artifacts.flush();
+      touch(o);
+      audit(o.getOrderNumber(), "REPLACE_MULTIVIEW_SET", null, String.join(",", ids.stream().map(Object::toString).toList()), null);
+      return view(o, t.getPetIndex());
+    });
   }
 
   public Map<String, Object> upload(Long taskId, String key, Map<String, Object> b) {
@@ -1323,6 +1366,14 @@ public class WorkflowService {
                 throw bad("진행 중인 작업에 파일을 등록해 주세요.");
               String replaces = b.containsKey("replacesArtifactId") ? text(b, "replacesArtifactId", 255) : null;
               validateReplacement(t, text(b, "kind", 30), replaces);
+              if (b.containsKey("stageMultiview") && !(b.get("stageMultiview") instanceof Boolean))
+                throw bad("4면도 등록 방식을 확인해 주세요.");
+              boolean staged = Boolean.TRUE.equals(b.get("stageMultiview"));
+              if (staged && (!"MULTIVIEW".equals(b.get("kind")) || replaces != null))
+                throw bad("전체 교체용 4면도만 임시 등록할 수 있습니다.");
+              if ("MULTIVIEW".equals(b.get("kind")) && !staged && replaces == null
+                  && currentMultiviews(taskId, o.getOrderNumber()).size() >= 4)
+                throw bad("4면도는 최대 4장입니다. 4장 전체 교체 또는 개별 교체를 사용해 주세요.");
               String kind = text(b, "kind", 30),
                   name = text(b, "fileName", 200),
                   type = text(b, "contentType", 100);
@@ -1363,6 +1414,7 @@ public class WorkflowService {
                           size,
                           clock.instant().plusSeconds(600)));
               a.replaces(replaces);
+              if (staged) a.stageMultiview();
               artifacts.saveAndFlush(a);
               touch(o);
               audit(o.getOrderNumber(), "REQUEST_ARTIFACT", null, a.getId(), null);
@@ -1403,6 +1455,11 @@ public class WorkflowService {
           if (!artifactReady(o, t, a.getKind())
               || !a.getUploaderId().equals(access.current().getId())) throw bad("파일을 확정할 수 없습니다.");
           validateReplacement(t, a.getKind(), a.getReplacesArtifactId());
+          if ("RETIRED".equals(a.getMultiviewState())) throw bad("이전 4면도는 다시 확정할 수 없습니다.");
+          if (a.getKind().equals("MULTIVIEW") && a.getMultiviewState() == null
+              && !a.isConfirmed() && a.getReplacesArtifactId() == null
+              && currentMultiviews(t.getId(), o.getOrderNumber()).size() >= 4)
+            throw bad("4면도는 최대 4장입니다. 4장 전체 교체 또는 개별 교체를 사용해 주세요.");
           var stored = storage.head(a.getObjectKey());
           if (stored.contentLength() != a.getExpectedSize()
               || !Objects.equals(stored.contentType(), a.getContentType()))
@@ -1431,10 +1488,7 @@ public class WorkflowService {
     if (Set.of("CANCELED", "EXPIRED").contains(order.orderStatus())
         || order.getDeleteAfter() != null && !order.getDeleteAfter().isAfter(clock.instant()))
       throw bad("자료 열람 기간이 끝났습니다.");
-    var all = artifacts.findByOrderNumberOrderByIdAsc(task.getOrderNumber()).stream()
-        .filter(ProductionArtifact::isConfirmed).filter(a -> a.getTaskId().equals(taskId)).toList();
-    var replaced = all.stream().map(ProductionArtifact::getReplacesArtifactId).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-    var selected = all.stream().filter(a -> a.getKind().equals("MULTIVIEW") && !replaced.contains(a.getId())).toList();
+    var selected = currentMultiviews(taskId, task.getOrderNumber());
     if (selected.isEmpty()) throw bad("내려받을 4면도가 없습니다.");
     long limit = 100L * 1024 * 1024;
     if (selected.stream().mapToLong(ProductionArtifact::getExpectedSize).sum() > limit)
