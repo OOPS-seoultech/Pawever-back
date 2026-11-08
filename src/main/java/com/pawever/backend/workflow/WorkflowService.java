@@ -1328,6 +1328,8 @@ public class WorkflowService {
         throw bad("4면도는 서로 다른 이미지 4장을 선택해 주세요.");
       var selected = ids.stream().map(id -> artifacts.findById((String) id)
           .orElseThrow(() -> bad("등록할 이미지를 찾을 수 없습니다."))).toList();
+      if (selected.stream().map(ProductionArtifact::getObjectKey).distinct().count() != 4)
+        throw bad("4면도는 서로 다른 이미지 4장이어야 합니다.");
       for (var a : selected) {
         entityManager.refresh(a);
         if (!a.getTaskId().equals(taskId) || !a.getOrderNumber().equals(o.getOrderNumber())
