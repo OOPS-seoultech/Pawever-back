@@ -129,7 +129,7 @@ class WorkflowIntegrationTest {
     var body = jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", ids));
     expectAs(owner, publishPath, jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", ids.subList(0, 3))), 400);
     expectAs(owner, publishPath, jsonBody(Map.of("version", row.get("version").asLong(), "artifactIds", List.of(ids.get(0), ids.get(0), ids.get(1), ids.get(2)))), 400);
-    expectAs(stranger, publishPath, body, 403);
+    expectAs(stranger, publishPath, body, 404);
     String key = UUID.randomUUID().toString();
     var published = send(owner, publishPath, body, key);
     org.assertj.core.api.Assertions.assertThat(published.get("artifacts").size()).isEqualTo(4);
