@@ -20,7 +20,7 @@ public class ModelReviewTelegramListener {
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onModelReviewRequested(ModelReviewRequestedEvent event) {
     try {
-      telegramOpsClient.sendHtml(TelegramMessage.modelReviewRequested(event));
+      if (!telegramOpsClient.sendHtml(TelegramMessage.modelReviewRequested(event))) return;
       var album = media.load(event);
       if (album != null) telegramOpsClient.sendAlbum(album);
     } catch (RuntimeException e) {
