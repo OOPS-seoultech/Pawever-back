@@ -14,6 +14,8 @@ public interface ShipmentNotificationEventRepository
   Optional<ShipmentNotificationEvent> findByOrderNumberAndTrackingNumber(
       String orderNumber, String trackingNumber);
 
+  boolean existsByOrderNumberAndStatusIn(String orderNumber, java.util.Collection<String> statuses);
+
   List<ShipmentNotificationEvent> findByBatchIdOrderByIdAsc(Long batchId);
 
   @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)

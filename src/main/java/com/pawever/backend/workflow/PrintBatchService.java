@@ -264,7 +264,7 @@ public class PrintBatchService {
 
   public List<Map<String, Object>> candidates() {
     creator();
-    return tasks.findByAssigneeIdAndStatusNotOrderByIdAsc(access.current().getId(), "COMPLETED").stream()
+    return tasks.findByAssigneeIdAndStatusNotOrderByIdAsc(access.current().getId(), "COMPLETED").stream().filter(t -> Set.of("WAITING", "IN_PROGRESS").contains(t.getStatus()))
         .filter(t -> t.getStage() == ProductionStage.PLATE_PREPARATION
             && items.findByPlateTaskId(t.getId()).isEmpty())
         .filter(t -> {
@@ -741,7 +741,7 @@ public class PrintBatchService {
                   || name.contains("\\")
                   || !name.toLowerCase(Locale.ROOT).matches(".+\\.(3mf|gcode)")
                   || size < 1
-                  || size > 100L * 1024 * 1024) throw bad("3MF 또는 G-code 파일을 100MB 이하로 선택해 주세요.");
+                  || size > 200L * 1024 * 1024) throw bad("3MF 또는 G-code 파일을 200MB 이하로 선택해 주세요.");
               var f =
                   files.saveAndFlush(
                       PrintBatchArtifact.pending(

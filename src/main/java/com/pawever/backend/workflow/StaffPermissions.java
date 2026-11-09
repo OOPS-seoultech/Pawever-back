@@ -109,6 +109,25 @@ public class StaffPermissions {
     return a;
   }
 
+  public Long reviewer(Long id) {
+    if (id == null) return null;
+    var account = accounts.findById(id).orElse(null);
+    return account != null && account.canSignIn() && effective(account).contains(REVIEW_MODEL) ? id : null;
+  }
+
+  public boolean canReview(ProductionTask task) {
+    var actor = current();
+    if (!effective(actor).contains(REVIEW_MODEL)) return false;
+    return task.getStatus().equals("WAITING") || Objects.equals(task.getAssigneeId(), actor.getId())
+        || reviewer(task.getAssigneeId()) == null || effective(actor).contains(OVERRIDE_WORKFLOW);
+  }
+
+  public void takeReview(ProductionTask task) {
+    require(REVIEW_MODEL);
+    if (!canReview(task)) throw new WorkflowException(403, "FORBIDDEN", "다른 담당자가 진행 중인 검수입니다.");
+    task.assign(current().getId());
+  }
+
   public boolean canRead(String number) {
     var a = current();
     return effective(a).contains(VIEW_ORDER_BASIC)
