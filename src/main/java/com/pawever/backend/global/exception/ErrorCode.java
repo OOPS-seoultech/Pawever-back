@@ -118,7 +118,9 @@ public enum ErrorCode {
     // 관리자 로그인이 열려 있지 않다는 사실 자체는 알려도 된다. 열려 있는데
     // 자격이 안 맞는 것과는 다른 상황이라 응답을 나눈다.
     ADMIN_SIGN_IN_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "관리자 로그인이 설정되지 않았습니다."),
-    ADMIN_PASSWORD_TOO_SHORT(HttpStatus.BAD_REQUEST, "비밀번호는 12자 이상이어야 합니다.");
+    ADMIN_MAIL_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "초대 메일 발송 설정이 필요합니다. 관리자에게 문의해 주세요."),
+    ADMIN_MAIL_SEND_FAILED(HttpStatus.BAD_GATEWAY, "초대 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요."),
+    ADMIN_PASSWORD_TOO_SHORT(HttpStatus.BAD_REQUEST, "비밀번호는 5자 이상이어야 합니다.");
 
     private final HttpStatus httpStatus;
     private final String message;

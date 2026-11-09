@@ -44,6 +44,7 @@ class AdminAccountServiceTest {
             "admin-secret-key-must-be-at-least-256-bits-long-for-hs256-ok";
 
     @Mock private AdminAccountRepository accountRepository;
+    @Mock private AdminInvitationMailer invitationMailer;
 
     private AdminAccountService service;
     private AdminProperties properties;
@@ -86,7 +87,8 @@ class AdminAccountServiceTest {
                 passwordEncoder,
                 hmacHasher,
                 properties,
-                clock
+                clock,
+                invitationMailer
         );
     }
 
@@ -96,10 +98,13 @@ class AdminAccountServiceTest {
         // 그대로 만들어 계정을 가로챌 수 있다.
         when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.empty());
 
-        String inviteToken = service.invite("A@Example.com ", "나혜", AdminRole.PRODUCTION);
+        service.invite("A@Example.com ", "나혜", AdminRole.PRODUCTION, java.util.Set.of(WorkRole.MODELING));
+        ArgumentCaptor<String> mailedToken = ArgumentCaptor.forClass(String.class);
+        verify(invitationMailer).send(org.mockito.ArgumentMatchers.eq("a@example.com"), org.mockito.ArgumentMatchers.eq("나혜"), mailedToken.capture());
+        String inviteToken = mailedToken.getValue();
 
         ArgumentCaptor<AdminAccount> saved = ArgumentCaptor.forClass(AdminAccount.class);
-        verify(accountRepository).save(saved.capture());
+        verify(accountRepository).saveAndFlush(saved.capture());
         assertThat(saved.getValue().getInviteTokenHash()).isEqualTo(hmacHasher.hash(inviteToken));
         assertThat(saved.getValue().getInviteTokenHash()).isNotEqualTo(inviteToken);
         // 주소는 대소문자와 공백을 정리해 저장한다.
@@ -168,9 +173,9 @@ class AdminAccountServiceTest {
     void 없는_계정과_틀린_비밀번호를_같은_응답으로_돌려준다() {
         // 나눠서 알려주면 어떤 주소가 등록돼 있는지 확인하는 통로가 된다.
         AdminAccount active = activeAccount("맞는-비밀번호입니다");
-        lenient().when(accountRepository.findByEmail("a@example.com"))
+        lenient().when(accountRepository.lockByEmail("a@example.com"))
                 .thenReturn(Optional.of(active));
-        lenient().when(accountRepository.findByEmail("none@example.com"))
+        lenient().when(accountRepository.lockByEmail("none@example.com"))
                 .thenReturn(Optional.empty());
 
         Throwable wrongPassword = org.assertj.core.api.Assertions
@@ -188,7 +193,7 @@ class AdminAccountServiceTest {
         // 문구만 같게 해서는 부족하다. 계정이 없다고 곧바로 돌려보내면 응답이
         // 눈에 띄게 빨라서, 시간을 재는 것만으로 어떤 주소가 등록돼 있는지 알 수
         // 있다. 시간을 재는 시험은 흔들리므로 대조를 거쳤는지로 본다.
-        when(accountRepository.findByEmail("none@example.com")).thenReturn(Optional.empty());
+        when(accountRepository.lockByEmail("none@example.com")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.signIn("none@example.com", "아무-비밀번호입니다"))
                 .isInstanceOf(CustomException.class);
@@ -203,7 +208,7 @@ class AdminAccountServiceTest {
         // 초대만 받고 아직 비밀번호가 없는 계정이다. 여기서 곧바로 돌려보내면
         // 등록은 됐지만 아직 안 쓰는 주소가 어느 것인지 갈린다.
         AdminAccount invited = invitedAccount("invite-token", NOW.plusSeconds(3600));
-        when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.of(invited));
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(invited));
 
         assertThatThrownBy(() -> service.signIn("a@example.com", "아무-비밀번호입니다"))
                 .isInstanceOf(CustomException.class);
@@ -216,7 +221,7 @@ class AdminAccountServiceTest {
     @Test
     void 비밀번호를_정하지_않은_계정은_로그인할_수_없다() {
         AdminAccount invited = invitedAccount("invite-token", NOW.plusSeconds(3600));
-        when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.of(invited));
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(invited));
 
         assertThatThrownBy(() -> service.signIn("a@example.com", "아무-비밀번호입니다"))
                 .isInstanceOf(CustomException.class);
@@ -226,7 +231,7 @@ class AdminAccountServiceTest {
     void 막힌_계정은_로그인할_수_없다() {
         AdminAccount account = activeAccount("맞는-비밀번호입니다");
         account.disable();
-        when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.of(account));
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(account));
 
         assertThatThrownBy(() -> service.signIn("a@example.com", "맞는-비밀번호입니다"))
                 .isInstanceOf(CustomException.class);
@@ -235,7 +240,7 @@ class AdminAccountServiceTest {
     @Test
     void 로그인하면_토큰을_주고_시각을_남긴다() {
         AdminAccount account = activeAccount("맞는-비밀번호입니다");
-        when(accountRepository.findByEmail("a@example.com")).thenReturn(Optional.of(account));
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(account));
 
         String token = service.signIn("a@example.com", "맞는-비밀번호입니다");
 
@@ -252,13 +257,60 @@ class AdminAccountServiceTest {
                 passwordEncoder,
                 hmacHasher,
                 properties,
-                Clock.fixed(NOW, ZoneOffset.UTC)
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                invitationMailer
         );
 
         assertThatThrownBy(() -> disabled.signIn("a@example.com", "아무-비밀번호입니다"))
                 .isInstanceOf(CustomException.class);
         // 계정을 찾아보지도 않는다.
         org.mockito.Mockito.verifyNoInteractions(accountRepository);
+    }
+
+    @Test
+    void 초대시_권한이_지정되면_숫자_다섯자로_설정하고_바로_로그인한다() {
+        var account = invitedAccount("token", NOW.plusSeconds(3600));
+        account.setWorkRoles(java.util.Set.of(WorkRole.MODELING));
+        account.touchPermissions(NOW);
+        when(accountRepository.findByInviteTokenHash(hmacHasher.hash("token"))).thenReturn(Optional.of(account));
+        service.acceptInvite("token", "12345");
+        assertThat(account.canSignIn()).isTrue();
+        assertThat(passwordEncoder.matches("12345", account.getPasswordHash())).isTrue();
+        assertThat(account.getInviteTokenHash()).isNull();
+    }
+
+    @Test
+    void 아홉번_틀린_뒤_성공하면_횟수를_초기화한다() {
+        var account = activeAccount("12345");
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(account));
+        for (int i = 0; i < 9; i++) assertThatThrownBy(() -> service.signIn("a@example.com", "wrong")).isInstanceOf(CustomException.class);
+        assertThat(account.getConsecutiveLoginFailures()).isEqualTo(9);
+        assertThat(service.signIn("a@example.com", "12345")).isNotBlank();
+        assertThat(account.getConsecutiveLoginFailures()).isZero();
+        assertThat(account.canSignIn()).isTrue();
+    }
+
+    @Test
+    void 열번_연속_실패시_로그인_신원과_권한이_삭제된다() {
+        var account = activeAccount("12345");
+        account.setWorkRoles(java.util.Set.of(WorkRole.MODELING));
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(account));
+        for (int i = 0; i < 10; i++) assertThatThrownBy(() -> service.signIn("a@example.com", "wrong")).isInstanceOf(CustomException.class);
+        assertThat(account.getStatus()).isEqualTo(AdminAccountStatus.DELETED);
+        assertThat(account.getEmail()).endsWith("@removed.invalid").isNotEqualTo("a@example.com");
+        assertThat(account.getPasswordHash()).isNull();
+        assertThat(account.getWorkRoles()).isEmpty();
+        assertThat(account.canSignIn()).isFalse();
+    }
+
+    @Test
+    void 대표_계정은_실패횟수로_삭제하지_않는다() {
+        var account = activeAccount("12345");
+        account.changeRole(AdminRole.OWNER);
+        when(accountRepository.lockByEmail("a@example.com")).thenReturn(Optional.of(account));
+        for (int i = 0; i < 10; i++) assertThatThrownBy(() -> service.signIn("a@example.com", "wrong")).isInstanceOf(CustomException.class);
+        assertThat(account.canSignIn()).isTrue();
+        assertThat(account.getEmail()).isEqualTo("a@example.com");
     }
 
     private AdminAccount invitedAccount(String inviteToken, Instant expiresAt) {
@@ -290,7 +342,10 @@ class AdminAccountServiceTest {
         AdminAccount account = invitedAccount("old-token", NOW.plusSeconds(3600));
         when(accountRepository.findById(1L)).thenReturn(Optional.of(account));
 
-        String reissued = service.reinvite(1L);
+        service.reinvite(1L);
+        ArgumentCaptor<String> mailedToken = ArgumentCaptor.forClass(String.class);
+        verify(invitationMailer).send(org.mockito.ArgumentMatchers.eq("a@example.com"), org.mockito.ArgumentMatchers.eq("나혜"), mailedToken.capture());
+        String reissued = mailedToken.getValue();
 
         assertThat(account.getInviteTokenHash()).isEqualTo(hmacHasher.hash(reissued));
         assertThat(account.getInviteTokenHash()).isNotEqualTo(hmacHasher.hash("old-token"));
@@ -301,7 +356,7 @@ class AdminAccountServiceTest {
         when(accountRepository.findByEmail("a@example.com"))
                 .thenReturn(Optional.of(activeAccount("맞는-비밀번호입니다")));
 
-        assertThatThrownBy(() -> service.invite("a@example.com", "나혜", AdminRole.PRODUCTION))
+        assertThatThrownBy(() -> service.invite("a@example.com", "나혜", AdminRole.PRODUCTION, java.util.Set.of(WorkRole.MODELING)))
                 .isInstanceOf(CustomException.class);
         verify(accountRepository, org.mockito.Mockito.never()).save(any());
     }
@@ -309,7 +364,7 @@ class AdminAccountServiceTest {
     @Test
     void 승인을_기다리는_계정은_로그인할_수_없다() {
         AdminAccount account = pendingAccount("맞는-비밀번호입니다");
-        when(accountRepository.findByEmail("a@example.com"))
+        when(accountRepository.lockByEmail("a@example.com"))
                 .thenReturn(Optional.of(account));
 
         // 비밀번호가 맞아도 아직이다. 무엇이 막았는지는 대조를 마친 뒤에만
@@ -352,9 +407,9 @@ class AdminAccountServiceTest {
         // 대표가 둘이 된다.
         asOwner();
 
-        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.OWNER))
+        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.OWNER, java.util.Set.of(WorkRole.MODELING)))
                 .isInstanceOf(CustomException.class);
-        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.ADMIN))
+        assertThatThrownBy(() -> service.invite("b@example.com", "나혜", AdminRole.ADMIN, java.util.Set.of(WorkRole.MODELING)))
                 .isInstanceOf(CustomException.class);
         verify(accountRepository, org.mockito.Mockito.never()).save(any());
     }

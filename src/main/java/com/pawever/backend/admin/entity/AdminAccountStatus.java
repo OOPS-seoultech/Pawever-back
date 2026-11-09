@@ -16,5 +16,8 @@ public enum AdminAccountStatus {
     ACTIVE,
 
     /** 그만둔 사람. 지우지 않고 막는다. 상태 변경 이력에 이름이 남아 있다. */
-    DISABLED
+    DISABLED,
+
+    /** 로그인 신원은 삭제됨. 과거 작업·정산 참조만 보존한다. */
+    DELETED
 }

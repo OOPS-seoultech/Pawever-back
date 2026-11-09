@@ -15,6 +15,10 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Long
 
     Optional<AdminAccount> findByEmail(String email);
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from AdminAccount a where a.email = :email")
+    Optional<AdminAccount> lockByEmail(@org.springframework.data.repository.query.Param("email") String email);
+
     Optional<AdminAccount> findByInviteTokenHash(String inviteTokenHash);
 
     boolean existsByRole(AdminRole role);

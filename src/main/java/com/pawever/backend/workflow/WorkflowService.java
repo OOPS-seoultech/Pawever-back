@@ -1187,6 +1187,7 @@ public class WorkflowService {
   public List<Map<String, Object>> staff() {
     if (!access.has(MANAGE_ACCOUNTS)) access.require(ASSIGN_WORK);
     return accounts.findAllByOrderByCreatedAtAsc().stream()
+        .filter(a -> a.getStatus() != AdminAccountStatus.DELETED)
         .map(
             a ->
                 map(
