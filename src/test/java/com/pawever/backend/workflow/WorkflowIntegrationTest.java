@@ -225,6 +225,9 @@ class WorkflowIntegrationTest {
     mvc.perform(post("/api/production/tasks/" + row.get("taskId") + "/artifacts/multiview.zip")).andExpect(status().isUnauthorized());
 
     expectAs(owner, path, jsonBody(Map.of("version", confirmed.get("version").asLong(), "kind", "MULTIVIEW", "fileName", "again.png", "size", 10, "contentType", "image/png", "replacesArtifactId", original.getId())), 400);
+    var removed = send(owner, "/api/production/artifacts/" + request.get("artifactId").asText() + "/retire", versionBody(confirmed), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(removed.get("artifacts").size()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(original.getId()).orElseThrow().getMultiviewState()).isEqualTo("RETIRED");
   }
 
   @Test

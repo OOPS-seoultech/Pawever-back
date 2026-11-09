@@ -1330,6 +1330,17 @@ public class WorkflowService {
       entityManager.refresh(a);
       a.retireMultiview();
       artifacts.saveAndFlush(a);
+      // 교체본만 제외하면 숨겨져 있던 이전 이미지가 다시 현재 목록에 나타난다.
+      var previousId = a.getReplacesArtifactId();
+      var visited = new HashSet<String>();
+      while (previousId != null && visited.add(previousId)) {
+        var previous = artifacts.findById(previousId).orElseThrow(() -> bad("이전 이미지 기록을 찾을 수 없습니다."));
+        if (!previous.getTaskId().equals(t.getId()) || !previous.getKind().equals("MULTIVIEW")
+            || !previous.getOrderNumber().equals(o.getOrderNumber())) throw bad("이미지 교체 기록을 확인해 주세요.");
+        previous.retireMultiview();
+        artifacts.saveAndFlush(previous);
+        previousId = previous.getReplacesArtifactId();
+      }
       touch(o);
       audit(o.getOrderNumber(), "RETIRE_MULTIVIEW", artifactId, "RETIRED", null);
       return view(o, t.getPetIndex());
