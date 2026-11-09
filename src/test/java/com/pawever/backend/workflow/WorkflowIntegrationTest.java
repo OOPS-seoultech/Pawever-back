@@ -104,7 +104,7 @@ class WorkflowIntegrationTest {
     var model = ProductionArtifact.pending(UUID.randomUUID().toString(), number, taskId,
         ownerId, "MODEL_SOURCE", "model.3mf", "application/octet-stream", 10, Instant.now().plusSeconds(600));
     model.confirm(); artifactRecords.saveAndFlush(model);
-    expectAs(stranger, "/api/production/artifacts/" + ids.get(6) + "/retire", versionBody(row), 403);
+    expectAs(stranger, "/api/production/artifacts/" + ids.get(6) + "/retire", versionBody(row), 404);
     expectAs(owner, "/api/production/artifacts/" + model.getId() + "/retire", versionBody(row), 400);
     for (int i = 6; i >= 4; i--) {
       String path = "/api/production/artifacts/" + ids.get(i) + "/retire";
