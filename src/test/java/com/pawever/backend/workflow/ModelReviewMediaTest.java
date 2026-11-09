@@ -60,7 +60,7 @@ class ModelReviewMediaTest {
     for (int i = 0; i < 4; i++) views.add(ProductionArtifact.pending("v" + i, "TEST-1", 1L, 9L, "MULTIVIEW", "view.png", "image/png", 10, Instant.now()));
     when(workflow.currentMultiviews(1L, "TEST-1")).thenReturn(views);
     when(storage.download(anyString())).thenReturn(image());
-    var service = new ModelReviewMedia(tasks, orders, photos, pets, storage, workflow);
+    var service = new ModelReviewMedia(tasks, orders, photos, pets, storage, workflow, mock(StaffPermissions.class), mock(com.pawever.backend.notification.telegram.TelegramOpsClient.class));
     var album = service.load(new ModelReviewRequestedEvent("TEST-1", 2L));
     assertThat(album.photos()).hasSize(9);
     assertThat(album.photos().stream().filter(p -> p.caption().contains("고객 사진"))).hasSize(5);

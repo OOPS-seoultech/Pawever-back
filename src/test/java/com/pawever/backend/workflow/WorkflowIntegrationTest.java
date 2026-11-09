@@ -38,6 +38,8 @@ class WorkflowIntegrationTest {
   @Autowired StaffPermissionOverrideRepository overrides;
   @Autowired AdminTokenProvider tokens;
   @MockitoBean GoodsSurveyPhotoStorage storage;
+  @MockitoBean com.pawever.backend.notification.telegram.TelegramOpsClient reviewTelegram;
+
 
   @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
   ShipmentWorkbook shipmentWorkbook;
@@ -53,6 +55,30 @@ class WorkflowIntegrationTest {
 
   @Autowired WorkflowAuditRepository completionAudits;
   @Autowired com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository completionNotifications;
+
+  @Test
+  void ownerResendsSelectedPetsReviewPhotosOnceWithoutAdvancingTheOrder() throws Exception {
+    var row = readyForReview();
+    var order = orders.findByOrderNumber(number).orElseThrow();
+    var oldStage = order.getProductionStage(); long oldVersion = order.getVersion();
+    org.mockito.Mockito.when(storage.download(org.mockito.ArgumentMatchers.anyString())).thenReturn(ModelReviewMediaTest.image());
+    org.mockito.Mockito.when(reviewTelegram.sendAlbum(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+    String path = "/api/admin/orders/" + number + "/workflow/review-telegram";
+    String body = jsonBody(Map.of("version", row.get("version").asLong(), "petIndex", 0));
+    expectAs(modeler, path, body, 403);
+    String key = UUID.randomUUID().toString();
+    var result = send(owner, path, body, key);
+    org.assertj.core.api.Assertions.assertThat(result.get("telegramNotification").get("accepted").asBoolean()).isTrue();
+    org.assertj.core.api.Assertions.assertThat(result.get("telegramNotification").get("photoCount").asInt()).isBetween(1, 9);
+    org.assertj.core.api.Assertions.assertThat(send(owner, path, body, key)).isEqualTo(result);
+    org.mockito.Mockito.verify(reviewTelegram).sendAlbum(org.mockito.ArgumentMatchers.any());
+    order = orders.findByOrderNumber(number).orElseThrow();
+    org.assertj.core.api.Assertions.assertThat(order.getProductionStage()).isEqualTo(oldStage);
+    org.assertj.core.api.Assertions.assertThat(order.getVersion()).isEqualTo(oldVersion);
+    org.mockito.Mockito.when(reviewTelegram.sendAlbum(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+    var failed = send(owner, path, body, UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(failed.get("telegramNotification").get("accepted").asBoolean()).isFalse();
+  }
 
   @Test
   void noticesAreStaffOnlyAndOnlyOwnerCanPublishOrEdit() throws Exception {

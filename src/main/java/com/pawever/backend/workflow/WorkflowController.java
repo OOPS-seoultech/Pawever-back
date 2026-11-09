@@ -12,6 +12,12 @@ import org.springframework.web.bind.annotation.*;
 public class WorkflowController {
   private final WorkflowService service;
   private final PrintBatchService batches;
+  private final ModelReviewMedia reviewMedia;
+
+  @PostMapping("/api/admin/orders/{number}/workflow/review-telegram")
+  public Object reviewTelegram(@PathVariable String number, @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> body) { return ApiResponse.ok(reviewMedia.resend(number, key, body)); }
+
 
   @PostMapping("/api/admin/orders/{number}/workflow/move-stage")
   public Object moveStage(@PathVariable String number, @RequestHeader("Idempotency-Key") String key,
