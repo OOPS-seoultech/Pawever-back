@@ -44,4 +44,19 @@ class TelegramOpsClientTest {
     assertThat(client.sendHtml("검수 대기")).isFalse();
     server.verify();
   }
+
+  @Test
+  void 사진_아홉장을_운영방_앨범으로_보내며_서명URL을_노출하지_않는다() {
+    var photos = java.util.stream.IntStream.range(0, 9)
+        .mapToObj(i -> new com.pawever.backend.workflow.ModelReviewMedia.Photo("사진 " + i, new byte[]{1,2,3})).toList();
+    server.expect(requestTo("https://api.telegram.org/botops-token/sendMediaGroup"))
+        .andExpect(request -> {
+          var mock = (org.springframework.mock.http.client.MockClientHttpRequest) request;
+          String body = mock.getBodyAsString();
+          assertThat(body).contains("attach://photo0", "attach://photo8", "-1009876543210");
+          assertThat(body).doesNotContain("attach://photo9", "https://storage");
+        }).andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+    assertThat(client.sendAlbum(new com.pawever.backend.workflow.ModelReviewMedia.Album("검수", photos))).isTrue();
+    server.verify();
+  }
 }

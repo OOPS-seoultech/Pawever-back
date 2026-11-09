@@ -30,6 +30,9 @@ public class ProductionTask {
 
   private Long assigneeId;
 
+  private Long materialsFromTaskId;
+  public void useMaterialsFrom(Long id) { materialsFromTaskId = id; }
+
   @Column(nullable = false, length = 20)
   private String status = "WAITING";
 
@@ -64,6 +67,8 @@ public class ProductionTask {
     status = "IN_PROGRESS";
     startedAt = at;
   }
+
+  public void supersede(Instant at) { status = "SUPERSEDED"; completedAt = at; }
 
   public void complete(Instant at) {
     status = "COMPLETED";

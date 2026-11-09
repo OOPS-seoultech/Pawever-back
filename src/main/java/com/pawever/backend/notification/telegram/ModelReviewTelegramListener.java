@@ -14,14 +14,17 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class ModelReviewTelegramListener {
   private final TelegramOpsClient telegramOpsClient;
+  private final com.pawever.backend.workflow.ModelReviewMedia media;
 
   @Async
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void onModelReviewRequested(ModelReviewRequestedEvent event) {
     try {
       telegramOpsClient.sendHtml(TelegramMessage.modelReviewRequested(event));
+      var album = media.load(event);
+      if (album != null) telegramOpsClient.sendAlbum(album);
     } catch (RuntimeException e) {
-      log.error("모델 검수 알림을 만들지 못했다: 주문 {}", event.orderNumber(), e);
+      log.error("모델 검수 사진을 준비하지 못했다: 주문 {}, 원인 {}", event.orderNumber(), e.getClass().getSimpleName());
     }
   }
 }

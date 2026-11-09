@@ -11,7 +11,7 @@ class ModelReviewTelegramListenerTest {
   @Test
   void 모델링_제출이_완료되면_검수용_봇에_주문번호만_알린다() {
     TelegramOpsClient client = mock(TelegramOpsClient.class);
-    ModelReviewTelegramListener listener = new ModelReviewTelegramListener(client);
+    ModelReviewTelegramListener listener = new ModelReviewTelegramListener(client, mock(com.pawever.backend.workflow.ModelReviewMedia.class));
     ModelReviewRequestedEvent event = new ModelReviewRequestedEvent("PE-2026-000101", 42L);
 
     listener.onModelReviewRequested(event);

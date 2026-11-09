@@ -13,10 +13,14 @@ public class WorkflowController {
   private final WorkflowService service;
   private final PrintBatchService batches;
 
+  @PostMapping("/api/admin/orders/{number}/workflow/move-stage")
+  public Object moveStage(@PathVariable String number, @RequestHeader("Idempotency-Key") String key,
+      @RequestBody Map<String, Object> body) { return ApiResponse.ok(service.moveStage(number, key, body)); }
+
   @PostMapping("/api/production/artifacts/{id}/retire")
-  public Object retireMultiview(@PathVariable String id,
+  public Object retireArtifact(@PathVariable String id,
       @RequestHeader("Idempotency-Key") String key, @RequestBody Map<String, Object> body) {
-    return ApiResponse.ok(service.retireMultiview(id, key, body));
+    return ApiResponse.ok(service.retireArtifact(id, key, body));
   }
 
   @PostMapping("/api/production/tasks/{taskId}/artifacts/multiview-set")

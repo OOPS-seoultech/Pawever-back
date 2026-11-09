@@ -79,7 +79,7 @@ public class ProductionArtifact {
 
   public void publishMultiview() { multiviewState = null; confirmed = true; }
 
-  public void retireMultiview() { multiviewState = "RETIRED"; }
+  public void retire() { multiviewState = "RETIRED"; }
 
   public void confirm() {
     if ("STAGED".equals(multiviewState) || "READY".equals(multiviewState)) multiviewState = "READY";

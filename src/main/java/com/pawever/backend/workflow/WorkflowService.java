@@ -37,6 +37,7 @@ public class WorkflowService {
   private final WorkflowIssueRepository issues;
   private final WorkflowCommandRepository commands;
   private final WorkflowAuditRepository audits;
+  private final com.pawever.backend.workflow.notification.ShipmentNotificationEventRepository notificationEvents;
   private final WorkflowSettingsRepository settings;
   private final AdminAccountRepository accounts;
   private final StaffPermissionOverrideRepository overrides;
@@ -124,7 +125,7 @@ public class WorkflowService {
 
   ProductionTask currentTask(String number, int petIndex) {
     return history(number, petIndex).stream()
-        .filter(t -> !t.getStatus().equals("COMPLETED"))
+        .filter(t -> Set.of("WAITING", "IN_PROGRESS").contains(t.getStatus()))
         .reduce((a, b) -> b).orElse(null);
   }
 
@@ -153,7 +154,7 @@ public class WorkflowService {
   boolean readyToPack(GoodsSurveyFulfillment order) {
     for (int i = 0; i < order.getPetCount(); i++) {
       var t = currentTask(order.getOrderNumber(), i);
-      if (t == null || t.getStage() != ProductionStage.PACKING) return false;
+      if (t == null || !Set.of(ProductionStage.PACKING, ProductionStage.COMPLETE).contains(t.getStage())) return false;
     }
     return true;
   }
@@ -206,6 +207,7 @@ public class WorkflowService {
 
   private ProductionTask submittedModeling(List<ProductionTask> history, ProductionTask next) {
     if (next == null) return null;
+    if (next.getMaterialsFromTaskId() != null) return task(next.getMaterialsFromTaskId());
     return history.stream()
         .filter(
             t ->
@@ -216,10 +218,118 @@ public class WorkflowService {
         .orElse(null);
   }
 
+  private Set<Long> materialTaskIds(ProductionTask source) {
+    var ids = new LinkedHashSet<Long>();
+    var current = source;
+    while (current != null && ids.add(current.getId())) {
+      if (current.getMaterialsFromTaskId() == null) break;
+      current = tasks.findById(current.getMaterialsFromTaskId()).orElse(null);
+      if (current != null && (!current.getOrderNumber().equals(source.getOrderNumber())
+          || current.getPetIndex() != source.getPetIndex())) throw bad("자료의 반려동물 연결을 확인해 주세요.");
+    }
+    return ids;
+  }
+
+  private static final List<ProductionStage> MOVABLE_STAGES = List.of(
+      ProductionStage.MODELING_QUEUE, ProductionStage.MODELING, ProductionStage.MODEL_REVIEW,
+      ProductionStage.COLOR_MAPPING, ProductionStage.PLATE_PREPARATION, ProductionStage.PRINT_QUEUE,
+      ProductionStage.PRINTING, ProductionStage.POST_PROCESSING, ProductionStage.QC,
+      ProductionStage.PACKING, ProductionStage.COMPLETE);
+
+  private List<String> stageMoveWarnings(String number) {
+    var warnings = new ArrayList<String>();
+    if (audits.findByResourceOrderByIdAsc(number).stream().anyMatch(a -> a.getAction().equals("COMPLETE_MODELING")))
+      warnings.add("검수 대기 텔레그램 발송 요청 기록이 있습니다. 이전 알림은 회수되지 않습니다.");
+    if (notificationEvents.existsByOrderNumberAndStatusIn(number, Set.of("ACCEPTED", "SUCCEEDED", "UNKNOWN")))
+      warnings.add("고객 발송 알림톡의 발송·접수 기록이 있습니다. 고객에게 안내된 내용을 확인해 주세요.");
+    return warnings;
+  }
+
+  private List<String> moveTargets(GoodsSurveyFulfillment order, int index, ProductionTask current) {
+    if (!active(order) || !paid(order)) return List.of();
+    var actor = access.current();
+    var permissions = access.effective(actor);
+    if (!permissions.contains(VIEW_PRODUCTION_FILES)) return List.of();
+    boolean admin = permissions.contains(OVERRIDE_WORKFLOW) || actor.getRole() == AdminRole.ADMIN;
+    boolean participant = history(order.getOrderNumber(), index).stream()
+        .anyMatch(t -> Objects.equals(t.getAssigneeId(), actor.getId()));
+    boolean contributor = permissions.stream().anyMatch(p -> Set.of(COMPLETE_MODELING, REVIEW_MODEL,
+        MAP_FILAMENT, MANAGE_PRINT_BATCH, COMPLETE_POST_PROCESSING, PACK_AND_EXPORT_SHIPMENTS).contains(p));
+    if (!admin && (!participant || !contributor || current == null)) return List.of();
+    int position = current == null ? -1 : MOVABLE_STAGES.indexOf(stage(current));
+    return MOVABLE_STAGES.stream().filter(target -> current == null || target != stage(current))
+        .filter(target -> admin || MOVABLE_STAGES.indexOf(target) < position)
+        .map(Enum::name).toList();
+  }
+
+  public Map<String, Object> moveStage(String number, String key, Map<String, Object> input) {
+    access.read(number);
+    return command("move-stage:" + number, key, input, () -> {
+      access.read(number);
+      var order = locked(number);
+      version(order, input);
+      int index = petIndex(input);
+      if (index < 0 || index >= order.getPetCount()) throw bad("반려동물을 확인해 주세요.");
+      var current = currentTask(number, index);
+      String targetName = text(input, "stage", 30), reason = text(input, "reason", 300);
+      if (reason.isBlank()) throw bad("단계 이동 사유를 선택해 주세요.");
+      if (!moveTargets(order, index, current).contains(targetName))
+        throw new WorkflowException(403, "FORBIDDEN", "본인의 제작 작업은 이전 단계로만 이동할 수 있습니다. 관리자는 제작 단계를 선택할 수 있습니다.");
+      if (!stageMoveWarnings(number).isEmpty() && !Boolean.TRUE.equals(input.get("notificationsAcknowledged")))
+        throw bad("이전에 발송된 알림을 확인한 뒤 이동해 주세요.");
+      var history = history(number, index);
+      var latestPlate = printBatchItems.findByOrderNumberOrderByIdDesc(number).stream()
+          .filter(i -> history.stream().anyMatch(t -> t.getId().equals(i.getPlateTaskId())))
+          .findFirst().orElse(null);
+      if (latestPlate != null) {
+        var batch = printBatches.findById(latestPlate.getBatchId()).orElseThrow();
+        entityManager.refresh(batch, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (Set.of("CONFIRMED", "PRINTING").contains(batch.getStatus()))
+          throw bad("출력 대기·출력 중인 플레이트입니다. 먼저 플레이트에서 출력 취소 또는 출력 결과를 기록한 뒤 이동해 주세요.");
+        if (batch.getStatus().equals("DRAFT")) {
+          printBatchItems.delete(latestPlate); printBatchItems.flush();
+          batch.configure(batch.getPrinterName(), batch.getPrintingAssigneeId(), UUID.randomUUID().toString(), clock.instant());
+          if (printBatchItems.findByBatchIdOrderByIdAsc(batch.getId()).isEmpty()) batch.cancel(clock.instant());
+          audit("plate:" + batch.getId(), "REMOVE_FOR_STAGE_CHANGE", number + ":" + index, null, reason);
+        }
+      }
+      var material = current != null && current.getStage() == ProductionStage.MODELING ? current
+          : submittedModeling(history, current);
+      if (material == null) material = history.stream().filter(t -> t.getStage() == ProductionStage.MODELING)
+          .reduce((a, b) -> b).orElse(null);
+      int attempt = history.stream().mapToInt(ProductionTask::getAttempt).max().orElse(0) + 1;
+      String before = current == null ? "BLOCKED" : stage(current).name();
+      history.stream().filter(t -> Set.of("WAITING", "IN_PROGRESS").contains(t.getStatus()))
+          .forEach(t -> t.supersede(clock.instant()));
+      ProductionStage target = ProductionStage.valueOf(targetName);
+      ProductionStage stored = target == ProductionStage.MODELING_QUEUE ? ProductionStage.MODELING : target;
+      Long assignee = null;
+      if (!Set.of(ProductionStage.PACKING, ProductionStage.COMPLETE).contains(stored)) {
+        WorkRole role = workRole(stored);
+        if (stored == ProductionStage.MODEL_REVIEW) assignee = access.reviewer(config().getReview());
+        else {
+          Long preferred = role == WorkRole.MODELING ? config().getModeling()
+              : role == WorkRole.DESIGN_QC ? config().getReview() : config().getPrinting();
+          assignee = access.eligible(preferred, role);
+        }
+      }
+      var next = ProductionTask.create(number, index, stored, assignee, attempt);
+      if (material != null) next.useMaterialsFrom(material.getId());
+      if (target == ProductionStage.MODELING || target == ProductionStage.PRINTING) next.start(clock.instant());
+      tasks.saveAndFlush(next);
+      for (String code : List.of("QC_FAILED", "PRINT_FAILED", "PRINT_ANOMALY", "UNASSIGNED", "PHOTO_INSUFFICIENT"))
+        issue(number, index, code, false);
+      updateStage(order); touch(order);
+      audit(number, "MOVE_STAGE", before, targetName, "아이 " + (index + 1) + ": " + reason);
+      return view(order, index);
+    });
+  }
+
   private void requireModelFiles(Long taskId, String number) {
     var present = new HashSet<String>();
+    var materialTasks = materialTaskIds(task(taskId));
     artifacts.findByOrderNumberOrderByIdAsc(number).stream()
-        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && a.getTaskId().equals(taskId))
+        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && materialTasks.contains(a.getTaskId()))
         .forEach(a -> present.add(a.getKind()));
     var missing = new TreeSet<>(Set.of("MULTIVIEW", "MODEL_SOURCE"));
     missing.removeAll(present);
@@ -486,6 +596,7 @@ public class WorkflowService {
               || !t.getStatus().equals("WAITING")
               || current == null
               || !current.getId().equals(taskId)) throw bad("현재 색상 지정 작업만 저장할 수 있습니다.");
+          issue(o.getOrderNumber(), t.getPetIndex(), "UNASSIGNED", false);
           if (!codes(o.getOrderNumber(), t.getPetIndex()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
           boolean complete = bool(b, "complete");
           if (!(b.get("mappings") instanceof List<?> entries)
@@ -564,18 +675,19 @@ public class WorkflowService {
     var history = history(o.getOrderNumber(), petIndex);
     var t =
         history.stream()
-            .filter(item -> !item.getStatus().equals("COMPLETED"))
+            .filter(item -> Set.of("WAITING", "IN_PROGRESS").contains(item.getStatus()))
             .reduce((a, b) -> b)
             .orElse(null);
     var modeling =
         t != null && t.getStage() == ProductionStage.MODELING ? t : submittedModeling(history, t);
     var block = new ArrayList<>(codes(o.getOrderNumber(), petIndex));
     if (t != null
-        && t.getStage() != ProductionStage.PACKING
-        && access.eligible(t.getAssigneeId(), workRole(t.getStage())) == null
+        && !Set.of(ProductionStage.PACKING, ProductionStage.COMPLETE).contains(t.getStage())
+        && (t.getStage() == ProductionStage.MODEL_REVIEW ? access.reviewer(t.getAssigneeId()) : access.eligible(t.getAssigneeId(), workRole(t.getStage()))) == null
         && !block.contains("UNASSIGNED")) block.add("UNASSIGNED");
     if (t != null && t.getStage() == ProductionStage.MODELING && !enoughPhotos(o, petIndex)
         && !block.contains("PHOTO_INSUFFICIENT")) block.add("PHOTO_INSUFFICIENT");
+    if (t != null && t.getStage() == ProductionStage.MODEL_REVIEW && access.canReview(t)) block.remove("UNASSIGNED");
     var actions = new ArrayList<String>();
     if (active(o)
         && paid(o)
@@ -608,7 +720,7 @@ public class WorkflowService {
       if (t != null
           && t.getStage() == ProductionStage.MODEL_REVIEW
           && t.getStatus().equals("WAITING")
-          && access.canTake(t, WorkRole.DESIGN_QC, actor.getId())
+          && access.canReview(t)
           && permissions.contains(REVIEW_MODEL)
           && paid(o)
           && block.isEmpty()) {
@@ -732,6 +844,11 @@ public class WorkflowService {
         t == null ? null : t.getAttempt(),
         "modelingTaskId",
         modeling == null ? null : modeling.getId(),
+        "materialTaskIds", modeling == null ? List.of() : materialTaskIds(modeling),
+        "allowedStageTargets", moveTargets(o, petIndex, t),
+        "stageMoveWarnings", stageMoveWarnings(o.getOrderNumber()),
+        "retirableArtifactIds", artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+            .filter(a -> canRetire(a, t, o)).map(ProductionArtifact::getId).toList(),
         "finishingHistory",
         permissions.contains(VIEW_PRODUCTION_FILES)
             ? finishingRecords.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
@@ -836,6 +953,7 @@ public class WorkflowService {
   public List<Map<String, Object>> mine() {
     var a = access.require(VIEW_ORDER_BASIC);
     return tasks.findByAssigneeIdAndStatusNotOrderByIdAsc(a.getId(), "COMPLETED").stream()
+        .filter(t -> Set.of("WAITING", "IN_PROGRESS").contains(t.getStatus()))
         .filter(t -> { var o = orders.findByOrderNumber(t.getOrderNumber()).orElse(null);
           return o != null && active(o); })
         .map(t -> view(order(t.getOrderNumber()), t.getPetIndex())).toList();
@@ -1006,7 +1124,7 @@ public class WorkflowService {
           if (!actionableBlockers(t, codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
             throw bad("차단 문제를 먼저 해결해 주세요.");
           t.complete(clock.instant());
-          Long reviewer = access.eligible(config().getReview(), WorkRole.DESIGN_QC);
+          Long reviewer = access.reviewer(config().getReview());
           ProductionTask reviewTask =
               tasks.saveAndFlush(
                   ProductionTask.create(
@@ -1023,7 +1141,7 @@ public class WorkflowService {
 
   private void ownReview(ProductionTask t) {
     access.require(REVIEW_MODEL);
-    access.take(t, WorkRole.DESIGN_QC, "검수");
+    access.takeReview(t);
     access.read(t.getOrderNumber());
   }
 
@@ -1045,6 +1163,7 @@ public class WorkflowService {
               || !t.getStatus().equals("WAITING")
               || !t.getId().equals(currentTask(o.getOrderNumber(), t.getPetIndex()).getId()))
             throw bad("현재 검수 대기 작업만 결정할 수 있습니다.");
+          issue(o.getOrderNumber(), t.getPetIndex(), "UNASSIGNED", false);
           if (!codes(o.getOrderNumber(), t.getPetIndex()).isEmpty()) throw bad("차단 문제를 먼저 해결해 주세요.");
           if (!enoughPhotos(o, t.getPetIndex())) throw bad("고객 사진이 3장 이상 필요합니다.");
           var history = history(o.getOrderNumber(), t.getPetIndex());
@@ -1076,12 +1195,15 @@ public class WorkflowService {
                   clock.instant()));
           t.complete(clock.instant());
           if (approved) {
+            Long colorist = access.eligible(t.getAssigneeId(), WorkRole.DESIGN_QC);
+            if (colorist == null) colorist = access.eligible(config().getReview(), WorkRole.DESIGN_QC);
             tasks.saveAndFlush(
                 ProductionTask.create(
                     o.getOrderNumber(), t.getPetIndex(),
                     ProductionStage.COLOR_MAPPING,
-                    t.getAssigneeId(),
-                    source.getAttempt()));
+                    colorist,
+                    t.getAttempt()));
+            issue(o.getOrderNumber(), t.getPetIndex(), "UNASSIGNED", colorist == null);
             updateStage(o);
             issue(o.getOrderNumber(), t.getPetIndex(), "QC_FAILED", false);
           } else {
@@ -1131,7 +1253,7 @@ public class WorkflowService {
             target = role == WorkRole.MODELING ? defaults.getModeling()
                 : role == WorkRole.DESIGN_QC ? defaults.getReview() : defaults.getPrinting();
           }
-          if (access.eligible(target, role) == null) throw bad("해당 역할의 활성 담당자를 선택해 주세요.");
+          if ((t.getStage() == ProductionStage.MODEL_REVIEW ? access.reviewer(target) : access.eligible(target, role)) == null) throw bad("해당 작업 권한의 활성 담당자를 선택해 주세요.");
           String before = String.valueOf(t.getAssigneeId());
           t.assign(target);
           issue(number, t.getPetIndex(), "UNASSIGNED", false);
@@ -1201,6 +1323,7 @@ public class WorkflowService {
                     a.getStatus(),
                     "workRoles",
                     a.getWorkRoles(),
+                    "canReviewModel", access.reviewer(a.getId()) != null,
                     "version",
                     a.getVersion()))
         .toList();
@@ -1299,52 +1422,58 @@ public class WorkflowService {
     if (replaces == null) return;
     var original = artifacts.findById(replaces).orElseThrow(() -> bad("교체할 이미지를 찾을 수 없습니다."));
     if (!kind.equals("MULTIVIEW") || !original.getKind().equals(kind)
-        || !original.isConfirmed() || original.getMultiviewState() != null || !original.getTaskId().equals(task.getId())
+        || !original.isConfirmed() || original.getMultiviewState() != null || !materialTaskIds(task).contains(original.getTaskId())
         || !original.getOrderNumber().equals(task.getOrderNumber())
         || artifacts.existsByReplacesArtifactIdAndConfirmedTrue(replaces))
       throw bad("같은 아이·현재 모델링 회차의 최신 4면도만 교체할 수 있습니다.");
   }
 
-  private List<ProductionArtifact> currentMultiviews(Long taskId, String number) {
+  List<ProductionArtifact> currentMultiviews(Long taskId, String number) {
+    var materialTasks = materialTaskIds(task(taskId));
     var all = artifacts.findByOrderNumberOrderByIdAsc(number).stream()
-        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && a.getTaskId().equals(taskId)
+        .filter(a -> a.isConfirmed() && a.getMultiviewState() == null && materialTasks.contains(a.getTaskId())
             && a.getKind().equals("MULTIVIEW")).toList();
     var replaced = all.stream().map(ProductionArtifact::getReplacesArtifactId)
         .filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
     return all.stream().filter(a -> !replaced.contains(a.getId())).toList();
   }
 
-  public Map<String, Object> retireMultiview(String artifactId, String key, Map<String, Object> b) {
-    var a = artifacts.findById(artifactId).orElseThrow(() -> bad("이미지를 찾을 수 없습니다."));
-    var t = task(a.getTaskId());
-    artifactActor(t, "MULTIVIEW");
-    return command("retire-multiview:" + artifactId, key, b, () -> {
-      entityManager.refresh(t);
-      artifactActor(t, "MULTIVIEW");
-      access.require(VIEW_PRODUCTION_FILES);
-      var o = locked(t.getOrderNumber());
-      version(o, b);
-      if (!artifactReady(o, t, "MULTIVIEW")
-          || currentMultiviews(t.getId(), o.getOrderNumber()).stream()
-              .noneMatch(current -> current.getId().equals(artifactId)))
-        throw bad("같은 아이·현재 회차의 4면도만 삭제할 수 있습니다.");
-      entityManager.refresh(a);
-      a.retireMultiview();
-      artifacts.saveAndFlush(a);
-      // 교체본만 제외하면 숨겨져 있던 이전 이미지가 다시 현재 목록에 나타난다.
-      var previousId = a.getReplacesArtifactId();
+  private boolean canRetire(ProductionArtifact artifact, ProductionTask current, GoodsSurveyFulfillment order) {
+    if (current == null || !active(order) || !paid(order) || !artifact.isConfirmed() || artifact.getMultiviewState() != null) return false;
+    if (task(artifact.getTaskId()).getPetIndex() != current.getPetIndex()) return false;
+    var actor = access.current();
+    var permissions = access.effective(actor);
+    if (!permissions.contains(VIEW_PRODUCTION_FILES)) return false;
+    if (permissions.contains(OVERRIDE_WORKFLOW) || actor.getRole() == AdminRole.ADMIN) return true;
+    if (!artifactReady(order, current, artifact.getKind())) return false;
+    if (current.getStage() == ProductionStage.MODELING)
+      return permissions.contains(COMPLETE_MODELING) && access.canTake(current, WorkRole.MODELING, actor.getId());
+    if (Set.of(ProductionStage.COLOR_MAPPING, ProductionStage.PLATE_PREPARATION).contains(current.getStage()))
+      return permissions.contains(MAP_FILAMENT) && access.canTake(current, WorkRole.DESIGN_QC, actor.getId());
+    return permissions.contains(MANAGE_PRINT_BATCH) && access.canTake(current, WorkRole.PRINT_FINISHING, actor.getId());
+  }
+
+  public Map<String, Object> retireArtifact(String artifactId, String key, Map<String, Object> input) {
+    var artifact = artifacts.findById(artifactId).orElseThrow(() -> bad("파일을 찾을 수 없습니다."));
+    access.read(artifact.getOrderNumber());
+    return command("retire-artifact:" + artifactId, key, input, () -> {
+      var order = locked(artifact.getOrderNumber());
+      version(order, input);
+      entityManager.refresh(artifact);
+      var current = currentTask(order.getOrderNumber(), petIndex(input));
+      if (!canRetire(artifact, current, order)) throw new WorkflowException(403, "FORBIDDEN", "현재 아이의 파일을 수정할 수 있는 단계와 권한을 확인해 주세요.");
+      artifact.retire();
+      var previousId = artifact.getReplacesArtifactId();
       var visited = new HashSet<String>();
       while (previousId != null && visited.add(previousId)) {
-        var previous = artifacts.findById(previousId).orElseThrow(() -> bad("이전 이미지 기록을 찾을 수 없습니다."));
-        if (!previous.getTaskId().equals(t.getId()) || !previous.getKind().equals("MULTIVIEW")
-            || !previous.getOrderNumber().equals(o.getOrderNumber())) throw bad("이미지 교체 기록을 확인해 주세요.");
-        previous.retireMultiview();
-        artifacts.saveAndFlush(previous);
-        previousId = previous.getReplacesArtifactId();
+        var previous = artifacts.findById(previousId).orElseThrow(() -> bad("이전 파일 기록을 찾을 수 없습니다."));
+        if (!previous.getOrderNumber().equals(order.getOrderNumber())
+            || task(previous.getTaskId()).getPetIndex() != current.getPetIndex()) throw bad("이전 파일의 연결을 확인해 주세요.");
+        previous.retire(); previousId = previous.getReplacesArtifactId();
       }
-      touch(o);
-      audit(o.getOrderNumber(), "RETIRE_MULTIVIEW", artifactId, "RETIRED", null);
-      return view(o, t.getPetIndex());
+      artifacts.flush(); touch(order);
+      audit(order.getOrderNumber(), artifact.getKind().equals("MULTIVIEW") ? "RETIRE_MULTIVIEW" : "RETIRE_ARTIFACT", artifactId, "RETIRED", "아이 " + (current.getPetIndex() + 1));
+      return view(order, current.getPetIndex());
     });
   }
 
@@ -1373,9 +1502,9 @@ public class WorkflowService {
           throw bad("같은 아이·현재 회차에 업로드가 완료된 4장만 등록할 수 있습니다. 만료됐다면 4장을 다시 선택해 주세요.");
       }
       artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
-          .filter(a -> a.getTaskId().equals(taskId) && a.getKind().equals("MULTIVIEW")
+          .filter(a -> materialTaskIds(t).contains(a.getTaskId()) && a.getKind().equals("MULTIVIEW")
               && a.isConfirmed() && a.getMultiviewState() == null)
-          .forEach(ProductionArtifact::retireMultiview);
+          .forEach(ProductionArtifact::retire);
       selected.forEach(ProductionArtifact::publishMultiview);
       artifacts.flush();
       touch(o);
@@ -1417,7 +1546,7 @@ public class WorkflowService {
               long size = number(b, "size");
               if (!(KINDS.contains(kind) || kind.equals("COLORED_MODEL"))
                   || size < 1
-                  || size > 100L * 1024 * 1024
+                  || size > (kind.equals("MULTIVIEW") ? 100L : 200L) * 1024 * 1024
                   || !name.matches("[^/\\\\\\p{Cntrl}]+")
                   || name.equals(".")
                   || name.equals("..")) throw bad("파일 종류·이름·크기를 확인해 주세요.");
@@ -1507,6 +1636,14 @@ public class WorkflowService {
             throw bad("이미지 파일의 실제 형식이 일치하지 않습니다.");
           if (!a.isConfirmed() && a.getExpiresAt().isBefore(clock.instant()))
             throw bad("업로드 시간이 만료됐습니다. 다시 등록해 주세요.");
+          if (!a.getKind().equals("MULTIVIEW")) {
+            var source = t.getStage() == ProductionStage.MODELING ? t : submittedModeling(history(o.getOrderNumber(), t.getPetIndex()), t);
+            var sourceIds = source == null ? Set.<Long>of(t.getId()) : materialTaskIds(source);
+            artifacts.findByOrderNumberOrderByIdAsc(o.getOrderNumber()).stream()
+                .filter(old -> !old.getId().equals(a.getId()) && old.isConfirmed() && old.getMultiviewState() == null
+                    && old.getKind().equals(a.getKind()) && (old.getTaskId().equals(t.getId()) || sourceIds.contains(old.getTaskId())))
+                .forEach(ProductionArtifact::retire);
+          }
           a.confirm();
           artifacts.saveAndFlush(a);
           touch(o);
@@ -1556,7 +1693,7 @@ public class WorkflowService {
     access.require(DOWNLOAD_PRODUCTION_FILES);
     order(a.getOrderNumber());
     var o = order(a.getOrderNumber());
-    if (!a.isConfirmed()
+    if (!a.isConfirmed() || a.getMultiviewState() != null
         || Set.of("CANCELED", "EXPIRED").contains(o.orderStatus())
         || o.getDeleteAfter() != null && !o.getDeleteAfter().isAfter(clock.instant()))
       throw bad("열람 기간이 끝났거나 확정되지 않은 파일입니다.");

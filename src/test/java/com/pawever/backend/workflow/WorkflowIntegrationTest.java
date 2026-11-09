@@ -105,7 +105,6 @@ class WorkflowIntegrationTest {
         ownerId, "MODEL_SOURCE", "model.3mf", "application/octet-stream", 10, Instant.now().plusSeconds(600));
     model.confirm(); artifactRecords.saveAndFlush(model);
     expectAs(stranger, "/api/production/artifacts/" + ids.get(6) + "/retire", versionBody(row), 404);
-    expectAs(owner, "/api/production/artifacts/" + model.getId() + "/retire", versionBody(row), 400);
     for (int i = 6; i >= 4; i--) {
       String path = "/api/production/artifacts/" + ids.get(i) + "/retire";
       String body = versionBody(row), key = UUID.randomUUID().toString();
@@ -2636,6 +2635,81 @@ class WorkflowIntegrationTest {
   }
 
   @Test
+  void ownerAndExplicitReviewPermissionCanApproveWithoutAWorkRole() throws Exception {
+    var row = readyForReview();
+    row = send(owner, reviewPath(row), reviewBody(row, "APPROVED", null, "문제없음"), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText()).isEqualTo("COLOR_MAPPING");
+    row = moveStage(owner, row, "MODEL_REVIEW", 0);
+    String helper = account(AdminRole.PRODUCTION, Set.of());
+    long helperId = readJson(helper, "/api/admin/me").get("id").asLong();
+    for (var permission : List.of(PermissionKey.VIEW_ORDER_BASIC, PermissionKey.VIEW_CUSTOMER_PHOTOS,
+        PermissionKey.VIEW_PRODUCTION_FILES, PermissionKey.REVIEW_MODEL))
+      overrides.saveAndFlush(StaffPermissionOverride.of(helperId, permission, true, null, "검수 위임"));
+    var review = tasks.findById(row.get("taskId").asLong()).orElseThrow();
+    review.assign(helperId); tasks.saveAndFlush(review);
+    row = send(helper, reviewPath(row), reviewBody(row, "APPROVED", null, "문제없음"), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("reviews").size()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText()).isEqualTo("COLOR_MAPPING");
+    org.assertj.core.api.Assertions.assertThat(row.get("assignee").get("id").asLong()).isEqualTo(reviewerId);
+  }
+
+  com.fasterxml.jackson.databind.JsonNode moveStage(String token, com.fasterxml.jackson.databind.JsonNode row, String stage, int petIndex) throws Exception {
+    return send(token, "/api/admin/orders/" + number + "/workflow/move-stage",
+        jsonBody(Map.of("version", row.get("version").asLong(), "stage", stage, "petIndex", petIndex,
+            "reason", "파일 수정", "notificationsAcknowledged", true)), UUID.randomUUID().toString());
+  }
+
+  @Test
+  void rewindReusesFourViewsAndDeletingModelDoesNotResurrectOrAlterPayment() throws Exception {
+    var row = readyForReview();
+    int files = row.get("artifacts").size();
+    row = moveStage(modeler, row, "MODELING", 0);
+    org.assertj.core.api.Assertions.assertThat(row.get("artifacts").size()).isEqualTo(files);
+    org.assertj.core.api.Assertions.assertThat(row.get("materialTaskIds").size()).isEqualTo(2);
+    var source = java.util.stream.StreamSupport.stream(row.get("artifacts").spliterator(), false)
+        .filter(a -> a.get("kind").asText().equals("MODEL_SOURCE")).findFirst().orElseThrow();
+    row = send(modeler, "/api/production/artifacts/" + source.get("id").asText() + "/retire", versionBody(row), UUID.randomUUID().toString());
+    expectAs(modeler, "/api/production/tasks/" + row.get("taskId") + "/complete", versionBody(row), 422);
+    localUploadStorage();
+    var uploaded = send(modeler, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests",
+        jsonBody(Map.of("version", row.get("version").asLong(), "kind", "MODEL_SOURCE", "fileName", "corrected.3mf", "contentType", "application/octet-stream", "size", 10)), UUID.randomUUID().toString());
+    row = send(modeler, "/api/production/artifacts/" + uploaded.get("artifactId").asText() + "/confirm", versionBody(uploaded), UUID.randomUUID().toString());
+    row = send(modeler, "/api/production/tasks/" + row.get("taskId") + "/complete", versionBody(row), UUID.randomUUID().toString());
+    row = send(owner, reviewPath(row), reviewBody(row, "APPROVED", null, ""), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText()).isEqualTo("COLOR_MAPPING");
+    org.assertj.core.api.Assertions.assertThat(artifacts.findById(source.get("id").asText()).orElseThrow().getMultiviewState()).isEqualTo("RETIRED");
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getPaymentAmountKrw()).isEqualTo(18900);
+    expectAs(modeler, "/api/admin/orders/" + number + "/workflow/move-stage",
+        jsonBody(Map.of("version", row.get("version").asLong(), "stage", "PACKING", "reason", "진행")), 403);
+  }
+
+  @Test
+  void staffCannotRewindSiblingPetAndOwnerCanSelectEveryProductionStage() throws Exception {
+    addSecondPetFixture();
+    var row = readyForReview();
+    var sibling = petRow(1);
+    expectAs(stranger, "/api/admin/orders/" + number + "/workflow/move-stage",
+        jsonBody(Map.of("version", sibling.get("version").asLong(), "petIndex", 1, "stage", "MODELING", "reason", "수정", "notificationsAcknowledged", true)), 403);
+    var originalSiblingTask = sibling.get("taskId");
+    for (String stage : List.of("MODELING_QUEUE", "MODELING", "MODEL_REVIEW", "COLOR_MAPPING", "PLATE_PREPARATION", "PRINT_QUEUE", "PRINTING", "POST_PROCESSING", "QC", "PACKING", "COMPLETE")) {
+      row = moveStage(owner, row, stage, 0);
+      org.assertj.core.api.Assertions.assertThat(row.get("productionStage").asText()).isEqualTo(stage);
+    }
+    org.assertj.core.api.Assertions.assertThat(petRow(1).get("taskId")).isEqualTo(originalSiblingTask);
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().shipmentStatus()).isEqualTo("NOT_READY");
+  }
+
+  @Test
+  void modelUploadAllows200MiBAndRejectsLargerFiles() throws Exception {
+    var row = moveStage(owner, readyForReview(), "MODELING", 0);
+    localUploadStorage();
+    var request = send(owner, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests",
+        jsonBody(Map.of("version", row.get("version").asLong(), "kind", "MODEL_SOURCE", "fileName", "large.3mf", "contentType", "application/octet-stream", "size", 200L * 1024 * 1024)), UUID.randomUUID().toString());
+    expectAs(owner, "/api/production/tasks/" + row.get("taskId") + "/artifacts/upload-requests",
+        jsonBody(Map.of("version", request.get("version").asLong(), "kind", "MODEL_SOURCE", "fileName", "too-large.3mf", "contentType", "application/octet-stream", "size", 200L * 1024 * 1024 + 1)), 400);
+  }
+
+  @Test
   void reviewApprovalCreatesOneColorTaskAndPreservesPayment() throws Exception {
     var row = readyForReview();
     String path = reviewPath(row), body = reviewBody(row, "APPROVED", null, "형상 확인 완료");
@@ -2731,7 +2805,7 @@ class WorkflowIntegrationTest {
     var row = readyForReview();
     // 검수도 공동 작업함이다. 검수 역할의 다른 실무자는 이어받을 수 있고,
     // 역할이 없는 대표나 역할이 다른 모델러는 막힌다.
-    for (String unauthorized : List.of(owner, modeler)) {
+    for (String unauthorized : List.of(modeler)) {
       mvc.perform(
               post(reviewPath(row))
                   .header("Authorization", "Bearer " + unauthorized)

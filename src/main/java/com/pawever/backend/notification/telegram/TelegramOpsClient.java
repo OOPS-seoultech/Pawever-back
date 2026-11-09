@@ -1,6 +1,12 @@
 package com.pawever.backend.notification.telegram;
 
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.core.io.ByteArrayResource;
+import com.pawever.backend.workflow.ModelReviewMedia;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
@@ -40,6 +46,39 @@ public class TelegramOpsClient {
       return true;
     } catch (RestClientException e) {
       log.error("검수용 텔레그램 알림 전송 실패: {}", describe(e));
+      return false;
+    }
+  }
+
+  public boolean sendAlbum(ModelReviewMedia.Album album) {
+    if (!properties.isConfigured() || album.photos().isEmpty()) return false;
+    var body = new LinkedMultiValueMap<String, Object>();
+    body.add("chat_id", properties.getChatId());
+    var media = new ArrayList<Map<String, Object>>();
+    for (int i = 0; i < Math.min(9, album.photos().size()); i++) {
+      var photo = album.photos().get(i);
+      String name = "photo" + i, fileName = name + ".jpg";
+      var bytes = new ByteArrayResource(photo.bytes()) { @Override public String getFilename() { return fileName; } };
+      var imageHeaders = new HttpHeaders(); imageHeaders.setContentType(MediaType.IMAGE_JPEG);
+      body.add(name, new HttpEntity<>(bytes, imageHeaders));
+      media.add(Map.of("type", "photo", "media", "attach://" + name,
+          "caption", (i == 0 ? album.title() + "\n" : "") + photo.caption()));
+    }
+    try {
+      String method;
+      if (media.size() == 1) {
+        method = "sendPhoto";
+        body.add("photo", "attach://photo0"); body.add("caption", media.get(0).get("caption"));
+      } else {
+        method = "sendMediaGroup";
+        body.add("media", new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(media));
+      }
+      var headers = new HttpHeaders(); headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+      restTemplate.postForEntity(properties.getBaseUrl() + "/bot" + properties.getBotToken() + "/" + method,
+          new HttpEntity<>(body, headers), String.class);
+      return true;
+    } catch (RestClientException | java.io.IOException error) {
+      log.error("검수 사진 알림 전송 실패: {}", error.getClass().getSimpleName());
       return false;
     }
   }

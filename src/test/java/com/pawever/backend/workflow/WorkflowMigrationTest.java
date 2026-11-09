@@ -255,7 +255,7 @@ class WorkflowMigrationTest {
           + " VALUES('existing@example.test','existing','PRODUCTION','ACTIVE','unchanged-hash')");
     }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(14);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(15);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     var deployedV29 = java.util.Arrays.stream(shippingVersion.info().applied())
         .filter(migration -> migration.getVersion().toString().equals("29")).findFirst().orElseThrow();
