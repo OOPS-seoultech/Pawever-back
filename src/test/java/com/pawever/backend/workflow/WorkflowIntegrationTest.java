@@ -89,6 +89,45 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(readJson(modeler, "/api/admin/notices/"+guide.getId()).get("body").asText()).isNotBlank();
   }
 
+  @Test
+  void deletingLegacyMultiviewsPreservesFilesAndLeavesFourCurrentImages() throws Exception {
+    var row = send(owner, "/api/admin/orders/" + number + "/payments/confirm",
+        jsonBody(Map.of("version", orders.findByOrderNumber(number).orElseThrow().getVersion(), "amount", 18900)), UUID.randomUUID().toString());
+    long taskId = row.get("taskId").asLong();
+    long ownerId = readJson(owner, "/api/admin/me").get("id").asLong();
+    var ids = new ArrayList<String>();
+    for (int i = 0; i < 7; i++) {
+      var artifact = ProductionArtifact.pending(UUID.randomUUID().toString(), number, taskId,
+          ownerId, "MULTIVIEW", "view-" + i + ".png", "image/png", 10, Instant.now().plusSeconds(600));
+      artifact.confirm(); artifactRecords.saveAndFlush(artifact); ids.add(artifact.getId());
+    }
+    var model = ProductionArtifact.pending(UUID.randomUUID().toString(), number, taskId,
+        ownerId, "MODEL_SOURCE", "model.3mf", "application/octet-stream", 10, Instant.now().plusSeconds(600));
+    model.confirm(); artifactRecords.saveAndFlush(model);
+    expectAs(stranger, "/api/production/artifacts/" + ids.get(6) + "/retire", versionBody(row), 404);
+    expectAs(owner, "/api/production/artifacts/" + model.getId() + "/retire", versionBody(row), 400);
+    for (int i = 6; i >= 4; i--) {
+      String path = "/api/production/artifacts/" + ids.get(i) + "/retire";
+      String body = versionBody(row), key = UUID.randomUUID().toString();
+      row = send(owner, path, body, key);
+      org.assertj.core.api.Assertions.assertThat(send(owner, path, body, key)).isEqualTo(row);
+      org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(ids.get(i)).orElseThrow().getMultiviewState()).isEqualTo("RETIRED");
+    }
+    org.assertj.core.api.Assertions.assertThat(row.get("artifacts").size()).isEqualTo(5);
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findByOrderNumberOrderByIdAsc(number)).hasSize(8);
+    org.assertj.core.api.Assertions.assertThat(orders.findByOrderNumber(number).orElseThrow().getPaymentAmountKrw()).isEqualTo(18900);
+    org.mockito.Mockito.when(storage.download(org.mockito.ArgumentMatchers.anyString())).thenReturn(new byte[]{1,2,3});
+    byte[] archive = mvc.perform(post("/api/production/tasks/" + taskId + "/artifacts/multiview.zip")
+        .header("Authorization", "Bearer " + owner)).andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+    try (var zip = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(archive))) {
+      int count = 0; java.util.zip.ZipEntry entry;
+      while ((entry = zip.getNextEntry()) != null) {
+        org.assertj.core.api.Assertions.assertThat(entry.getName()).doesNotContain("view-4", "view-5", "view-6"); count++;
+      }
+      org.assertj.core.api.Assertions.assertThat(count).isEqualTo(4);
+    }
+  }
+
   void localUploadStorage() {
     org.mockito.Mockito.when(storage.presignUpload(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
         .thenReturn(new GoodsSurveyPhotoStorage.PresignedUpload("https://storage.example.test/put", Map.of(), Instant.now().plusSeconds(600)));
@@ -186,6 +225,9 @@ class WorkflowIntegrationTest {
     mvc.perform(post("/api/production/tasks/" + row.get("taskId") + "/artifacts/multiview.zip")).andExpect(status().isUnauthorized());
 
     expectAs(owner, path, jsonBody(Map.of("version", confirmed.get("version").asLong(), "kind", "MULTIVIEW", "fileName", "again.png", "size", 10, "contentType", "image/png", "replacesArtifactId", original.getId())), 400);
+    var removed = send(owner, "/api/production/artifacts/" + request.get("artifactId").asText() + "/retire", versionBody(confirmed), UUID.randomUUID().toString());
+    org.assertj.core.api.Assertions.assertThat(removed.get("artifacts").size()).isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(artifactRecords.findById(original.getId()).orElseThrow().getMultiviewState()).isEqualTo("RETIRED");
   }
 
   @Test

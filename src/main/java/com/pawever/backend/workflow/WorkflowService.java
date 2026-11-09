@@ -1313,6 +1313,40 @@ public class WorkflowService {
     return all.stream().filter(a -> !replaced.contains(a.getId())).toList();
   }
 
+  public Map<String, Object> retireMultiview(String artifactId, String key, Map<String, Object> b) {
+    var a = artifacts.findById(artifactId).orElseThrow(() -> bad("이미지를 찾을 수 없습니다."));
+    var t = task(a.getTaskId());
+    artifactActor(t, "MULTIVIEW");
+    return command("retire-multiview:" + artifactId, key, b, () -> {
+      entityManager.refresh(t);
+      artifactActor(t, "MULTIVIEW");
+      access.require(VIEW_PRODUCTION_FILES);
+      var o = locked(t.getOrderNumber());
+      version(o, b);
+      if (!artifactReady(o, t, "MULTIVIEW")
+          || currentMultiviews(t.getId(), o.getOrderNumber()).stream()
+              .noneMatch(current -> current.getId().equals(artifactId)))
+        throw bad("같은 아이·현재 회차의 4면도만 삭제할 수 있습니다.");
+      entityManager.refresh(a);
+      a.retireMultiview();
+      artifacts.saveAndFlush(a);
+      // 교체본만 제외하면 숨겨져 있던 이전 이미지가 다시 현재 목록에 나타난다.
+      var previousId = a.getReplacesArtifactId();
+      var visited = new HashSet<String>();
+      while (previousId != null && visited.add(previousId)) {
+        var previous = artifacts.findById(previousId).orElseThrow(() -> bad("이전 이미지 기록을 찾을 수 없습니다."));
+        if (!previous.getTaskId().equals(t.getId()) || !previous.getKind().equals("MULTIVIEW")
+            || !previous.getOrderNumber().equals(o.getOrderNumber())) throw bad("이미지 교체 기록을 확인해 주세요.");
+        previous.retireMultiview();
+        artifacts.saveAndFlush(previous);
+        previousId = previous.getReplacesArtifactId();
+      }
+      touch(o);
+      audit(o.getOrderNumber(), "RETIRE_MULTIVIEW", artifactId, "RETIRED", null);
+      return view(o, t.getPetIndex());
+    });
+  }
+
   public Map<String, Object> publishMultiviewSet(Long taskId, String key, Map<String, Object> b) {
     var t = task(taskId);
     artifactActor(t, "MULTIVIEW");
