@@ -102,7 +102,7 @@ public class AdminAccountService {
         if (accountRepository.findByEmail(normalized).isPresent()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
-        if (workRoles == null || workRoles.isEmpty() || workRoles.stream().anyMatch(java.util.Objects::isNull)) {
+        if (workRoles == null || workRoles.stream().anyMatch(java.util.Objects::isNull)) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
         String token = randomToken();
