@@ -24,6 +24,8 @@ public class ModelReviewMedia {
   private final GoodsOrderPetRepository pets;
   private final GoodsSurveyPhotoStorage storage;
   private final WorkflowService workflow;
+  private final StaffPermissions access;
+  private final com.pawever.backend.notification.telegram.TelegramOpsClient telegram;
 
   public record Photo(String caption, byte[] bytes) {}
   public record Album(String title, List<Photo> photos) {}
@@ -56,6 +58,33 @@ public class ModelReviewMedia {
         result.add(new Photo(name + " · 4면도 " + (i + 1), jpeg(storage.download(views.get(i).getObjectKey()))));
     }
     return new Album(event.orderNumber() + " · " + name + " · 검수 대기", result);
+  }
+
+  @Transactional
+  public Map<String, Object> resend(String number, String key, Map<String, Object> body) {
+    if (access.current().getRole() != com.pawever.backend.admin.entity.AdminRole.OWNER)
+      throw new WorkflowException(403, "FORBIDDEN", "대표만 검수 사진 알림을 다시 보낼 수 있습니다.");
+    access.require(com.pawever.backend.admin.entity.PermissionKey.VIEW_CUSTOMER_PHOTOS);
+    access.require(com.pawever.backend.admin.entity.PermissionKey.VIEW_PRODUCTION_FILES);
+    access.read(number);
+    return workflow.command("resend-review-telegram:" + number, key, body, () -> {
+      Object value = body.getOrDefault("petIndex", 0);
+      if (!(value instanceof Number index) || index.doubleValue() != index.intValue() || index.intValue() < 0)
+        throw new WorkflowException(400, "INVALID_INPUT", "반려동물을 확인해 주세요.");
+      var order = orders.findByOrderNumber(number).orElseThrow();
+      workflow.version(order, body);
+      var row = workflow.detail(number, index.intValue());
+      if (!"MODEL_REVIEW".equals(row.get("productionStage")) || !"WAITING".equals(row.get("taskStatus")))
+        throw new WorkflowException(400, "INVALID_INPUT", "현재 검수 대기 중인 아이만 다시 알릴 수 있습니다.");
+      var album = load(new ModelReviewRequestedEvent(number, ((Number) row.get("taskId")).longValue()));
+      if (album == null || album.photos().isEmpty())
+        throw new WorkflowException(400, "INVALID_INPUT", "보낼 검수 사진이 없습니다.");
+      boolean accepted = telegram.sendAlbum(new Album("[검수 알림 재발송] " + album.title(), album.photos()));
+      workflow.audit(number, "RESEND_REVIEW_TELEGRAM", null, accepted ? "ACCEPTED" : "FAILED",
+          "아이 " + (index.intValue() + 1) + " · 사진 " + album.photos().size() + "장");
+      row.put("telegramNotification", Map.of("accepted", accepted, "photoCount", album.photos().size()));
+      return row;
+    });
   }
 
   static byte[] jpeg(byte[] source) {
