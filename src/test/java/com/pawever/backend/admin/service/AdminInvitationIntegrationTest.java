@@ -88,4 +88,17 @@ class AdminInvitationIntegrationTest {
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/admin/me").header("Authorization", oldAuth)).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void 메일발송_실패시_계정을_남기지_않는다() throws Exception {
+        var owner = account(AdminRole.OWNER);
+        String email = UUID.randomUUID() + "@example.test";
+        org.mockito.Mockito.doThrow(new com.pawever.backend.global.exception.CustomException(
+                com.pawever.backend.global.exception.ErrorCode.ADMIN_MAIL_SEND_FAILED))
+                .when(mailer).send(org.mockito.ArgumentMatchers.eq(email), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        mvc.perform(post("/api/admin/accounts").header("Authorization", "Bearer " + tokens.createToken(owner.getId(), owner.getRole()))
+                .contentType("application/json").content("{\"email\":\"" + email + "\",\"name\":\"직원\",\"role\":\"PRODUCTION\",\"workRoles\":[\"MODELING\"]}"))
+                .andExpect(status().isBadGateway());
+        assertThat(accounts.findByEmail(email)).isEmpty();
+    }
 }

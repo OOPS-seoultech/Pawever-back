@@ -158,8 +158,10 @@ public class AdminAccount extends BaseTimeEntity {
 
     public void recordLogin(Instant at) {
         this.lastLoginAt = at;
-        this.consecutiveLoginFailures = 0;
+        resetLoginFailures();
     }
+
+    public void resetLoginFailures() { this.consecutiveLoginFailures = 0; }
 
     public int recordLoginFailure() {
         return ++consecutiveLoginFailures;

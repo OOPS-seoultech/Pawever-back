@@ -216,13 +216,14 @@ public class AdminAccountService {
             }
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
-        account.recordLogin(clock.instant());
+        account.resetLoginFailures();
         if (account.isAwaitingApproval()) {
             throw new CustomException(ErrorCode.ADMIN_ACCOUNT_PENDING_APPROVAL);
         }
         if (!account.canSignIn()) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
+        account.recordLogin(clock.instant());
         return tokenProvider.createToken(account.getId(), account.getRole());
     }
 

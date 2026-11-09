@@ -251,13 +251,23 @@ class WorkflowMigrationTest {
       s.execute(
           "UPDATE goods_survey_fulfillments SET delivery_completed_at='2096-01-31 03:00:00',"
               + " delete_after='2096-05-01 03:00:00' WHERE order_number='PE-MIG-2'");
+      s.execute("INSERT INTO admin_accounts(email,name,role,status,password_hash)"
+          + " VALUES('existing@example.test','existing','PRODUCTION','ACTIVE','unchanged-hash')");
     }
     var shippingVersion = Flyway.configure().dataSource(url, user, password).load();
-    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(13);
+    assertThat(shippingVersion.migrate().migrationsExecuted).isEqualTo(14);
     assertThat(shippingVersion.migrate().migrationsExecuted).isZero();
     var deployedV29 = java.util.Arrays.stream(shippingVersion.info().applied())
         .filter(migration -> migration.getVersion().toString().equals("29")).findFirst().orElseThrow();
     assertThat(deployedV29.getChecksum()).isEqualTo(-1393156261);
+
+    try (var c = DriverManager.getConnection(url, user, password);
+        var s = c.createStatement();
+        var r = s.executeQuery("SELECT password_hash,consecutive_login_failures FROM admin_accounts WHERE email='existing@example.test'")) {
+      assertThat(r.next()).isTrue();
+      assertThat(r.getString(1)).isEqualTo("unchanged-hash");
+      assertThat(r.getInt(2)).isZero();
+    }
 
     try (var c = DriverManager.getConnection(url, user, password);
         var statement = c.createStatement();
