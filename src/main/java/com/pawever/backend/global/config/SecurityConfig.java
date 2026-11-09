@@ -112,7 +112,7 @@ public class SecurityConfig {
      */
     private CorsConfiguration adminCors() {
         CorsConfiguration configuration = baseCors();
-        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Content-Type", "Authorization", "Idempotency-Key"));
         return configuration;
     }
