@@ -49,6 +49,24 @@ class AdminCorsTest {
                 .isNotNull();
     }
 
+    @Test
+    void 공지_수정의_PUT_사전_요청이_허용된다() throws java.io.IOException {
+        MockHttpServletRequest request = new MockHttpServletRequest("OPTIONS", "/api/admin/notices/2");
+        request.addHeader("Origin", "https://www.pawever.kr");
+        request.addHeader("Access-Control-Request-Method", "PUT");
+        request.addHeader("Access-Control-Request-Headers", "authorization,content-type,idempotency-key");
+        var properties = new CorsProperties();
+        properties.setAllowedOrigins(java.util.List.of("https://www.pawever.kr"));
+        var source = new SecurityConfig(null, null, properties).corsConfigurationSource();
+        var response = new org.springframework.mock.web.MockHttpServletResponse();
+
+        assertThat(new org.springframework.web.cors.DefaultCorsProcessor()
+                .processRequest(source.getCorsConfiguration(request), request, response)).isTrue();
+        assertThat(response.getHeader("Access-Control-Allow-Origin")).isEqualTo("https://www.pawever.kr");
+        assertThat(response.getHeader("Access-Control-Allow-Methods")).contains("PUT");
+        assertThat(source.getCorsConfiguration(request).checkOrigin("https://untrusted.example")).isNull();
+    }
+
     /** 굿즈 설문은 로그인 토큰을 쓰지 않는다. 관리자 쪽을 열면서 같이 넓히지 않는다. */
     @Test
     void 공개_설문_경로는_로그인_토큰을_받지_않는다() {
