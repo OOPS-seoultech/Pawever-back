@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 담당자 관리.
@@ -39,11 +38,12 @@ public class AdminAccountController {
         );
     }
 
-    /** 초대 값은 지금 한 번만 볼 수 있다. 저장하지 않고 해시만 남긴다. */
+    /** 초대 링크는 수신자에게만 메일로 보낸다. */
     @PostMapping
-    public ApiResponse<Map<String, String>> invite(@Valid @RequestBody AdminInviteRequest request) {
-        String inviteToken = accountService.invite(request.email(), request.name(), request.role());
-        return ApiResponse.ok(Map.of("inviteToken", inviteToken));
+    @PreAuthorize("hasRole('OWNER')")
+    public ApiResponse<Void> invite(@Valid @RequestBody AdminInviteRequest request) {
+        accountService.invite(request.email(), request.name(), request.role(), request.workRoles());
+        return ApiResponse.ok();
     }
 
     /**
@@ -65,14 +65,17 @@ public class AdminAccountController {
     }
 
     @PostMapping("/{accountId}/reinvite")
-    public ApiResponse<Map<String, String>> reinvite(@PathVariable Long accountId) {
-        return ApiResponse.ok(Map.of("inviteToken", accountService.reinvite(accountId)));
+    @PreAuthorize("hasRole('OWNER')")
+    public ApiResponse<Void> reinvite(@PathVariable Long accountId) {
+        accountService.reinvite(accountId);
+        return ApiResponse.ok();
     }
 
-    /** 지우지 않고 막는다. 상태 변경 이력에 이름이 남아 있다. */
+    /** 로그인 신원·권한을 회수하고 과거 작업 참조는 보존한다. */
     @DeleteMapping("/{accountId}")
-    public ApiResponse<Void> disable(@PathVariable Long accountId) {
-        accountService.disable(accountId);
+    @PreAuthorize("hasRole('OWNER')")
+    public ApiResponse<Void> remove(@PathVariable Long accountId) {
+        accountService.remove(accountId);
         return ApiResponse.ok();
     }
 }

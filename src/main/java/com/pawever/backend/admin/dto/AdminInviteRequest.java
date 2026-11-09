@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 public record AdminInviteRequest(
         @NotBlank @Email @Size(max = 200) String email,
         @NotBlank @Size(max = 50) String name,
-        @NotNull AdminRole role
+        @NotNull AdminRole role,
+        @NotNull java.util.Set<com.pawever.backend.admin.entity.WorkRole> workRoles
 ) {
 }

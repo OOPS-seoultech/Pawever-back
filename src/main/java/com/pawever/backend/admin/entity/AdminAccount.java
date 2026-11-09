@@ -80,6 +80,9 @@ public class AdminAccount extends BaseTimeEntity {
 
     private Instant lastLoginAt;
 
+    @Column(nullable = false)
+    private int consecutiveLoginFailures;
+
     public static AdminAccount invite(
             String email,
             String name,
@@ -100,11 +103,12 @@ public class AdminAccount extends BaseTimeEntity {
     /**
      * 초대를 받아 비밀번호를 정한다. 초대 값은 그 자리에서 버린다.
      *
-     * 아직 쓸 수 있는 계정이 아니다. 대표가 승인해야 권한이 생긴다.
+     * 대표가 초대 시 역할을 정했으면 바로 활성화한다.
      */
     public void acceptInvite(String passwordHash) {
         this.passwordHash = passwordHash;
-        this.status = AdminAccountStatus.PENDING_APPROVAL;
+        this.status = permissionsChangedAt == null
+                ? AdminAccountStatus.PENDING_APPROVAL : AdminAccountStatus.ACTIVE;
         this.inviteTokenHash = null;
         this.inviteExpiresAt = null;
     }
@@ -154,6 +158,22 @@ public class AdminAccount extends BaseTimeEntity {
 
     public void recordLogin(Instant at) {
         this.lastLoginAt = at;
+        this.consecutiveLoginFailures = 0;
+    }
+
+    public int recordLoginFailure() {
+        return ++consecutiveLoginFailures;
+    }
+
+    /** 작업·정산의 계정 ID는 남기고 로그인 신원과 권한은 폐기한다. */
+    public void removeAccess(Instant at) {
+        this.status = AdminAccountStatus.DELETED;
+        this.email = "deleted-" + id + "-" + java.util.UUID.randomUUID() + "@removed.invalid";
+        this.passwordHash = null;
+        this.inviteTokenHash = null;
+        this.inviteExpiresAt = null;
+        this.workRoles.clear();
+        this.permissionsChangedAt = at;
     }
 
     public boolean canSignIn() {

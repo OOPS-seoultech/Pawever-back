@@ -1,4 +1,16 @@
 spring:
+  mail:
+    host: ${ADMIN_MAIL_HOST:}
+    port: ${ADMIN_MAIL_PORT:587}
+    username: ${ADMIN_MAIL_USERNAME:}
+    password: ${ADMIN_MAIL_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 5000
+      "[mail.smtp.writetimeout]": 5000
   application:
     name: pawever-backend
 
@@ -161,6 +173,8 @@ admin:
   jwt-expiration-millis: 28800000  # 8 hours
   # 첫 관리자를 세울 때만 쓴다. 관리자가 하나라도 생기면 통로가 스스로 닫힌다.
   bootstrap-token: ${ADMIN_BOOTSTRAP_TOKEN:}
+  mail-from: ${ADMIN_MAIL_FROM:}
+  public-url: ${ADMIN_PUBLIC_URL:https://www.pawever.kr}
 
 stats:
   # 앱 통계 CSV를 내려받는 토큰. 비어 있으면 내보내기가 열리지 않는다.

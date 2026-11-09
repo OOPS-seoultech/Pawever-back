@@ -37,4 +37,7 @@ public class AdminProperties {
      * 생기면 그 통로는 스스로 닫힌다.
      */
     private String bootstrapToken = "";
+
+    private String mailFrom = "";
+    private String publicUrl = "https://www.pawever.kr";
 }

@@ -1,6 +1,7 @@
 package com.pawever.backend.admin.service;
 
 import com.pawever.backend.admin.entity.AdminAccount;
+import com.pawever.backend.admin.entity.AdminAccountStatus;
 import com.pawever.backend.admin.entity.AdminRole;
 import com.pawever.backend.admin.entity.WorkRole;
 import com.pawever.backend.admin.config.AdminProperties;
@@ -26,19 +27,14 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * 관리자 계정을 만들고 로그인시킨다.
- *
- * 비밀번호를 만들어 주지 않는다. 초대 값을 한 번 보여주고, 본인이 그것으로
- * 비밀번호를 정한다. 만들어 주면 누군가는 그 값을 메신저에 적어 전달한다.
- */
+/** 이메일 초대, 비밀번호 설정, 로그인 및 계정 접근 회수. */
 @Service
 @RequiredArgsConstructor
 public class AdminAccountService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int INVITE_VALID_DAYS = 7;
-    private static final int MIN_PASSWORD_LENGTH = 12;
+    private static final int MIN_PASSWORD_LENGTH = 5;
 
     private final AdminAccountRepository accountRepository;
     private final AdminTokenProvider tokenProvider;
@@ -46,6 +42,7 @@ public class AdminAccountService {
     private final HmacHasher hmacHasher;
     private final AdminProperties properties;
     private final Clock clock;
+    private final AdminInvitationMailer invitationMailer;
 
     /**
      * 없는 계정으로 로그인을 시도했을 때 대신 맞춰 보는 값.
@@ -94,15 +91,9 @@ public class AdminAccountService {
         return createInvite(email, name, AdminRole.ADMIN);
     }
 
-    /**
-     * 계정을 만들고 초대 값을 돌려준다. 이 값은 지금 한 번만 볼 수 있다.
-     *
-     * 전체 관리자는 한 사람뿐이다. 초대로는 실무 권한만 줄 수 있고, 어떤
-     * 일을 맡을지는 가입한 뒤 대표가 승인할 때 정한다. 이 통로로 전권을
-     * 줄 수 있으면 초대 한 번으로 대표가 둘이 된다.
-     */
+    /** 대표가 작업 역할을 정하고 일회용 가입 링크를 메일로 보낸다. */
     @Transactional
-    public String invite(String email, String name, AdminRole role) {
+    public void invite(String email, String name, AdminRole role, java.util.Set<WorkRole> workRoles) {
         accountRepository.lockAccounts();
         if (role != null && role != AdminRole.PRODUCTION) {
             throw new CustomException(ErrorCode.FORBIDDEN);
@@ -111,24 +102,45 @@ public class AdminAccountService {
         if (accountRepository.findByEmail(normalized).isPresent()) {
             throw new CustomException(ErrorCode.INVALID_INPUT);
         }
-        return createInvite(normalized, name, AdminRole.PRODUCTION);
+        if (workRoles == null || workRoles.isEmpty() || workRoles.stream().anyMatch(java.util.Objects::isNull)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT);
+        }
+        String token = randomToken();
+        AdminAccount account = AdminAccount.invite(normalized, name, AdminRole.PRODUCTION,
+                hmacHasher.hash(token), inviteExpiry());
+        account.setWorkRoles(workRoles);
+        account.touchPermissions(clock.instant());
+        accountRepository.saveAndFlush(account);
+        invitationMailer.send(normalized, name, token);
     }
 
     /** 초대를 다시 보낸다. 앞서 보낸 링크는 그 순간 쓸 수 없게 된다. */
     @Transactional
-    public String reinvite(Long accountId) {
+    public void reinvite(Long accountId) {
         accountRepository.lockAccounts();
         AdminAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
         requireEditable(account);
-        // 이미 비밀번호를 정한 사람에게 다시 보내면 그 비밀번호가 지워진다.
-        // 비밀번호 재설정은 따로 만들 동작이지 초대 재전송의 부작용이 아니다.
-        if (account.hasPassword()) {
+        if (account.getStatus() != AdminAccountStatus.INVITED) {
             throw new CustomException(ErrorCode.ADMIN_ACCOUNT_ALREADY_HAS_PASSWORD);
         }
         String inviteToken = randomToken();
         account.reinvite(hmacHasher.hash(inviteToken), inviteExpiry());
-        return inviteToken;
+        invitationMailer.send(account.getEmail(), account.getName(), inviteToken);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<String, String> invitationInfo(String token) {
+        AdminAccount account = usableInvitation(token);
+        return java.util.Map.of("email", account.getEmail(), "name", account.getName());
+    }
+
+    private AdminAccount usableInvitation(String token) {
+        if (token == null || token.isBlank()) throw new CustomException(ErrorCode.INVALID_TOKEN);
+        AdminAccount account = accountRepository.findByInviteTokenHash(hmacHasher.hash(token))
+                .orElseThrow(() -> new CustomException(ErrorCode.INVALID_TOKEN));
+        if (!account.isInviteUsable(clock.instant())) throw new CustomException(ErrorCode.EXPIRED_TOKEN);
+        return account;
     }
 
     /**
@@ -140,12 +152,8 @@ public class AdminAccountService {
     @Transactional
     public void acceptInvite(String inviteToken, String password) {
         requirePasswordStrength(password);
-        AdminAccount account = accountRepository
-                .findByInviteTokenHash(hmacHasher.hash(inviteToken))
-                .orElseThrow(() -> new CustomException(ErrorCode.INVALID_TOKEN));
-        if (!account.isInviteUsable(clock.instant())) {
-            throw new CustomException(ErrorCode.EXPIRED_TOKEN);
-        }
+        accountRepository.lockAccounts();
+        AdminAccount account = usableInvitation(inviteToken);
         account.acceptInvite(passwordEncoder.encode(password));
     }
 
@@ -183,12 +191,12 @@ public class AdminAccountService {
      * 계정이 없는 것과 비밀번호가 틀린 것을 같은 응답으로 돌려준다. 나눠서
      * 알려주면 어떤 주소가 등록돼 있는지 확인하는 통로가 된다.
      */
-    @Transactional
+    @Transactional(noRollbackFor = CustomException.class)
     public String signIn(String email, String password) {
         if (!tokenProvider.isEnabled()) {
             throw new CustomException(ErrorCode.ADMIN_SIGN_IN_DISABLED);
         }
-        AdminAccount account = accountRepository.findByEmail(normalizeEmail(email))
+        AdminAccount account = accountRepository.lockByEmail(normalizeEmail(email))
                 .orElse(null);
         // 승인 대기도 비밀번호는 있다. 대조까지 마친 뒤에 무엇이 막았는지
         // 말해 준다 — 먼저 걸러 내면 비밀번호를 모르는 사람도 그 주소가
@@ -202,42 +210,43 @@ public class AdminAccountService {
         boolean matched = passwordEncoder.matches(password, hash);
 
         if (!usable || !matched) {
+            if (usable && !matched && account.getRole() != AdminRole.OWNER
+                    && account.recordLoginFailure() >= 10) {
+                account.removeAccess(clock.instant());
+            }
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
+        account.recordLogin(clock.instant());
         if (account.isAwaitingApproval()) {
             throw new CustomException(ErrorCode.ADMIN_ACCOUNT_PENDING_APPROVAL);
         }
         if (!account.canSignIn()) {
             throw new CustomException(ErrorCode.UNAUTHORIZED);
         }
-        account.recordLogin(clock.instant());
         return tokenProvider.createToken(account.getId(), account.getRole());
     }
 
     @Transactional(readOnly = true)
     public List<AdminAccount> list() {
-        return accountRepository.findAllByOrderByCreatedAtAsc();
+        return accountRepository.findAllByOrderByCreatedAtAsc().stream()
+                .filter(a -> a.getStatus() != AdminAccountStatus.DELETED).toList();
     }
 
     @Transactional
-    public void disable(Long accountId) {
+    public void remove(Long accountId) {
         accountRepository.lockAccounts();
         AdminAccount account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND));
         requireEditable(account);
-        account.disable();
+        account.removeAccess(clock.instant());
     }
 
     private void requireEditable(AdminAccount target) {
         AdminPrincipal actor = AdminPrincipal.current();
+        if (target.getStatus() == AdminAccountStatus.DELETED)
+            throw new CustomException(ErrorCode.ADMIN_ACCOUNT_NOT_FOUND);
         if (actor != null && actor.accountId().equals(target.getId())) throw new CustomException(ErrorCode.FORBIDDEN);
-        if (target.getRole() == AdminRole.OWNER) {
-            if (actor == null || actor.role() != AdminRole.OWNER) throw new CustomException(ErrorCode.FORBIDDEN);
-            if (target.canSignIn() && accountRepository.findAll().stream()
-                    .filter(a -> a.getRole() == AdminRole.OWNER && a.canSignIn()).count() <= 1) {
-                throw new CustomException(ErrorCode.FORBIDDEN);
-            }
-        }
+        if (target.getRole() == AdminRole.OWNER) throw new CustomException(ErrorCode.FORBIDDEN);
     }
 
     private String createInvite(String email, String name, AdminRole role) {

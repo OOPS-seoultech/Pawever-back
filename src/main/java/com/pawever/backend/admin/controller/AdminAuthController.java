@@ -36,6 +36,13 @@ public class AdminAuthController {
         return ApiResponse.ok(Map.of("accessToken", token));
     }
 
+    public record InvitationInfoRequest(@jakarta.validation.constraints.NotBlank String inviteToken) {}
+
+    @PostMapping("/invitation-info")
+    public ApiResponse<Map<String, String>> invitationInfo(@Valid @RequestBody InvitationInfoRequest request) {
+        return ApiResponse.ok(accountService.invitationInfo(request.inviteToken()));
+    }
+
     /** 초대 링크로 들어와 비밀번호를 정한다. */
     @PostMapping("/accept-invite")
     public ApiResponse<Void> acceptInvite(@Valid @RequestBody AdminAcceptInviteRequest request) {
