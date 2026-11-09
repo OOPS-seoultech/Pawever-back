@@ -25,6 +25,7 @@ public class ModelReviewMedia {
   private final GoodsSurveyPhotoStorage storage;
   private final WorkflowService workflow;
   private final StaffPermissions access;
+  private final com.pawever.backend.admin.repository.AdminAccountRepository accounts;
   private final com.pawever.backend.notification.telegram.TelegramOpsClient telegram;
 
   public record Photo(String caption, byte[] bytes) {}
@@ -57,7 +58,11 @@ public class ModelReviewMedia {
       for (int i = 0; i < views.size(); i++)
         result.add(new Photo(name + " · 4면도 " + (i + 1), jpeg(storage.download(views.get(i).getObjectKey()))));
     }
-    return new Album(event.orderNumber() + " · " + name + " · 검수 대기", result);
+    String worker = source == null || source.getAssigneeId() == null ? "미확인"
+        : accounts.findById(source.getAssigneeId()).map(a -> a.getName()).orElse("미확인");
+    String guardian = Optional.ofNullable(order.getGuardianName()).filter(n -> !n.isBlank()).orElse("미등록");
+    return new Album("모델 검수 대기\n주문번호: " + event.orderNumber()
+        + "\n작업 담당자: " + worker + "\n반려동물: " + name + "\n반려인: " + guardian, result);
   }
 
   @Transactional
@@ -79,7 +84,7 @@ public class ModelReviewMedia {
       var album = load(new ModelReviewRequestedEvent(number, ((Number) row.get("taskId")).longValue()));
       if (album == null || album.photos().isEmpty())
         throw new WorkflowException(400, "INVALID_INPUT", "보낼 검수 사진이 없습니다.");
-      boolean accepted = telegram.sendAlbum(new Album("[검수 알림 재발송] " + album.title(), album.photos()));
+      boolean accepted = telegram.sendAlbum(new Album("[검수 알림 재발송]\n알림 요청자: " + access.current().getName() + "\n" + album.title(), album.photos()));
       workflow.audit(number, "RESEND_REVIEW_TELEGRAM", null, accepted ? "ACCEPTED" : "FAILED",
           "아이 " + (index.intValue() + 1) + " · 사진 " + album.photos().size() + "장");
       row.put("telegramNotification", Map.of("accepted", accepted, "photoCount", album.photos().size()));

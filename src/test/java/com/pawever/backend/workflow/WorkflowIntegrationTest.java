@@ -71,7 +71,11 @@ class WorkflowIntegrationTest {
     org.assertj.core.api.Assertions.assertThat(result.get("telegramNotification").get("accepted").asBoolean()).isTrue();
     org.assertj.core.api.Assertions.assertThat(result.get("telegramNotification").get("photoCount").asInt()).isBetween(1, 9);
     org.assertj.core.api.Assertions.assertThat(send(owner, path, body, key)).isEqualTo(result);
-    org.mockito.Mockito.verify(reviewTelegram).sendAlbum(org.mockito.ArgumentMatchers.any());
+    var sentAlbum = org.mockito.ArgumentCaptor.forClass(ModelReviewMedia.Album.class);
+    org.mockito.Mockito.verify(reviewTelegram).sendAlbum(sentAlbum.capture());
+    org.assertj.core.api.Assertions.assertThat(sentAlbum.getValue().title()).contains(
+        "알림 요청자: " + readJson(owner, "/api/admin/me").get("name").asText(),
+        "반려인: " + order.getGuardianName());
     order = orders.findByOrderNumber(number).orElseThrow();
     org.assertj.core.api.Assertions.assertThat(order.getProductionStage()).isEqualTo(oldStage);
     org.assertj.core.api.Assertions.assertThat(order.getVersion()).isEqualTo(oldVersion);
