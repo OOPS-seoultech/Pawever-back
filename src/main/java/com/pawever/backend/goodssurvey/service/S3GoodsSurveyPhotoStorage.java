@@ -29,6 +29,12 @@ public class S3GoodsSurveyPhotoStorage implements GoodsSurveyPhotoStorage {
     private final GoodsSurveyProperties properties;
 
     @Override
+    public void upload(String objectKey, String contentType, byte[] bytes) {
+        s3Client.putObject(PutObjectRequest.builder().bucket(privateBucket()).key(objectKey)
+                .contentType(contentType).build(), software.amazon.awssdk.core.sync.RequestBody.fromBytes(bytes));
+    }
+
+    @Override
     public PresignedUpload presignUpload(
             String objectKey,
             String contentType,

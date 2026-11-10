@@ -75,6 +75,8 @@ public class ProductionArtifact {
     replacesArtifactId = artifactId;
   }
 
+  public void generatedCandidate() { multiviewState="READY"; confirmed=true; }
+
   public void stageMultiview() { multiviewState = "STAGED"; }
 
   public void publishMultiview() { multiviewState = null; confirmed = true; }

@@ -41,6 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/public/goods-survey/**").permitAll()
+                        .requestMatchers("/api/telegram/image-workflow/*").permitAll()
                         // 내보내기는 로그인 대신 전용 토큰으로 막는다.
                         // 토큰이 설정되지 않으면 컨트롤러가 무조건 거부한다.
                         .requestMatchers("/api/internal/goods-survey/export/**").permitAll()

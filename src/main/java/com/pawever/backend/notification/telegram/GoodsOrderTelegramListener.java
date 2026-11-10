@@ -28,12 +28,17 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class GoodsOrderTelegramListener {
 
     private final TelegramClient telegramClient;
+    private final com.pawever.backend.workflow.ImageGenerationProperties imageConfig;
+    private final com.pawever.backend.workflow.ImageTelegramClient imageTelegram;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onGoodsOrderSubmitted(GoodsOrderSubmittedEvent event) {
         try {
-            telegramClient.sendHtml(TelegramMessage.goodsOrderSubmitted(event));
+            if (imageConfig.ready()) {
+                if (!imageTelegram.order(event)) log.error("입금 확인 버튼이 포함된 신청 알림 전송 실패: 주문 {}", event.orderNumber());
+            }
+            else telegramClient.sendHtml(TelegramMessage.goodsOrderSubmitted(event));
         } catch (RuntimeException e) {
             // 이름과 연락처가 담긴 값이라 내용은 로그에 남기지 않는다.
             log.error("굿즈 신청 알림을 만들지 못했다: 주문 {}", event.orderNumber(), e);
