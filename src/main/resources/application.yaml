@@ -236,3 +236,8 @@ notification:
       name: ${GOODS_BANK_NAME:}
       account: ${GOODS_BANK_ACCOUNT:}
       holder: ${GOODS_BANK_HOLDER:}
+
+figurine:
+  image:
+    enabled: ${FIGURINE_IMAGE_ENABLED:false}
+    api-key: ${OPENAI_API_KEY:}

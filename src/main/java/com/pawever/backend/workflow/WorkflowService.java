@@ -43,6 +43,8 @@ public class WorkflowService {
   private final StaffPermissionOverrideRepository overrides;
   private final GoodsSurveyPhotoRepository photos;
   private final GoodsSurveyPhotoStorage storage;
+  private final ImageGenerationJobRepository imageJobs;
+  private final ImageGenerationProperties imageConfig;
   private final StaffPermissions access;
   private final ApplicationEventPublisher eventPublisher;
   private final Clock clock;
@@ -323,6 +325,22 @@ public class WorkflowService {
       audit(number, "MOVE_STAGE", before, targetName, "아이 " + (index + 1) + ": " + reason);
       return view(order, index);
     });
+  }
+
+  private void requireApprovedImages(ProductionTask task) {
+    if (imageJobs.findFirstByOrderNumberAndPetIndexOrderByCreatedAtDesc(task.getOrderNumber(),task.getPetIndex())
+        .filter(j->j.getTaskId().equals(task.getId())&&!j.getStatus().equals("APPROVED")).isPresent())
+      throw bad("4면도 이미지 검수를 먼저 완료해 주세요.");
+  }
+
+  void publishGeneratedViews(ImageGenerationJob job) {
+    access.require(REVIEW_IMAGES);var order=locked(job.getOrderNumber());
+    var task=currentTask(order.getOrderNumber(),job.getPetIndex());
+    if(task==null||!task.getId().equals(job.getTaskId())||task.getStage()!=ProductionStage.MODELING||!task.getStatus().equals("WAITING")||!active(order)||!paid(order))throw bad("현재 아이의 모델링 대기 작업을 확인해 주세요.");
+    var selected=Arrays.stream(job.getArtifactIds().split(",")).map(id->artifacts.findById(id).orElseThrow()).toList();
+    if(selected.size()!=4||selected.stream().anyMatch(a->!a.getTaskId().equals(task.getId())||!a.getOrderNumber().equals(order.getOrderNumber())||!"READY".equals(a.getMultiviewState())))throw bad("현재 작업의 생성 완료된 4장이 필요합니다.");
+    artifacts.findByOrderNumberOrderByIdAsc(order.getOrderNumber()).stream().filter(a->materialTaskIds(task).contains(a.getTaskId())&&a.getKind().equals("MULTIVIEW")&&a.isConfirmed()&&a.getMultiviewState()==null).forEach(ProductionArtifact::retire);
+    selected.forEach(ProductionArtifact::publishMultiview);artifacts.flush();touch(order);
   }
 
   private void requireModelFiles(Long taskId, String number) {
@@ -753,6 +771,10 @@ public class WorkflowService {
     }
     // Packaging is a later workflow; do not offer an assignment using a modeling role.
     if (t != null && t.getStage() == ProductionStage.PACKING) actions.remove("ASSIGN_TASK");
+    var imageJob=imageJobs.findFirstByOrderNumberAndPetIndexOrderByCreatedAtDesc(o.getOrderNumber(),petIndex);
+    if(t!=null&&t.getStage()==ProductionStage.MODELING&&imageJob.filter(j->j.getTaskId().equals(t.getId())).isPresent()&&!imageJob.get().getStatus().equals("APPROVED")) {
+      actions.removeAll(List.of("START_TASK","COMPLETE_MODELING","UPLOAD_ARTIFACT"));
+    }
     var batchItem =
         printBatchItems.findByOrderNumberOrderByIdDesc(o.getOrderNumber()).stream()
             .filter(i -> history.stream().anyMatch(h -> h.getId().equals(i.getPlateTaskId())))
@@ -1046,6 +1068,10 @@ public class WorkflowService {
           createModeling(o);
           touch(o);
           audit(number, "CONFIRM_PAYMENT", "PENDING", "CONFIRMED", text(b, "memo", 300));
+          if (imageConfig.ready()) for (int i=0;i<o.getPetCount();i++) {
+            var task=currentTask(number,i);String request="first:"+number+":"+i+":"+task.getId();
+            if(imageJobs.findByRequestKey(request).isEmpty()) imageJobs.saveAndFlush(ImageGenerationJob.create(number,i,task.getId(),access.current().getId(),request,null,null,clock.instant()));
+          }
           return view(o, petIndex(b));
         });
   }
@@ -1096,6 +1122,7 @@ public class WorkflowService {
           issue(o.getOrderNumber(), t.getPetIndex(), "PHOTO_INSUFFICIENT", !enoughPhotos(o, t.getPetIndex()));
           if (!actionableBlockers(t, codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
             throw bad("차단 문제를 먼저 해결해 주세요.");
+          requireApprovedImages(t);
           t.start(clock.instant());
           updateStage(o);
           touch(o);
@@ -1120,6 +1147,7 @@ public class WorkflowService {
               || !paid(o)
               || !t.getStatus().equals("IN_PROGRESS")
               || t.getStage() != ProductionStage.MODELING) throw bad("완료할 수 없는 작업입니다.");
+          requireApprovedImages(t);
           requireModelFiles(taskId, o.getOrderNumber());
           if (!actionableBlockers(t, codes(o.getOrderNumber(), t.getPetIndex())).isEmpty())
             throw bad("차단 문제를 먼저 해결해 주세요.");
@@ -1384,6 +1412,7 @@ public class WorkflowService {
   private boolean artifactReady(GoodsSurveyFulfillment order, ProductionTask task, String kind) {
     var current = currentTask(order.getOrderNumber(), task.getPetIndex());
     if (!active(order) || !paid(order) || current == null || !current.getId().equals(task.getId())) return false;
+    if (task.getStage()==ProductionStage.MODELING && imageJobs.findFirstByOrderNumberAndPetIndexOrderByCreatedAtDesc(task.getOrderNumber(),task.getPetIndex()).filter(j->j.getTaskId().equals(task.getId())&&!j.getStatus().equals("APPROVED")).isPresent()) return false;
     if (kind.equals("PRINT_MODEL") && Set.of(ProductionStage.PLATE_PREPARATION, ProductionStage.PRINT_QUEUE, ProductionStage.PRINTING).contains(task.getStage()))
       return Set.of("WAITING", "IN_PROGRESS").contains(task.getStatus());
     if (kind.equals("COLORED_MODEL"))

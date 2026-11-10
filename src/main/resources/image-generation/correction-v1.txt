@@ -1,0 +1,9 @@
+Edit the current four-view sheet using the supplied original photographs and
+style reference. Correct only: {{view_region_and_correction}}.
+Evidence: {{correction_evidence}}.
+Preserve unchanged: {{explicit_preservation_list}}.
+Keep the same individual, approved proportions, seated pose, closed mouth,
+black background, fixed tail root/path/support and original 2x2 view layout.
+Apply corrections consistently to every affected view without mirroring or
+changing unrelated anatomy, markings, face, pose, scale or framing.
+Return one revised 2x2 sheet. Do not introduce an extra animal or an extra tail.
