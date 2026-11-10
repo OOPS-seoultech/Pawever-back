@@ -35,7 +35,9 @@ public class GoodsOrderTelegramListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onGoodsOrderSubmitted(GoodsOrderSubmittedEvent event) {
         try {
-            if (imageConfig.ready()) imageTelegram.order(event);
+            if (imageConfig.ready()) {
+                if (!imageTelegram.order(event)) log.error("입금 확인 버튼이 포함된 신청 알림 전송 실패: 주문 {}", event.orderNumber());
+            }
             else telegramClient.sendHtml(TelegramMessage.goodsOrderSubmitted(event));
         } catch (RuntimeException e) {
             // 이름과 연락처가 담긴 값이라 내용은 로그에 남기지 않는다.
