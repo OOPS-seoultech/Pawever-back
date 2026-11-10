@@ -42,7 +42,11 @@ public class ImageTelegramService {
     return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status -> {
     var link=links.findByCodeHash(ImageTelegramClient.hash(code)).orElse(null);
     if(link==null||link.getExpiresAt()==null||!link.getExpiresAt().isAfter(clock.instant())||accounts.findById(link.getAccountId()).filter(a->a.canSignIn()).isEmpty())return false;
-    if(links.findByTelegramUserId(telegramUser).filter(l->!l.getAccountId().equals(link.getAccountId())).isPresent())return false;
+    var existing=links.findByTelegramUserId(telegramUser).filter(l->!l.getAccountId().equals(link.getAccountId()));
+    if(existing.isPresent()) {
+      if(accounts.findById(existing.get().getAccountId()).filter(a->a.canSignIn()).isPresent())return false;
+      links.delete(existing.get());links.flush();
+    }
     link.connect(telegramUser);links.flush();return true;
     });
   }

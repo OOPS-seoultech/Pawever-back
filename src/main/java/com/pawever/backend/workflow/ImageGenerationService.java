@@ -83,7 +83,7 @@ public class ImageGenerationService {
       if(!Set.of("all","front","left","back","right").contains(direction)||!Set.of("face","eyes_nose","ears","markings","tail","paws","proportions","pose","framing","other").contains(region)||note.isBlank()||note.length()>1000)
         throw bad("방향·수정 부위를 선택하고 수정 내용을 1~1000자로 적어 주세요.");
       String feedback="View: "+direction+"; Region: "+region+"; Correction: "+note;
-      var next=ImageGenerationJob.create(j.getOrderNumber(),j.getPetIndex(),j.getTaskId(),access.current().getId(),"manual:"+access.current().getId()+":"+key,j.getSheetKey()==null?null:j.getId(),feedback,clock.instant());
+      var next=ImageGenerationJob.create(j.getOrderNumber(),j.getPetIndex(),j.getTaskId(),access.current().getId(),"manual:"+access.current().getId()+":"+key,j.getSheetKey()==null?j.getPreviousId():j.getId(),feedback,clock.instant());
       j.supersede();jobs.saveAndFlush(next);workflow.audit(j.getOrderNumber(),"REGENERATE_IMAGES",j.getId(),next.getId(),"아이 "+(j.getPetIndex()+1));
       return view(next);
     });
@@ -105,6 +105,14 @@ public class ImageGenerationService {
     return workflow.command("retry-image-save:"+id,key,body,()->{
       workflow.locked(initial.getOrderNumber());var j=job(id);editable(j);if(!current(j)||!j.getStatus().equals("FAILED")||j.getSheetKey()==null)throw bad("저장된 생성 결과가 없습니다. 수정 요청으로 다시 생성해 주세요.");
       j.requeueSave();jobs.flush();return view(j);
+    });
+  }
+  @Transactional
+  public Map<String,Object> resend(String id,String key,Map<String,Object> body){
+    access.require(REVIEW_IMAGES);var initial=job(id);access.read(initial.getOrderNumber());
+    return workflow.command("notify-images:"+id,key,body,()->{
+      var j=job(id);editable(j);if(!current(j)||!j.getStatus().equals("REVIEW"))throw bad("최신 검수 대기 후보만 다시 보낼 수 있습니다.");
+      notifyReview(id);return view(j);
     });
   }
   public Map<String,Object> status(boolean probe){
@@ -162,7 +170,7 @@ public class ImageGenerationService {
       tx(()->{artifacts.saveAllAndFlush(prepared);return null;});
       for(int i=0;i<4;i++)storage.upload(prepared.get(i).getObjectKey(),"image/png",result.views().get(i));
       var completed=result;
-      tx(()->{var j=job(id);editable(j);j.finish(j.getSheetKey(),String.join(",",prepared.stream().map(a->a.getId()).toList()),completed.usage(),completed.requestId(),clock.instant());jobs.flush();return null;});
+      tx(()->{var j=job(id);editable(j);if(!j.getStatus().equals("RUNNING")||!current(j))throw bad("이미 종료된 이미지 생성입니다.");j.finish(j.getSheetKey(),String.join(",",prepared.stream().map(a->a.getId()).toList()),completed.usage(),completed.requestId(),clock.instant());jobs.flush();return null;});
       notifyReview(id);
     }catch(Exception e){tx(()->{var j=job(id);if(j.getStatus().equals("RUNNING")){if(e instanceof WorkflowException w&&w.getCode().equals("IMAGE_RESULT_UNKNOWN"))j.unknown(clock.instant());else j.fail(e instanceof WorkflowException w?w.getCode():"OUTPUT_SAVE_FAILED",clock.instant());}return null;});}
     return true;

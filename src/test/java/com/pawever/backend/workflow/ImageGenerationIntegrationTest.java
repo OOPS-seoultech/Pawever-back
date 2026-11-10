@@ -148,4 +148,26 @@ class ImageGenerationIntegrationTest {
    linking.unlink();var link=StaffTelegramLink.create(actor.getId());link.code(ImageTelegramClient.hash("expired"),Instant.now().minusSeconds(1));links.saveAndFlush(link);
    assertThat(linking.connect("expired",123L)).isFalse();
  }
+ @Test void paymentButtonRequiresLinkedStaffAndDuplicateClicksQueueOnlyOnce() throws Exception {
+   when(telegram.chat("payment")).thenReturn("-100test");
+   var json=new com.fasterxml.jackson.databind.ObjectMapper();
+   String raw="{\"update_id\":1,\"callback_query\":{\"id\":\"cb1\",\"from\":{\"id\":777},\"message\":{\"message_id\":1,\"chat\":{\"id\":\"-100test\"}},\"data\":\"pay:"+number+"\"}}";
+   linking.update("payment",json.readTree(raw));assertThat(orders.findByOrderNumber(number).orElseThrow().paymentStatus()).isEqualTo("PENDING");
+   var linked=StaffTelegramLink.create(actor.getId());linked.connect(777L);links.saveAndFlush(linked);
+   linking.update("payment",json.readTree(raw));linking.update("payment",json.readTree(raw.replace("cb1","cb2")));
+   assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).hasSize(1);
+   verifyNoInteractions(api);
+ }
+ @Test void generatedCandidatesAndApprovalRemainSeparateForTwoPets() throws Exception {
+   var o=orders.findByOrderNumber(number).orElseThrow();o.recordPetCount(2);orders.saveAndFlush(o);
+   var photo=GoodsSurveyPhoto.pending(UUID.randomUUID().toString(),o.getResponseId(),"second-pet","test/second","image/png",10,Instant.now().plusSeconds(600));photo.confirm(10,Instant.now());photo.assignToPet(1);photos.saveAndFlush(photo);
+   confirm();output();images.runOne();images.runOne();
+   var first=jobs.findFirstByOrderNumberAndPetIndexOrderByCreatedAtDesc(number,0).orElseThrow();
+   var second=jobs.findFirstByOrderNumberAndPetIndexOrderByCreatedAtDesc(number,1).orElseThrow();
+   images.approve(first.getId(),"pet-one-only",Map.of());
+   assertThat(jobs.findById(second.getId()).orElseThrow().getStatus()).isEqualTo("REVIEW");
+   var references=org.mockito.ArgumentCaptor.forClass(java.util.List.class);verify(api,times(2)).generate(references.capture(),anyString());
+   assertThat(references.getAllValues()).extracting(List::size).containsExactlyInAnyOrder(4,2);
+ }
+
 }

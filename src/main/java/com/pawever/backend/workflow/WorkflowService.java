@@ -832,6 +832,7 @@ public class WorkflowService {
         "petName",
         pet == null ? o.getPetName() : pet.getPetName(),
         "petIndex", petIndex,
+        "imageGenerationJobId", permissions.contains(VIEW_CUSTOMER_PHOTOS)&&permissions.contains(VIEW_PRODUCTION_FILES)?imageJob.map(ImageGenerationJob::getId).orElse(null):null,
         "petCount", o.getPetCount(),
         "pets", petRows.stream().map(p -> map("petIndex", p.getPetIndex(), "petName", p.getPetName(),
             "productionStage", currentTask(o.getOrderNumber(), p.getPetIndex()) == null ? "BLOCKED"
@@ -1030,11 +1031,18 @@ public class WorkflowService {
       selectedPhotos.forEach(photo -> photo.assignToPet(index));
       photos.saveAllAndFlush(selectedPhotos);
       o.recordPetCount(index + 1);
-      if (paid(o)) createModeling(o);
+      if (paid(o)) {createModeling(o);enqueueInitialImages(o,index);}
       touch(o);
       audit(number, "ADD_PRODUCTION_PET", String.valueOf(index), String.valueOf(index + 1), name);
       return view(o, index);
     });
+  }
+
+  private void enqueueInitialImages(GoodsSurveyFulfillment order,int pet) {
+    if(!imageConfig.ready())return;
+    var task=currentTask(order.getOrderNumber(),pet);
+    String request="first:"+order.getOrderNumber()+":"+pet+":"+task.getId();
+    if(imageJobs.findByRequestKey(request).isEmpty()) imageJobs.saveAndFlush(ImageGenerationJob.create(order.getOrderNumber(),pet,task.getId(),access.current().getId(),request,null,null,clock.instant()));
   }
 
   public Map<String, Object> confirm(String number, String key, Map<String, Object> b) {
@@ -1068,10 +1076,7 @@ public class WorkflowService {
           createModeling(o);
           touch(o);
           audit(number, "CONFIRM_PAYMENT", "PENDING", "CONFIRMED", text(b, "memo", 300));
-          if (imageConfig.ready()) for (int i=0;i<o.getPetCount();i++) {
-            var task=currentTask(number,i);String request="first:"+number+":"+i+":"+task.getId();
-            if(imageJobs.findByRequestKey(request).isEmpty()) imageJobs.saveAndFlush(ImageGenerationJob.create(number,i,task.getId(),access.current().getId(),request,null,null,clock.instant()));
-          }
+          for (int i=0;i<o.getPetCount();i++) enqueueInitialImages(o,i);
           return view(o, petIndex(b));
         });
   }

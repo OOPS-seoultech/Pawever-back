@@ -19,6 +19,8 @@ public class ImageGenerationController {
   public Object regenerate(@PathVariable String id,@RequestHeader("Idempotency-Key")String key,@RequestBody Map<String,Object> body){return ApiResponse.ok(images.regenerate(id,key,body));}
   @PostMapping("/api/production/image-jobs/{id}/retry-save")
   public Object retrySave(@PathVariable String id,@RequestHeader("Idempotency-Key")String key,@RequestBody Map<String,Object> body){return ApiResponse.ok(images.retrySave(id,key,body));}
+  @PostMapping("/api/production/image-jobs/{id}/notify")
+  public Object notifyReview(@PathVariable String id,@RequestHeader("Idempotency-Key")String key,@RequestBody Map<String,Object> body){return ApiResponse.ok(images.resend(id,key,body));}
   @GetMapping("/api/admin/image-generation/status")
   public Object status(@RequestParam(defaultValue="false")boolean probe){return ApiResponse.ok(images.status(probe));}
   @GetMapping("/api/admin/telegram/link")
