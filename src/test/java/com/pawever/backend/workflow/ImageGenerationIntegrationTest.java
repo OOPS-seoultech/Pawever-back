@@ -34,7 +34,7 @@ class ImageGenerationIntegrationTest {
  @MockitoBean ImageTelegramClient telegram;
  @MockitoBean GoodsSurveyPhotoStorage storage;
  String number;AdminAccount actor;
- @AfterEach void clear(){SecurityContextHolder.clearContext();}
+ @AfterEach void clear(){jobs.deleteAll(jobs.findAll().stream().filter(j->j.getOrderNumber().equals(number)).toList());SecurityContextHolder.clearContext();}
   @BeforeEach
   void setup() {
     var a=AdminAccount.invite(UUID.randomUUID()+"@example.test","제작자",AdminRole.OWNER,"test",Instant.now().plusSeconds(3600));

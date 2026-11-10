@@ -48,11 +48,12 @@ public class ImageGenerationService {
   @Transactional(readOnly=true)
   public List<Map<String,Object>> list(String number,int pet){
     access.read(number);access.require(VIEW_CUSTOMER_PHOTOS);access.require(VIEW_PRODUCTION_FILES);
-    return jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,pet).stream().map(this::view).toList();
+    return jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,pet).stream().map(j->view(j,false)).toList();
   }
   @Transactional(readOnly=true)
   public Map<String,Object> detail(String id){var j=job(id);access.read(j.getOrderNumber());access.require(VIEW_CUSTOMER_PHOTOS);access.require(VIEW_PRODUCTION_FILES);return view(j);}
-  private Map<String,Object> view(ImageGenerationJob j){
+  private Map<String,Object> view(ImageGenerationJob j){return view(j,true);}
+  private Map<String,Object> view(ImageGenerationJob j,boolean includeImages){
     var result=new LinkedHashMap<String,Object>();
     result.put("id",j.getId());result.put("version",j.getVersion());result.put("orderNumber",j.getOrderNumber());result.put("petIndex",j.getPetIndex());
     result.put("petName",petName(j));result.put("status",j.getStatus());result.put("promptVersion",j.getPromptVersion());
@@ -63,7 +64,7 @@ public class ImageGenerationService {
     result.put("canRegenerate",access.has(REVIEW_IMAGES)&&canEdit&&Set.of("REVIEW","APPROVED","FAILED","UNKNOWN").contains(j.getStatus()));
     result.put("canRetrySave",access.has(REVIEW_IMAGES)&&canEdit&&j.getStatus().equals("FAILED")&&j.getSheetKey()!=null);
     var files=new ArrayList<Map<String,Object>>();
-    if(j.getArtifactIds()!=null) for(var id:j.getArtifactIds().split(",")) {
+    if(includeImages&&j.getArtifactIds()!=null) for(var id:j.getArtifactIds().split(",")) {
       var a=artifacts.findById(id).orElse(null);if(a==null)continue;var expires=clock.instant().plusSeconds(300);
       var link=storage.presignDownload(a.getObjectKey(),Duration.ofMinutes(5),expires);
       files.add(Map.of("id",id,"url",link.url(),"expiresAt",expires,"fileName",a.getFileName(),"label",a.getFileName()));
