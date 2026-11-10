@@ -1,5 +1,4 @@
 package com.pawever.backend.workflow;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.pawever.backend.global.common.ApiResponse;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -30,8 +29,8 @@ public class ImageGenerationController {
   @DeleteMapping("/api/admin/telegram/link")
   public Object unlink(){return ApiResponse.ok(telegram.unlink());}
   @PostMapping("/api/telegram/image-workflow/{kind}")
-  public Object webhook(@PathVariable String kind,@RequestHeader(value="X-Telegram-Bot-Api-Secret-Token",required=false)String secret,@RequestBody JsonNode body){
+  public Object webhook(@PathVariable String kind,@RequestHeader(value="X-Telegram-Bot-Api-Secret-Token",required=false)String secret,@RequestBody Map<String,Object> body){
     if(!client.authorized(kind,secret))throw new WorkflowException(403,"FORBIDDEN","웹훅 인증이 필요합니다.");
-    telegram.update(kind,body);return Map.of("ok",true);
+    telegram.update(kind,new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(body));return Map.of("ok",true);
   }
 }

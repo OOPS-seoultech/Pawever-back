@@ -17,8 +17,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 @SpringBootTest(properties={"admin.jwt-secret=workflow-test-secret-at-least-thirty-two-characters","figurine.image.enabled=true","figurine.image.api-key=test","figurine.image.worker-enabled=false","figurine.image.register-webhooks=false"})
+@org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ImageGenerationIntegrationTest {
+ @Autowired org.springframework.test.web.servlet.MockMvc mvc;
  @Autowired AdminAccountRepository accounts;
  @Autowired GoodsSurveyFulfillmentRepository orders;
  @Autowired GoodsSurveyCampaignRepository campaigns;
@@ -168,6 +170,16 @@ class ImageGenerationIntegrationTest {
    assertThat(jobs.findById(second.getId()).orElseThrow().getStatus()).isEqualTo("REVIEW");
    var references=org.mockito.ArgumentCaptor.forClass(java.util.List.class);verify(api,times(2)).generate(references.capture(),anyString());
    assertThat(references.getAllValues()).extracting(List::size).containsExactlyInAnyOrder(4,2);
+ }
+
+ @Test void webhookBindsActualTelegramJsonBeforeAuthenticatingIt() throws Exception {
+   String path="/api/telegram/image-workflow/payment";
+   mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).contentType("application/json").content("{}"))
+     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+   when(telegram.authorized("payment","test-header")).thenReturn(true);
+   mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).header("X-Telegram-Bot-Api-Secret-Token","test-header").contentType("application/json").content("{\"update_id\":1}"))
+     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.ok").value(true));
  }
 
 }
