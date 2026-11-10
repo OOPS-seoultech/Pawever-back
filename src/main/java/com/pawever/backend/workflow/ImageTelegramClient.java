@@ -62,7 +62,7 @@ public class ImageTelegramClient {
   public Long review(String id,String number,int pet,ModelReviewMedia.Album album){
     if(!albums.sendAlbum(album))return null;
     String url=config.getPublicWebUrl()+"/admin/image-review/"+id;
-    var result=call("review","sendMessage",Map.of("chat_id",chat("review"),"text",number+" · 4면도 이미지 검수\n최신 후보를 승인하거나 수정할 부분을 입력해 주세요.",
+    var result=call("review","sendMessage",Map.of("chat_id",chat("review"),"text",album.title()+"\n후보: "+id.substring(0,8)+"\n최신 후보를 승인하거나 수정할 부분을 입력해 주세요.",
         "reply_markup",Map.of("inline_keyboard",List.of(List.of(Map.of("text","검수 완료","callback_data","approve:"+id),Map.of("text","수정 요청","url",url)),List.of(Map.of("text","웹에서 비교","url",url))))));
     return result.path("message_id").asLong();
   }

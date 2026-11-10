@@ -187,7 +187,7 @@ public class ImageGenerationService {
         var originals=photos.findByResponseId(order.getResponseId()).stream().filter(p->p.getStatus()==GoodsSurveyPhotoStatus.CONFIRMED&&Objects.equals(p.getPetIndex()==null?0:p.getPetIndex(),j.getPetIndex())).sorted(Comparator.comparing(p->p.getClientFileId())).limit(5).toList();
         for(int i=0;i<originals.size();i++)pictures.add(new ModelReviewMedia.Photo("고객 사진 "+(i+1),ModelReviewMedia.jpeg(storage.download(originals.get(i).getObjectKey()))));
         for(var a:j.getArtifactIds().split(",")){var file=artifacts.findById(a).orElseThrow();pictures.add(new ModelReviewMedia.Photo(file.getFileName(),ModelReviewMedia.jpeg(storage.download(file.getObjectKey()))));}
-        String title="4면도 이미지 검수 대기\n주문번호: "+j.getOrderNumber()+"\n반려동물: "+petName(j)+"\n반려인: "+order.getGuardianName()+"\n생성: AI 자동\n요청자: "+accountName(j.getRequestedBy())+"\n담당자: "+accountName(tasks.findById(j.getTaskId()).orElseThrow().getAssigneeId());
+        String title="4면도 이미지 검수 대기\n주문번호: "+j.getOrderNumber()+"\n반려동물: "+petName(j)+"\n반려인: "+order.getGuardianName()+"\n생성: AI 자동\n요청자: "+accountName(j.getRequestedBy())+"\n담당자: "+Objects.toString(accountName(tasks.findById(j.getTaskId()).orElseThrow().getAssigneeId()),"미배정");
         return new ModelReviewMedia.Album(title,pictures);
       });
       var message=telegram.review(j.getId(),j.getOrderNumber(),j.getPetIndex(),album);
