@@ -36,7 +36,7 @@ class ImageGenerationIntegrationTest {
  @MockitoBean ImageTelegramClient telegram;
  @MockitoBean GoodsSurveyPhotoStorage storage;
  String number;AdminAccount actor;
- @AfterEach void clear(){jobs.deleteAll(jobs.findAll().stream().filter(j->j.getOrderNumber().equals(number)).toList());SecurityContextHolder.clearContext();}
+ @AfterEach void clear(){links.findById(actor.getId()).ifPresent(links::delete);jobs.deleteAll(jobs.findAll().stream().filter(j->j.getOrderNumber().equals(number)).toList());SecurityContextHolder.clearContext();}
   @BeforeEach
   void setup() {
     var a=AdminAccount.invite(UUID.randomUUID()+"@example.test","제작자",AdminRole.OWNER,"test",Instant.now().plusSeconds(3600));
@@ -180,6 +180,24 @@ class ImageGenerationIntegrationTest {
    mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).header("X-Telegram-Bot-Api-Secret-Token","test-header").contentType("application/json").content("{\"update_id\":1}"))
      .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
      .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.ok").value(true));
+ }
+
+ @Test void testMessagesAreIdempotentAndTestCallbacksNeverMutateOrdersOrCallImageApi() throws Exception {
+   when(telegram.sendTest("payment",actor.getName())).thenReturn(Map.of("accepted",true,"messageId",10,"title","PAWEVER"));
+   linking.sendTest("payment","test-room-send",Map.of());linking.sendTest("payment","test-room-send",Map.of());
+   verify(telegram,times(1)).sendTest("payment",actor.getName());
+   when(telegram.chat("payment")).thenReturn("-100test");
+   var linked=StaffTelegramLink.create(actor.getId());linked.connect(777L);links.saveAndFlush(linked);
+   String raw="{\"update_id\":99,\"callback_query\":{\"id\":\"test-cb\",\"from\":{\"id\":777},\"message\":{\"message_id\":10,\"chat\":{\"id\":\"-100test\"}},\"data\":\"test:payment\"}}";
+   linking.update("payment",new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw));
+   verify(telegram).answer(eq("payment"),eq("test-cb"),contains("연결 테스트 성공"));
+   verify(telegram,never()).clear(anyString(),anyString(),anyLong());
+   assertThat(orders.findByOrderNumber(number).orElseThrow().paymentStatus()).isEqualTo("PENDING");
+   assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).isEmpty();verifyNoInteractions(api);
+   actor.changeRole(AdminRole.PRODUCTION);actor.setWorkRoles(Set.of(WorkRole.MODELING));accounts.saveAndFlush(actor);
+   assertThatThrownBy(()->linking.sendTest("payment","forbidden-test",Map.of())).isInstanceOf(WorkflowException.class);
+   linking.update("payment",new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw));
+   assertThat(orders.findByOrderNumber(number).orElseThrow().paymentStatus()).isEqualTo("PENDING");
  }
 
 }

@@ -38,6 +38,21 @@ public class ImageTelegramClient {
       return result.path("result");
     }catch(RestClientException|java.io.IOException e){throw new WorkflowException(502,"TELEGRAM_UNAVAILABLE","텔레그램 연결을 확인해 주세요.");}
   }
+  public Map<String,Object> room(String kind) {
+    var room=call(kind,"getChat",Map.of("chat_id",chat(kind)));
+    return Map.of("kind",kind,"title",room.path("title").asText(room.path("first_name").asText()),"type",room.path("type").asText());
+  }
+  public Map<String,Object> sendTest(String kind,String actor) {
+    var room=room(kind);
+    String title=kind.equals("payment")?"입금 확인·4면도 생성":"검수 완료";
+    String second=kind.equals("payment")?"관리자에서 보기":"수정 요청";
+    String url=config.getPublicWebUrl()+(kind.equals("payment")?"/admin/operations":"/admin/telegram?test=review");
+    String text="[PAW-EVER 연결 테스트 · 실제 주문 아님]\n대상 방: "+room.get("title")+"\n요청자: "+actor+
+        "\n반려동물: 테스트 아이 / 반려인: 테스트 보호자\n첫 버튼은 계정·권한 연결만 확인합니다. 두 번째 버튼은 관리자 안내 화면을 엽니다.\n실제 입금·제작 단계 변경, 고객 문자, 유료 이미지 생성은 없습니다.";
+    var result=call(kind,"sendMessage",Map.of("chat_id",chat(kind),"text",text,
+        "reply_markup",Map.of("inline_keyboard",List.of(List.of(Map.of("text",title,"callback_data","test:"+kind),Map.of("text",second,"url",url))))));
+    return Map.of("kind",kind,"title",room.get("title"),"messageId",result.path("message_id").asLong(),"accepted",true);
+  }
   public String reviewBotName(){return call("review","getMe",Map.of()).path("username").asText();}
   public Map<String,String> webhookStatus(){return Map.copyOf(hooks);}
   @EventListener(ApplicationReadyEvent.class)
