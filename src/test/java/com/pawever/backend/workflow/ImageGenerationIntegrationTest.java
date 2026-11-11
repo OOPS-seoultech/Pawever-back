@@ -237,7 +237,7 @@ class ImageGenerationIntegrationTest {
  }
  @Test void feedbackRejectsStaleCandidatesWrongStaffWrongRoomAndEmptyRequest() throws Exception {
    confirm();output();images.runOne();String first=latest().getId();
-   feedback.begin(first,"-review",20L,777L,"検수 대기","open-protected");
+   feedback.begin(first,"-review",20L,777L,"검수 대기","open-protected");
    String session=drafts.findById(first).orElseThrow().getSessionId();
    assertThatThrownBy(()->feedback.action(session,"generate","-review","empty-request")).isInstanceOf(WorkflowException.class);
    assertThatThrownBy(()->feedback.action(session,"r:tail","-other","wrong-room")).isInstanceOf(WorkflowException.class);
@@ -276,6 +276,16 @@ class ImageGenerationIntegrationTest {
    images.regenerate(latest().getId(),"history-paws",Map.of("direction","front","region","paws","note","PAWS_SUPPORTED"));images.runOne();
    var prompt=org.mockito.ArgumentCaptor.forClass(String.class);verify(api,times(3)).generate(anyList(),prompt.capture());
    assertThat(prompt.getValue()).contains("TAIL_ROOT_CENTER","PAWS_SUPPORTED","newest correction conflicts");
+ }
+
+ @Test void singleTailIssueMapsToExistingTailRegionAndNeverNeedsAFreeformMemo() throws Exception {
+   confirm();output();images.runOne();String first=latest().getId();
+   feedback.begin(first,"-review",20L,777L,"검수 대기","single-tail-open");
+   String session=drafts.findById(first).orElseThrow().getSessionId();
+   feedback.action(session,"r:tail_origin","-review","single-tail-select");
+   feedback.action(session,"generate","-review","single-tail-generate");
+   assertThat(latest().getFeedback()).contains("Region: tail","꼬리 시작점 오류","낮은 골반 뒤 중앙 한 곳");
+   verify(api,times(1)).generate(anyList(),anyString());
  }
 
 }
