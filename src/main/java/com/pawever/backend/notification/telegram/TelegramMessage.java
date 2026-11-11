@@ -3,7 +3,6 @@ package com.pawever.backend.notification.telegram;
 import com.pawever.backend.goodssurvey.event.GoodsOrderSubmittedEvent;
 import com.pawever.backend.workflow.event.ModelReviewRequestedEvent;
 
-import java.text.NumberFormat;
 import java.util.Locale;
 
 /**
@@ -30,30 +29,20 @@ public final class TelegramMessage {
      */
     private static final int MAX_FIELD_LENGTH = 200;
 
-    private static final NumberFormat WON = NumberFormat.getIntegerInstance(Locale.KOREA);
-
     private TelegramMessage() {
     }
 
     public static String goodsOrderSubmitted(GoodsOrderSubmittedEvent event) {
-        StringBuilder text = new StringBuilder()
-                .append("🚨 <b>신규 굿즈 신청</b>\n")
-                .append("- 이름: ").append(field(event.guardianName())).append('\n')
-                .append("- 연락처: ").append(field(event.phone())).append('\n')
-                .append("- 반려견: ").append(field(event.petName())).append('\n')
-                .append("- 굿즈: ").append(field(event.goodsLabel())).append('\n')
-                .append("- 결제: ").append(WON.format(event.paymentAmountKrw())).append('원');
-        if (event.surveyParticipant()) {
-            // 얼마를 받을지가 여기서 갈린다. 제작팀이 먼저 알아야 하는 값이다.
-            text.append(" (설문 참여)");
-        }
-        text.append('\n')
-                .append("- 유입경로: ").append(field(event.trafficSource())).append('\n')
-                .append("- 주문번호: ").append(field(event.orderNumber()));
-
-        // 값마다 끊어 두었으니 여기까지 오면 넘칠 일이 거의 없다. 그래도
-        // 남겨 둔다 — 항목이 늘어날 때 이 한도를 다시 세어 볼 사람은 없다.
-        return clip(text.toString(), MAX_LENGTH);
+        return clip(new StringBuilder()
+                .append("🚨 <b>신규 굿즈 문의</b>\n\n")
+                .append("- 이름 : ").append(field(event.guardianName())).append('\n')
+                .append("- 연락처 : ").append(field(event.phone())).append('\n')
+                .append("- 반려동물 : ").append(field(event.petName())).append('\n')
+                .append("- 결제 : ").append(String.format(Locale.KOREA, "%,d", event.paymentAmountKrw())).append("원\n")
+                .append("- 유입경로 : ").append(field(event.trafficSource())).append('\n')
+                .append("- 주문번호: ").append(field(event.orderNumber())).append('\n')
+                .append("* 입금이 확인되면 아래 버튼을 눌러주세요.")
+                .toString(), MAX_LENGTH);
     }
 
     /**
@@ -72,7 +61,7 @@ public final class TelegramMessage {
                 .append("- 주문번호: ").append(field(event.orderNumber())).append('\n')
                 .append("- 이름: ").append(field(event.guardianName())).append('\n')
                 .append("- 연락처: ").append(field(event.phone())).append('\n')
-                .append("- 결제: ").append(WON.format(event.paymentAmountKrw())).append("원\n")
+                .append("- 결제: ").append(String.format(Locale.KOREA, "%,d", event.paymentAmountKrw())).append("원\n")
                 .append("위 연락처로 계좌를 직접 안내해 주세요. ")
                 .append("안내하지 않으면 기한이 지나 주문이 사라집니다.");
         return clip(text.toString(), MAX_LENGTH);
