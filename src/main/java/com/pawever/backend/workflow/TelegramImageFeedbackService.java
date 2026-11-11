@@ -90,7 +90,7 @@ public class TelegramImageFeedbackService {
       if(!edit(d,d.getOriginalText()+"\n\n재생성 접수 완료 · 새 결과는 이 검수방으로 전송됩니다.",List.of()))return "재생성은 접수됐으나 메시지 갱신에 실패했습니다. 새 결과를 기다려 주세요. 중복 생성하지 않습니다.";
       return "재생성을 접수했습니다. 같은 요청은 중복 생성하지 않습니다.";
     }
-    if(!render(d))return "수정 내용은 저장됐으나 메시지 갱신에 실패했습니다. 관리자 사이트에서도 확인할 수 있습니다.";
+    if(!render(d))return "수정 내용은 저장됐으나 메시지 갱신에 실패했습니다. 메모 입력·변경 버튼으로 갱신을 다시 시도해 주세요.";
     return action.equals("note")?"봇이 보낸 메모 요청 메시지에 답장해 주세요.":"수정 항목을 저장했습니다. 재생성을 눌러야 생성됩니다.";
   }
   public boolean isMemoReply(String chat,Long prompt) {return drafts.findByChatIdAndPromptMessageId(chat,prompt).isPresent();}
