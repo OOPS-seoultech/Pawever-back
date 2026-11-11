@@ -24,6 +24,16 @@ public class ImageTelegramService {
   private final Clock clock;
   private final org.springframework.transaction.PlatformTransactionManager transactions;
 
+  public List<Map<String,Object>> rooms() {
+    access.require(MANAGE_OPERATION_SETTINGS);
+    return List.of(telegram.room("payment"),telegram.room("review"));
+  }
+  @Transactional
+  public Map<String,Object> sendTest(String kind,String key,Map<String,Object> body) {
+    access.require(MANAGE_OPERATION_SETTINGS);
+    if(!Set.of("payment","review").contains(kind))throw new WorkflowException(400,"INVALID_INPUT","테스트 방을 확인해 주세요.");
+    return workflow.command("telegram-test:"+kind,key,body,()->telegram.sendTest(kind,access.current().getName()));
+  }
   @Transactional(readOnly=true)
   public Map<String,Object> linkStatus(){return Map.of("connected",links.findById(access.current().getId()).map(l->l.getTelegramUserId()!=null).orElse(false));}
   @Transactional
@@ -72,6 +82,11 @@ public class ImageTelegramService {
       context.setAuthentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(account.getId(),account.getRole()),null,List.of(new SimpleGrantedAuthority(account.getRole().authority()))));
       SecurityContextHolder.setContext(context);
       String data=callback.path("data").asText();String key="tg:"+kind+":"+update.path("update_id").asLong();
+      if(data.equals("test:"+kind)) {
+        access.require(kind.equals("payment")?CONFIRM_PAYMENT:REVIEW_IMAGES);
+        result="연결 테스트 성공 · 실제 주문 변경이나 유료 이미지 생성은 없습니다.";
+        return;
+      }
       if(kind.equals("payment")&&data.startsWith("pay:")){
         access.require(CONFIRM_PAYMENT);String number=data.substring(4);var row=workflow.detail(number,0);
         if(row.get("paymentStatus").equals("CONFIRMED")){result="이미 입금 확인된 주문입니다. 중복 생성하지 않았습니다.";}

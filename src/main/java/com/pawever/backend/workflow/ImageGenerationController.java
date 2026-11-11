@@ -22,6 +22,10 @@ public class ImageGenerationController {
   public Object notifyReview(@PathVariable String id,@RequestHeader("Idempotency-Key")String key,@RequestBody Map<String,Object> body){return ApiResponse.ok(images.resend(id,key,body));}
   @GetMapping("/api/admin/image-generation/status")
   public Object status(@RequestParam(defaultValue="false")boolean probe){return ApiResponse.ok(images.status(probe));}
+  @GetMapping("/api/admin/telegram/test-rooms")
+  public Object testRooms(){return ApiResponse.ok(telegram.rooms());}
+  @PostMapping("/api/admin/telegram/tests/{kind}")
+  public Object sendTest(@PathVariable String kind,@RequestHeader("Idempotency-Key")String key,@RequestBody Map<String,Object> body){return ApiResponse.ok(telegram.sendTest(kind,key,body));}
   @GetMapping("/api/admin/telegram/link")
   public Object link(){return ApiResponse.ok(telegram.linkStatus());}
   @PostMapping("/api/admin/telegram/link")

@@ -23,4 +23,24 @@ class ImageTelegramClientTest {
     server.expect(requestTo("https://api.telegram.org/botreview-test/setWebhook")).andExpect(jsonPath("$.secret_token").value(client.secret("review"))).andExpect(jsonPath("$.drop_pending_updates").value(false)).andRespond(withSuccess("{\"ok\":true,\"result\":true}",MediaType.APPLICATION_JSON));
     client.register();assertThat(client.webhookStatus()).containsEntry("payment","CONFLICT_EXISTING_WEBHOOK").containsEntry("review","CONNECTED");server.verify();
   }
+  @Test void sendsTwoHarmlessButtonsToEachConfiguredRoom() {
+    var http=new RestTemplate();var server=MockRestServiceServer.bindTo(http).build();
+    var payment=new TelegramProperties();payment.setBotToken("payment-test");payment.setChatId("-1");
+    var review=new TelegramOpsProperties();review.setBotToken("review-test");review.setChatId("-2");
+    var client=new ImageTelegramClient(http,payment,review,new TelegramOpsClient(http,review),new ImageGenerationProperties());
+    for(String kind:java.util.List.of("payment","review")) {
+      String token=kind.equals("payment")?"payment-test":"review-test";
+      server.expect(requestTo("https://api.telegram.org/bot"+token+"/getChat")).andRespond(withSuccess(kind.equals("payment")?"{\"ok\":true,\"result\":{\"first_name\":\"대표 수신자\",\"type\":\"private\"}}":"{\"ok\":true,\"result\":{\"title\":\"PAWEVER\",\"type\":\"group\"}}",MediaType.APPLICATION_JSON));
+      if(kind.equals("payment"))server.expect(requestTo("https://api.telegram.org/bot"+token+"/getMe")).andRespond(withSuccess("{\"ok\":true,\"result\":{\"first_name\":\"PAWEVER\"}}",MediaType.APPLICATION_JSON));
+      server.expect(requestTo("https://api.telegram.org/bot"+token+"/sendMessage"))
+        .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.containsString("실제 주문 아님")))
+        .andExpect(jsonPath("$.reply_markup.inline_keyboard[0].length()").value(2))
+        .andExpect(jsonPath("$.reply_markup.inline_keyboard[0][0].callback_data").value("test:"+kind))
+        .andExpect(jsonPath("$.reply_markup.inline_keyboard[0][1].url").value(org.hamcrest.Matchers.startsWith("https://www.pawever.kr/admin/")))
+        .andRespond(withSuccess("{\"ok\":true,\"result\":{\"message_id\":12}}",MediaType.APPLICATION_JSON));
+    }
+    assertThat(client.sendTest("payment","대표")).containsEntry("accepted",true).containsEntry("title","PAWEVER");
+    assertThat(client.sendTest("review","대표")).containsEntry("messageId",12L);server.verify();
+  }
+
 }
