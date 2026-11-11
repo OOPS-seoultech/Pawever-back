@@ -38,10 +38,16 @@ class TelegramMessageTest {
     void 대표님_예시_형식을_따른다() {
         String text = TelegramMessage.goodsOrderSubmitted(event("황성욱", "3D 전신 피규어"));
 
-        assertThat(text).contains("신규 굿즈 신청");
-        assertThat(text).contains("이름: 황성욱");
-        assertThat(text).contains("연락처: 010-1234-5678");
-        assertThat(text).contains("유입경로: instagram / cpc");
+        assertThat(text).contains("신규 굿즈 문의");
+        assertThat(text).contains("이름 : 황성욱");
+        assertThat(text).contains("연락처 : 010-1234-5678");
+        assertThat(text).contains("유입경로 : instagram / cpc");
+    }
+
+    @Test
+    void 신규문의_양식을_정확히_따르고_예시값을_고정하지_않는다() {
+        var input = new GoodsOrderSubmittedEvent("PE-TEST-1", "테스트 보호자", "01000000000", "보리·나비", "피규어", 37800, false, "직접 유입", 2880);
+        assertThat(TelegramMessage.goodsOrderSubmitted(input)).isEqualTo("🚨 <b>신규 굿즈 문의</b>\n\n- 이름 : 테스트 보호자\n- 연락처 : 01000000000\n- 반려동물 : 보리·나비\n- 결제 : 37,800원\n- 유입경로 : 직접 유입\n- 주문번호: PE-TEST-1\n* 입금이 확인되면 아래 버튼을 눌러주세요.");
     }
 
     @Test
@@ -82,7 +88,7 @@ class TelegramMessageTest {
     void 꺾쇠와_앰퍼샌드를_피해서_적는다() {
         // 이스케이프하지 않으면 텔레그램이 400 을 돌려주고 이 신청은
         // 알림이 통째로 안 간다.
-        String text = TelegramMessage.goodsOrderSubmitted(event("황성욱", "키링 <2개> A&B"));
+        String text = TelegramMessage.goodsOrderSubmitted(event("키링 <2개> A&B", "피규어"));
 
         assertThat(text).contains("키링 &lt;2개&gt; A&amp;B");
         assertThat(text).doesNotContain("키링 <2개>");
@@ -111,10 +117,10 @@ class TelegramMessageTest {
     }
 
     @Test
-    void 설문_참여_여부를_밝힌다() {
+    void 새_양식에_없는_굿즈나_설문_참여_표시는_추가하지_않는다() {
         // 얼마를 받을지가 여기서 갈린다. 제작팀이 먼저 알아야 하는 값이다.
         String participant = TelegramMessage.goodsOrderSubmitted(event("황성욱", "피규어"));
-        assertThat(participant).contains("설문 참여");
+        assertThat(participant).doesNotContain("설문 참여", "- 굿즈:");
 
         GoodsOrderSubmittedEvent walkIn = new GoodsOrderSubmittedEvent(
                 "PW-1043", "황성욱", "010-1234-5678", "뭉치",
@@ -127,7 +133,7 @@ class TelegramMessageTest {
     void 텔레그램_길이_제한을_넘지_않는다() {
         // 텔레그램은 4096자를 넘으면 받지 않는다. 자유 입력이 있는 한
         // 길이는 우리가 정하는 값이 아니다.
-        String text = TelegramMessage.goodsOrderSubmitted(event("황성욱", "가".repeat(5000)));
+        String text = TelegramMessage.goodsOrderSubmitted(event("가".repeat(5000), "피규어"));
 
         assertThat(text.length()).isLessThanOrEqualTo(4096);
     }
@@ -135,7 +141,7 @@ class TelegramMessageTest {
     @Test
     void 잘라낸_뒤에도_태그가_깨지지_않는다() {
         // 이스케이프한 글자 가운데를 자르면 &am 같은 조각이 남아 400 이 난다.
-        String text = TelegramMessage.goodsOrderSubmitted(event("황성욱", "&".repeat(5000)));
+        String text = TelegramMessage.goodsOrderSubmitted(event("&".repeat(5000), "피규어"));
 
         assertThat(text.length()).isLessThanOrEqualTo(4096);
         assertThat(text).doesNotContain("&am\n");
