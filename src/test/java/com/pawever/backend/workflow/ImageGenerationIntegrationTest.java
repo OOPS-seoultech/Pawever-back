@@ -32,11 +32,13 @@ class ImageGenerationIntegrationTest {
  @Autowired ProductionArtifactRepository artifacts;
  @Autowired ImageTelegramService linking;
  @Autowired StaffTelegramLinkRepository links;
+ @Autowired TelegramImageFeedbackService feedback;
+ @Autowired TelegramImageFeedbackRepository drafts;
  @MockitoBean OpenAiImageClient api;
  @MockitoBean ImageTelegramClient telegram;
  @MockitoBean GoodsSurveyPhotoStorage storage;
  String number;AdminAccount actor;
- @AfterEach void clear(){links.findById(actor.getId()).ifPresent(links::delete);jobs.deleteAll(jobs.findAll().stream().filter(j->j.getOrderNumber().equals(number)).toList());SecurityContextHolder.clearContext();}
+ @AfterEach void clear(){drafts.deleteAll(drafts.findAll().stream().filter(d->jobs.findById(d.getJobId()).map(j->j.getOrderNumber().equals(number)).orElse(false)).toList());links.findById(actor.getId()).ifPresent(links::delete);jobs.deleteAll(jobs.findAll().stream().filter(j->j.getOrderNumber().equals(number)).toList());SecurityContextHolder.clearContext();}
   @BeforeEach
   void setup() {
     var a=AdminAccount.invite(UUID.randomUUID()+"@example.test","제작자",AdminRole.OWNER,"test",Instant.now().plusSeconds(3600));
@@ -198,6 +200,78 @@ class ImageGenerationIntegrationTest {
    assertThatThrownBy(()->linking.sendTest("payment","forbidden-test",Map.of())).isInstanceOf(WorkflowException.class);
    linking.update("payment",new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw));
    assertThat(orders.findByOrderNumber(number).orElseThrow().paymentStatus()).isEqualTo("PENDING");
+ }
+
+ @Test void nativeTelegramFeedbackSelectsMultiplePartsStoresMemoAndRegeneratesOnce() throws Exception {
+   confirm();output();images.runOne();String first=latest().getId();
+   feedback.begin(first,"-review",20L,777L,"검수 대기","draft-open");
+   var d=drafts.findById(first).orElseThrow();String session=d.getSessionId();
+   feedback.action(session,"d:back","-review","select-back");
+   feedback.action(session,"d:left","-review","select-left");
+   feedback.action(session,"r:tail","-review","select-tail");
+   feedback.action(session,"r:paws","-review","select-paws");
+   feedback.action(session,"r:paws","-review","select-paws");
+   when(telegram.feedbackPrompt(anyString(),anyLong(),anyString(),anyString())).thenReturn(100L);
+   feedback.action(session,"note","-review","memo-prompt");
+   feedback.memo("-review",100L,777L,"꼬리 뿌리는 골반 중앙, 발은 몸에 붙여 주세요",20,"memo-save");
+   feedback.memo("-review",100L,777L,"늦게 도착한 이전 메모",19,"memo-older");
+   d=drafts.findById(first).orElseThrow();
+   assertThat(d.getDirections()).isEqualTo("back,left");assertThat(d.getRegions()).contains("tail","paws");
+   assertThat(d.getNote()).contains("골반 중앙").doesNotContain("이전 메모");
+   assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).hasSize(1);
+   verify(api,times(1)).generate(anyList(),anyString());
+   feedback.action(session,"generate","-review","submit-feedback");
+   feedback.action(session,"generate","-review","submit-feedback-again");
+   assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).hasSize(2);
+   assertThat(latest().getFeedback()).contains("뒷면, 왼쪽","꼬리, 발·다리","골반 중앙");
+   verify(api,times(1)).generate(anyList(),anyString());
+   images.runOne();String second=latest().getId();assertThat(second).isNotEqualTo(first);
+   feedback.begin(second,"-review",21L,777L,"재검수 대기","second-draft");
+   feedback.action(drafts.findById(second).orElseThrow().getSessionId(),"cancel","-review","cancel-second");
+   images.approve(second,"approve-latest",Map.of());assertThat(latest().getStatus()).isEqualTo("APPROVED");
+   verify(api,times(2)).generate(anyList(),anyString());
+ }
+ @Test void feedbackRejectsStaleCandidatesWrongStaffWrongRoomAndEmptyRequest() throws Exception {
+   confirm();output();images.runOne();String first=latest().getId();
+   feedback.begin(first,"-review",20L,777L,"検수 대기","open-protected");
+   String session=drafts.findById(first).orElseThrow().getSessionId();
+   assertThatThrownBy(()->feedback.action(session,"generate","-review","empty-request")).isInstanceOf(WorkflowException.class);
+   assertThatThrownBy(()->feedback.action(session,"r:tail","-other","wrong-room")).isInstanceOf(WorkflowException.class);
+   var other=AdminAccount.invite(UUID.randomUUID()+"@example.test","다른 담당자",AdminRole.OWNER,"test",Instant.now().plusSeconds(3600));
+   other.acceptInvite("unused");other.approve(Set.of(),Instant.now());accounts.saveAndFlush(other);
+   SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(other.getId(),other.getRole()),null,List.of()));
+   assertThatThrownBy(()->feedback.action(session,"r:tail","-review","other-staff")).isInstanceOf(WorkflowException.class);
+   SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(actor.getId(),actor.getRole()),null,List.of()));
+   feedback.action(session,"cancel","-review","cancel-draft");
+   feedback.begin(first,"-review",20L,777L,"검수 대기","reopen-draft");
+   assertThat(drafts.findById(first).orElseThrow().getSessionId()).isNotEqualTo(session);
+   assertThatThrownBy(()->feedback.action(session,"r:tail","-review","old-draft-button")).isInstanceOf(WorkflowException.class);
+   images.approve(first,"web-approved",Map.of());
+   String fresh=drafts.findById(first).orElseThrow().getSessionId();
+   assertThatThrownBy(()->feedback.action(fresh,"r:tail","-review","after-web-approval")).isInstanceOf(WorkflowException.class);
+   verify(api,times(1)).generate(anyList(),anyString());
+ }
+ @Test void telegramMemoWebhookOnlyUsesLinkedStaffRepliesToTheirOwnPrompt() throws Exception {
+   confirm();output();images.runOne();String first=latest().getId();
+   var link=StaffTelegramLink.create(actor.getId());link.connect(777L);links.saveAndFlush(link);
+   when(telegram.chat("review")).thenReturn("-review");
+   when(telegram.feedbackPrompt(anyString(),anyLong(),anyString(),anyString())).thenReturn(100L);
+   var json=new com.fasterxml.jackson.databind.ObjectMapper();
+   linking.update("review",json.valueToTree(Map.of("update_id",50,"callback_query",Map.of("id","cb","from",Map.of("id",777),"message",Map.of("message_id",20,"chat",Map.of("id","-review"),"text","검수 대기"),"data","changes:"+first))));
+   String session=drafts.findById(first).orElseThrow().getSessionId();
+   linking.update("review",json.valueToTree(Map.of("update_id",51,"callback_query",Map.of("id","cb2","from",Map.of("id",777),"message",Map.of("message_id",20,"chat",Map.of("id","-review")),"data","fb:"+session+":note"))));
+   linking.update("review",json.valueToTree(Map.of("update_id",52,"message",Map.of("message_id",101,"from",Map.of("id",888),"chat",Map.of("id","-review"),"reply_to_message",Map.of("message_id",100),"text","남의 메모"))));
+   assertThat(drafts.findById(first).orElseThrow().getNote()).isEmpty();
+   linking.update("review",json.valueToTree(Map.of("update_id",53,"message",Map.of("message_id",102,"from",Map.of("id",777),"chat",Map.of("id","-review"),"reply_to_message",Map.of("message_id",100),"text","눈 주변 무늬를 사진에 맞춰 주세요"))));
+   assertThat(drafts.findById(first).orElseThrow().getNote()).contains("눈 주변");
+   verify(api,times(1)).generate(anyList(),anyString());
+ }
+ @Test void successiveCorrectionsKeepEarlierPetInstructions() throws Exception {
+   confirm();output();images.runOne();
+   images.regenerate(latest().getId(),"history-tail",Map.of("direction","back","region","tail","note","TAIL_ROOT_CENTER"));images.runOne();
+   images.regenerate(latest().getId(),"history-paws",Map.of("direction","front","region","paws","note","PAWS_SUPPORTED"));images.runOne();
+   var prompt=org.mockito.ArgumentCaptor.forClass(String.class);verify(api,times(3)).generate(anyList(),prompt.capture());
+   assertThat(prompt.getValue()).contains("TAIL_ROOT_CENTER","PAWS_SUPPORTED","newest correction conflicts");
  }
 
 }

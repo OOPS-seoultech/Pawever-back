@@ -153,6 +153,10 @@ public class ImageGenerationService {
             .replace("{{tail_lock}}","Preserve observed length, curl and markings. Do not invent a breed-default tail or an extra attachment. Use the specified supported construction for unseen parts.")
             .replace("{{confirmed_anatomy_exceptions}}","None separately confirmed. Preserve any explicitly confirmed exception described in the correction; occlusion alone is not proof of absence.")
             .replace("{{approved_unknown_region_policy}}","Use the least-assumptive reconstruction for hidden non-critical regions; do not mirror known asymmetry. Human approval is mandatory.");
+        var history=tx(()->jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(snapshot.getOrderNumber(),snapshot.getPetIndex()).stream()
+            .filter(j->j.getTaskId().equals(snapshot.getTaskId())&&!j.getId().equals(snapshot.getId())&&j.getCreatedAt().isBefore(snapshot.getCreatedAt())&&j.getFeedback()!=null&&j.getSheetKey()!=null)
+            .map(ImageGenerationJob::getFeedback).toList());
+        if(!history.isEmpty())prompt+="\nEarlier human corrections for this pet (preserve unless the newest correction conflicts):\n"+String.join("\n",history.subList(Math.max(0,history.size()-5),history.size()));
         if(priorKey!=null)prompt="INPUT 1 is the current 2x2 candidate to EDIT. Preserve its identity and unchanged features. Other inputs are original evidence and the style reference. Apply only this correction consistently to affected views: "+snapshot.getFeedback()+"\n"+prompt;
         else if(snapshot.getFeedback()!=null)prompt+="\nAdditional human instruction: "+snapshot.getFeedback();
         result=api.generate(inputs,prompt);

@@ -36,6 +36,12 @@ public class ImageTelegramClient {
       var result=json.readTree(response.getBody());
       if(!result.path("ok").asBoolean())throw new WorkflowException(502,"TELEGRAM_REJECTED","텔레그램 요청이 거절됐습니다.");
       return result.path("result");
+    }catch(HttpClientErrorException e){
+      // Telegram returns 400 when a retried webhook edits an already identical message.
+      if(method.equals("editMessageText")&&e.getStatusCode().value()==400)try {
+        if(json.readTree(e.getResponseBodyAsString()).path("description").asText().contains("message is not modified"))return json.createObjectNode();
+      }catch(java.io.IOException ignored){}
+      throw new WorkflowException(502,"TELEGRAM_UNAVAILABLE","텔레그램 연결을 확인해 주세요.");
     }catch(RestClientException|java.io.IOException e){throw new WorkflowException(502,"TELEGRAM_UNAVAILABLE","텔레그램 연결을 확인해 주세요.");}
   }
   public Map<String,Object> room(String kind) {
@@ -79,10 +85,26 @@ public class ImageTelegramClient {
   }
   public Long review(String id,String number,int pet,ModelReviewMedia.Album album){
     if(!albums.sendAlbum(album))return null;
-    String url=config.getPublicWebUrl()+"/admin/image-review/"+id;
     var result=call("review","sendMessage",Map.of("chat_id",chat("review"),"text",album.title()+"\n후보: "+id.substring(0,8)+"\n최신 후보를 승인하거나 수정할 부분을 입력해 주세요.",
-        "reply_markup",Map.of("inline_keyboard",List.of(List.of(Map.of("text","검수 완료","callback_data","approve:"+id),Map.of("text","수정 필요","url",url))))));
+        "reply_markup",Map.of("inline_keyboard",reviewButtons(id))));
     return result.path("message_id").asLong();
+  }
+  List<List<Map<String,String>>> reviewButtons(String id) {
+    return List.of(List.of(Map.of("text","검수 완료","callback_data","approve:"+id),Map.of("text","수정 필요","callback_data","changes:"+id)));
+  }
+  void editReview(String chat,Long message,String text,List<List<Map<String,String>>> buttons) {
+    call("review","editMessageText",Map.of("chat_id",chat,"message_id",message,"text",text,"reply_markup",Map.of("inline_keyboard",buttons)));
+  }
+  Long feedbackPrompt(String chat,Long user,String name,String pet) {
+    return call("review","sendMessage",Map.of("chat_id",chat,"parse_mode","HTML",
+        "text","<a href=\"tg://user?id="+user+"\">"+org.springframework.web.util.HtmlUtils.htmlEscape(name)+"</a>님, "+org.springframework.web.util.HtmlUtils.htmlEscape(pet)+" 수정 내용을 이 메시지에 답장해 주세요 (1~800자). 입력만으로 재생성되지 않습니다.",
+        "reply_markup",Map.of("force_reply",true,"selective",true,"input_field_placeholder","어디를 어떻게 바꿀지 적어 주세요"))).path("message_id").asLong();
+  }
+  void feedbackReply(String chat,Long message,String text) {
+    call("review","sendMessage",Map.of("chat_id",chat,"text",text,"reply_parameters",Map.of("message_id",message,"allow_sending_without_reply",true)));
+  }
+  void confirmedOrderLink(String chat,Long message,String number) {
+    call("payment","editMessageReplyMarkup",Map.of("chat_id",chat,"message_id",message,"reply_markup",Map.of("inline_keyboard",List.of(List.of(Map.of("text","관리자 사이트","url",config.getPublicWebUrl()+"/admin/orders/"+number))))));
   }
   void answer(String kind,String id,String text){try{call(kind,"answerCallbackQuery",Map.of("callback_query_id",id,"text",text,"show_alert",true));}catch(RuntimeException ignored){}}
   void clear(String kind,String chat,Long message){if(message==null)return;try{call(kind,"editMessageReplyMarkup",Map.of("chat_id",chat,"message_id",message,"reply_markup",Map.of("inline_keyboard",List.of())));}catch(RuntimeException ignored){}}
