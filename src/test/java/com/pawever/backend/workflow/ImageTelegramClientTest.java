@@ -30,7 +30,8 @@ class ImageTelegramClientTest {
     var client=new ImageTelegramClient(http,payment,review,new TelegramOpsClient(http,review),new ImageGenerationProperties());
     for(String kind:java.util.List.of("payment","review")) {
       String token=kind.equals("payment")?"payment-test":"review-test";
-      server.expect(requestTo("https://api.telegram.org/bot"+token+"/getChat")).andRespond(withSuccess("{\"ok\":true,\"result\":{\"title\":\"PAWEVER\",\"type\":\"group\"}}",MediaType.APPLICATION_JSON));
+      server.expect(requestTo("https://api.telegram.org/bot"+token+"/getChat")).andRespond(withSuccess(kind.equals("payment")?"{\"ok\":true,\"result\":{\"first_name\":\"대표 수신자\",\"type\":\"private\"}}":"{\"ok\":true,\"result\":{\"title\":\"PAWEVER\",\"type\":\"group\"}}",MediaType.APPLICATION_JSON));
+      if(kind.equals("payment"))server.expect(requestTo("https://api.telegram.org/bot"+token+"/getMe")).andRespond(withSuccess("{\"ok\":true,\"result\":{\"first_name\":\"PAWEVER\"}}",MediaType.APPLICATION_JSON));
       server.expect(requestTo("https://api.telegram.org/bot"+token+"/sendMessage"))
         .andExpect(jsonPath("$.text").value(org.hamcrest.Matchers.containsString("실제 주문 아님")))
         .andExpect(jsonPath("$.reply_markup.inline_keyboard[0].length()").value(2))
@@ -38,7 +39,7 @@ class ImageTelegramClientTest {
         .andExpect(jsonPath("$.reply_markup.inline_keyboard[0][1].url").value(org.hamcrest.Matchers.startsWith("https://www.pawever.kr/admin/")))
         .andRespond(withSuccess("{\"ok\":true,\"result\":{\"message_id\":12}}",MediaType.APPLICATION_JSON));
     }
-    assertThat(client.sendTest("payment","대표")).containsEntry("accepted",true);
+    assertThat(client.sendTest("payment","대표")).containsEntry("accepted",true).containsEntry("title","PAWEVER");
     assertThat(client.sendTest("review","대표")).containsEntry("messageId",12L);server.verify();
   }
 

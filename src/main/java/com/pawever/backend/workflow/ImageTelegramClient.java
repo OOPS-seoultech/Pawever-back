@@ -40,7 +40,10 @@ public class ImageTelegramClient {
   }
   public Map<String,Object> room(String kind) {
     var room=call(kind,"getChat",Map.of("chat_id",chat(kind)));
-    return Map.of("kind",kind,"title",room.path("title").asText(room.path("first_name").asText()),"type",room.path("type").asText());
+    String title=room.path("title").asText();
+    // Telegram labels a private bot conversation with the bot name, not the recipient name.
+    if(room.path("type").asText().equals("private"))title=call(kind,"getMe",Map.of()).path("first_name").asText();
+    return Map.of("kind",kind,"title",title,"type",room.path("type").asText());
   }
   public Map<String,Object> sendTest(String kind,String actor) {
     var room=room(kind);
