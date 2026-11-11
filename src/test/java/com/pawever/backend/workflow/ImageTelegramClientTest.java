@@ -97,4 +97,14 @@ class ImageTelegramClientTest {
     assertThatThrownBy(()->client.editReview("-2",99L,"new",java.util.List.of())).isInstanceOf(WorkflowException.class);server.verify();
   }
 
+  @Test void checkboxAcknowledgementDoesNotOpenABlockingAlert() {
+    var http=new RestTemplate();var server=MockRestServiceServer.bindTo(http).build();
+    var ops=new TelegramOpsProperties();ops.setBotToken("review-test");
+    var client=new ImageTelegramClient(http,new TelegramProperties(),ops,new TelegramOpsClient(http,ops),new ImageGenerationProperties());
+    server.expect(requestTo("https://api.telegram.org/botreview-test/answerCallbackQuery"))
+      .andExpect(jsonPath("$.show_alert").value(false))
+      .andRespond(withSuccess("{\"ok\":true,\"result\":true}",MediaType.APPLICATION_JSON));
+    client.answer("review","select-cb","수정 항목을 저장했습니다.",false);server.verify();
+  }
+
 }
