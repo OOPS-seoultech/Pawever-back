@@ -97,7 +97,7 @@ public class ImageTelegramClient {
   }
   Long feedbackPrompt(String chat,Long user,String name,String pet) {
     return call("review","sendMessage",Map.of("chat_id",chat,"parse_mode","HTML",
-        "text","<a href=\"tg://user?id="+user+"\">"+org.springframework.web.util.HtmlUtils.htmlEscape(name)+"</a>님, "+org.springframework.web.util.HtmlUtils.htmlEscape(pet)+" 수정 내용을 이 메시지에 답장해 주세요 (1~800자). 입력만으로 재생성되지 않습니다.",
+        "text","<a href=\"tg://user?id="+user+"\">"+org.springframework.web.util.HtmlUtils.htmlEscape(name)+"</a>님, "+org.springframework.web.util.HtmlUtils.htmlEscape(pet)+" 수정 내용을 이 메시지에 답장해 주세요 (1~600자). 입력만으로 재생성되지 않습니다.",
         "reply_markup",Map.of("force_reply",true,"selective",true,"input_field_placeholder","어디를 어떻게 바꿀지 적어 주세요"))).path("message_id").asLong();
   }
   void feedbackReply(String chat,Long message,String text) {

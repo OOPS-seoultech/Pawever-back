@@ -127,8 +127,9 @@ class ImageGenerationIntegrationTest {
    assertThatThrownBy(()->images.approve(first,"old-button",Map.of())).isInstanceOf(WorkflowException.class);
    images.runOne();
    var prompt=org.mockito.ArgumentCaptor.forClass(String.class);verify(api,times(2)).generate(anyList(),prompt.capture());
-   assertThat(prompt.getValue()).contains("current 2x2 candidate to EDIT","꼬리 뿌리를 골반 중앙으로");
+   assertThat(prompt.getValue()).contains("current 2x2 candidate to EDIT","꼬리 뿌리를 골반 중앙으로","TAIL GEOMETRY AND OCCLUSION","Anatomical left and","correct opaque-body occlusion");
    assertThat(latest().getPreviousId()).isEqualTo(first);
+   assertThat(latest().getPromptVersion()).isEqualTo("pet-four-view-api-tail-consistency-v2");
  }
  @Test void unknownApiResultPreservesPaymentAndNeverAutomaticallyBillsAgain() throws Exception {
    confirm();output();when(api.generate(anyList(),anyString())).thenThrow(new WorkflowException(502,"IMAGE_RESULT_UNKNOWN","unknown"));
@@ -209,6 +210,9 @@ class ImageGenerationIntegrationTest {
    feedback.action(session,"d:back","-review","select-back");
    feedback.action(session,"d:left","-review","select-left");
    feedback.action(session,"r:tail","-review","select-tail");
+   feedback.action(session,"r:tail_origin","-review","select-tail-origin");
+   feedback.action(session,"r:tail_visibility","-review","select-tail-visibility");
+   feedback.action(session,"r:tail_consistency","-review","select-tail-consistency");
    feedback.action(session,"r:paws","-review","select-paws");
    feedback.action(session,"r:paws","-review","select-paws");
    when(telegram.feedbackPrompt(anyString(),anyLong(),anyString(),anyString())).thenReturn(100L);
@@ -223,7 +227,7 @@ class ImageGenerationIntegrationTest {
    feedback.action(session,"generate","-review","submit-feedback");
    feedback.action(session,"generate","-review","submit-feedback-again");
    assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).hasSize(2);
-   assertThat(latest().getFeedback()).contains("뒷면, 왼쪽","꼬리, 발·다리","골반 중앙");
+   assertThat(latest().getFeedback()).contains("뒷면, 왼쪽","꼬리 시작점 오류","꼬리 좌우 중복 노출","꼬리 방향별 불일치","골반 중앙","카메라만 회전","복제하거나 투과시키지");
    verify(api,times(1)).generate(anyList(),anyString());
    images.runOne();String second=latest().getId();assertThat(second).isNotEqualTo(first);
    feedback.begin(second,"-review",21L,777L,"재검수 대기","second-draft");

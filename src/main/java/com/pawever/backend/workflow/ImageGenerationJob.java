@@ -35,7 +35,7 @@ public class ImageGenerationJob {
   public static ImageGenerationJob create(String number,int pet,Long task,Long actor,String key,String previous,String feedback,Instant at) {
     var j=new ImageGenerationJob(); j.id=UUID.randomUUID().toString(); j.orderNumber=number;
     j.petIndex=pet;j.taskId=task;j.requestedBy=actor;j.requestKey=key;j.previousId=previous;
-    j.feedback=feedback;j.status="QUEUED";j.promptVersion="pet-four-view-api-direct-v1";j.createdAt=at;
+    j.feedback=feedback;j.status="QUEUED";j.promptVersion="pet-four-view-api-tail-consistency-v2";j.createdAt=at;
     j.telegramStatus="NOT_SENT";return j;
   }
   public void start(Instant at) { status="RUNNING";startedAt=at; }

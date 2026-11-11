@@ -16,7 +16,7 @@ public class TelegramImageFeedbackService {
   private final ImageTelegramClient telegram;
   private final Clock clock;
   private static final Map<String,String> DIRECTIONS=labels("all","전체","front","정면","left","왼쪽","back","뒷면","right","오른쪽");
-  private static final Map<String,String> REGIONS=labels("face","얼굴","eyes_nose","눈·코","ears","귀","markings","무늬·색상","tail","꼬리","paws","발·다리","proportions","비율","pose","자세","framing","구도·잘림","other","기타");
+  private static final Map<String,String> REGIONS=labels("face","얼굴","eyes_nose","눈·코","ears","귀","markings","무늬·색상","tail","꼬리","tail_origin","꼬리 시작점 오류","tail_visibility","꼬리 좌우 중복 노출","tail_consistency","꼬리 방향별 불일치","paws","발·다리","proportions","비율","pose","자세","framing","구도·잘림","other","기타");
   private static Map<String,String> labels(String... entries) {
     var result=new LinkedHashMap<String,String>();for(int i=0;i<entries.length;i+=2)result.put(entries[i],entries[i+1]);return Collections.unmodifiableMap(result);
   }
@@ -73,9 +73,9 @@ public class TelegramImageFeedbackService {
         if(d.getPromptMessageId()==null)d.prompt(telegram.feedbackPrompt(chat,d.getTelegramUserId(),access.current().getName(),identity(d)));
       } else if(action.equals("generate")) {
         if(d.getRegions().isBlank()&&d.getNote().isBlank())throw bad("수정 부위를 하나 이상 선택하거나 메모를 입력해 주세요.");
-        String note="수정 방향: "+selected(d,d.getDirections(),DIRECTIONS)+". 수정 부위: "+selected(d,d.getRegions(),REGIONS)+". "+d.getNote()+"\n그 외 특징과 이전에 반영된 수정은 유지하세요.";
+        String note="수정 방향: "+selected(d,d.getDirections(),DIRECTIONS)+". 바로잡을 문제·부위: "+selected(d,d.getRegions(),REGIONS)+". "+d.getNote()+"\n"+tailInstructions(d)+"그 외 특징과 이전에 반영된 수정은 유지하세요.";
         if(note.length()>1000)throw bad("수정 메모를 조금 줄여 주세요.");
-        var next=images.regenerate(d.getJobId(),"tg-feedback:"+session,Map.of("direction",d.selected(d.getDirections()).size()==1?d.getDirections():"all","region",d.selected(d.getRegions()).size()==1?d.getRegions():"other","note",note));
+        var next=images.regenerate(d.getJobId(),"tg-feedback:"+session,Map.of("direction",d.selected(d.getDirections()).size()==1?d.getDirections():"all","region",d.selected(d.getRegions()).size()==1?(d.getRegions().startsWith("tail_")?"tail":d.getRegions()):"other","note",note));
         d.submit(next.get("id").toString());
       } else throw bad("알 수 없는 수정 버튼입니다.");
       drafts.flush();return Map.of("status",d.getStatus());
@@ -100,11 +100,18 @@ public class TelegramImageFeedbackService {
       var d=drafts.findByChatIdAndPromptMessageId(chat,prompt).orElseThrow(()->bad("메모 요청을 찾을 수 없습니다."));
       editable(d);
       if(!d.getTelegramUserId().equals(user))throw bad("수정을 시작한 담당자만 메모를 입력할 수 있습니다.");
-      String text=note.trim();if(text.isEmpty()||text.length()>800)throw bad("수정 내용을 텍스트 1~800자로 입력해 주세요.");
+      String text=note.trim();if(text.isEmpty()||text.length()>600)throw bad("수정 내용을 텍스트 1~600자로 입력해 주세요.");
       if(update>d.getLastNoteUpdate())d.note(text,update);
       drafts.flush();return Map.of("sessionId",d.getSessionId());
     });
     render(draft(result.get("sessionId").toString(),chat));return "수정 메모를 저장했습니다. 항목·메모 확인 후 재생성을 눌러 주세요.";
+  }
+  private String tailInstructions(TelegramImageFeedback d) {
+    var selected=d.selected(d.getRegions());var text=new StringBuilder();
+    if(selected.contains("tail_origin"))text.append("꼬리 뿌리는 낮은 골반 뒤 중앙 한 곳. 등·옆구리의 잘못된 뿌리 흔적 제거. ");
+    if(selected.contains("tail_visibility"))text.append("몸 반대편 꼬리는 몸·뒷다리에 가려짐. 좌우에 완전한 꼬리를 복제하거나 투과시키지 말 것. ");
+    if(selected.contains("tail_consistency"))text.append("정면·좌우·뒷면 모두 하나의 꼬리 경로·감는 쪽·끝 위치·무늬 고정. 카메라만 회전. ");
+    return text.toString();
   }
   private String identity(TelegramImageFeedback d) {
     var detail=images.detail(d.getJobId());return detail.get("petName")+" · "+detail.get("orderNumber")+" · 후보 "+d.getJobId().substring(0,8);

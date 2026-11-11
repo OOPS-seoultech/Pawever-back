@@ -44,7 +44,37 @@ length/curl/color/markings where possible. If a supported upward path is
 necessary, preserve the same low central root and continuous body contact.
 No thin connecting neck, narrow bridge, detached tuft, severed stump, unsupported
 loop, long cantilever or needle tip. Remove old misplaced tail remnants.
-Freeze the root, complete path and contacts in animal coordinates in all views.
+TAIL GEOMETRY AND OCCLUSION — CROSS-VIEW IDENTITY LOCK
+Before rendering, resolve ONE unchanging 3D tail: one low posterior-midline
+root, one continuous centerline, one tip, one fixed anatomical side wrap,
+and the same body/paw contact points. Use source evidence to choose the wrap
+side. If the side is unobserved, choose one conservative supported side ONCE;
+never alternate sides to make each panel look attractive. Anatomical left and
+right belong to the animal, not the viewer or the position of a panel.
+
+Project that SAME frozen tail into every view; do not design a fresh tail for
+each panel. Root height, base thickness, total length, curl direction, wrap
+side, tip location and coat markings stay identical in animal coordinates.
+The front view, both profiles and rear view must all be geometrically compatible
+with one sculpture. A front-facing sweep must continue into the matching side
+profile and rear path; never reverse its curl, relocate its tip or invent an
+additional loop in another view.
+
+Use correct opaque-body occlusion. A far-side tail segment behind the seated
+body, haunch or paw is HIDDEN, not painted through the body. Do not mirror or
+duplicate a complete side-wrapped plume into both left and right profiles.
+A near-side tail can be visible while the opposite profile shows little or
+none. A portion may be visible in both profiles ONLY if this single fixed
+geometry actually extends beyond the corresponding body silhouettes; never
+add a second root or a second tip to make this happen. Do not force a tail to
+be visible in every view, and do not remove its hidden geometry from the model.
+When the root is hidden, do not redraw it on the visible flank. In the rear
+view, retain the same low central attachment, not a second lateral origin.
+
+Before finalizing the sheet, silently compare all four panels for a single
+root, single tip, consistent side wrap, matching continuous path and physically
+correct occlusion. Correct any mismatch by fixing the one shared sculpture,
+then reproject the affected views. No explanatory text or overlays in the image.
 Keep every visible tail tip within safe black margins.
 
 All paws share one floor and have broad rounded soles. Forelegs stay close to
