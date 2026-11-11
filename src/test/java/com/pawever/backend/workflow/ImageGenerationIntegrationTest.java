@@ -283,7 +283,10 @@ class ImageGenerationIntegrationTest {
    feedback.begin(first,"-review",20L,777L,"검수 대기","single-tail-open");
    String session=drafts.findById(first).orElseThrow().getSessionId();
    feedback.action(session,"r:tail_origin","-review","single-tail-select");
-   feedback.action(session,"generate","-review","single-tail-generate");
+   doThrow(new WorkflowException(502,"TELEGRAM_UNAVAILABLE","network unavailable")).when(telegram).editReview(anyString(),anyLong(),anyString(),anyList());
+   assertThat(feedback.action(session,"generate","-review","single-tail-generate")).contains("재생성은 접수됐으나");
+   feedback.action(session,"generate","-review","single-tail-retry");
+   assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).hasSize(2);
    assertThat(latest().getFeedback()).contains("Region: tail","꼬리 시작점 오류","낮은 골반 뒤 중앙 한 곳");
    verify(api,times(1)).generate(anyList(),anyString());
  }

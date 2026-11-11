@@ -50,7 +50,7 @@ public class TelegramImageFeedbackService {
       else d.open(access.current().getId(),user,chat,message,original,clock.instant().plus(Duration.ofHours(24)));
       drafts.saveAndFlush(d);return Map.of("sessionId",d.getSessionId());
     });
-    var d=draft(result.get("sessionId").toString(),chat);render(d);return "방향·부위를 선택하거나 메모를 적은 뒤 재생성을 눌러 주세요.";
+    var d=draft(result.get("sessionId").toString(),chat);return render(d)?"방향·부위를 선택하거나 메모를 적은 뒤 재생성을 눌러 주세요.":"수정 초안은 저장됐으나 메시지 갱신에 실패했습니다. 수정 필요를 다시 눌러 주세요.";
   }
   @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
   public String action(String session,String action,String chat,String key) {
@@ -83,14 +83,15 @@ public class TelegramImageFeedbackService {
     var d=draft(session,chat);
     if(result.get("status").equals("CANCELED")) {
       boolean active=Boolean.TRUE.equals(images.detail(d.getJobId()).get("canReview"));
-      telegram.editReview(chat,d.getControlMessageId(),d.getOriginalText(),active?telegram.reviewButtons(d.getJobId()):List.of());
+      if(!edit(d,d.getOriginalText(),active?telegram.reviewButtons(d.getJobId()):List.of()))return "수정은 취소됐으나 메시지 갱신에 실패했습니다. 관리자 사이트에서 확인해 주세요.";
       return "수정 작성을 취소했습니다. 이미지 생성 비용은 발생하지 않았습니다.";
     }
     if(d.getStatus().equals("SUBMITTED")) {
-      telegram.editReview(chat,d.getControlMessageId(),d.getOriginalText()+"\n\n재생성 접수 완료 · 새 결과는 이 검수방으로 전송됩니다.",List.of());
+      if(!edit(d,d.getOriginalText()+"\n\n재생성 접수 완료 · 새 결과는 이 검수방으로 전송됩니다.",List.of()))return "재생성은 접수됐으나 메시지 갱신에 실패했습니다. 새 결과를 기다려 주세요. 중복 생성하지 않습니다.";
       return "재생성을 접수했습니다. 같은 요청은 중복 생성하지 않습니다.";
     }
-    render(d);return action.equals("note")?"봇이 보낸 메모 요청 메시지에 답장해 주세요.":"수정 항목을 저장했습니다. 재생성을 눌러야 생성됩니다.";
+    if(!render(d))return "수정 내용은 저장됐으나 메시지 갱신에 실패했습니다. 관리자 사이트에서도 확인할 수 있습니다.";
+    return action.equals("note")?"봇이 보낸 메모 요청 메시지에 답장해 주세요.":"수정 항목을 저장했습니다. 재생성을 눌러야 생성됩니다.";
   }
   public boolean isMemoReply(String chat,Long prompt) {return drafts.findByChatIdAndPromptMessageId(chat,prompt).isPresent();}
   @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
@@ -104,7 +105,7 @@ public class TelegramImageFeedbackService {
       if(update>d.getLastNoteUpdate())d.note(text,update);
       drafts.flush();return Map.of("sessionId",d.getSessionId());
     });
-    render(draft(result.get("sessionId").toString(),chat));return "수정 메모를 저장했습니다. 항목·메모 확인 후 재생성을 눌러 주세요.";
+    return render(draft(result.get("sessionId").toString(),chat))?"수정 메모를 저장했습니다. 항목·메모 확인 후 재생성을 눌러 주세요.":"메모는 저장됐으나 메시지 갱신에 실패했습니다. 같은 요청 메시지에 다시 답장하면 재시도할 수 있습니다.";
   }
   private String tailInstructions(TelegramImageFeedback d) {
     var selected=d.selected(d.getRegions());var text=new StringBuilder();
@@ -120,7 +121,12 @@ public class TelegramImageFeedbackService {
     return String.join(", ",d.selected(csv).stream().map(labels::get).toList());
   }
   private Map<String,String> button(TelegramImageFeedback d,String text,String action) {return Map.of("text",text,"callback_data","fb:"+d.getSessionId()+":"+action);}
-  private void render(TelegramImageFeedback d) {
+  private boolean edit(TelegramImageFeedback d,String text,List<List<Map<String,String>>> buttons) {
+    // A Telegram display failure must not roll back an already queued regeneration.
+    try {telegram.editReview(d.getChatId(),d.getControlMessageId(),text,buttons);return true;}
+    catch(WorkflowException e){return false;}
+  }
+  private boolean render(TelegramImageFeedback d) {
     var buttons=new ArrayList<List<Map<String,String>>>();
     buttons.add(DIRECTIONS.entrySet().stream().map(e->button(d,(d.selected(d.getDirections()).contains(e.getKey())?"✅ ":"")+e.getValue(),"d:"+e.getKey())).toList());
     var regionButtons=REGIONS.entrySet().stream().filter(e->!e.getKey().startsWith("tail_")).map(e->button(d,(d.selected(d.getRegions()).contains(e.getKey())?"✅ ":"")+e.getValue(),"r:"+e.getKey())).toList();
@@ -128,6 +134,6 @@ public class TelegramImageFeedbackService {
     REGIONS.entrySet().stream().filter(e->e.getKey().startsWith("tail_")).forEach(e->buttons.add(List.of(button(d,(d.selected(d.getRegions()).contains(e.getKey())?"✅ ":"")+e.getValue(),"r:"+e.getKey()))));
     buttons.add(List.of(button(d,"메모 입력·변경","note")));
     buttons.add(List.of(button(d,"재생성 (API 비용 발생)","generate"),button(d,"취소","cancel")));
-    telegram.editReview(d.getChatId(),d.getControlMessageId(),d.getOriginalText()+"\n\n수정 작성: "+access.current().getName()+"\n방향: "+selected(d,d.getDirections(),DIRECTIONS)+"\n부위: "+selected(d,d.getRegions(),REGIONS)+"\n메모: "+(d.getNote().isBlank()?"없음":d.getNote())+"\n여러 항목 선택 가능 · 재생성을 누를 때만 API를 호출합니다. 작성은 24시간 동안 유지됩니다.",buttons);
+    return edit(d,d.getOriginalText()+"\n\n수정 작성: "+access.current().getName()+"\n방향: "+selected(d,d.getDirections(),DIRECTIONS)+"\n부위: "+selected(d,d.getRegions(),REGIONS)+"\n메모: "+(d.getNote().isBlank()?"없음":d.getNote())+"\n여러 항목 선택 가능 · 재생성을 누를 때만 API를 호출합니다. 작성은 24시간 동안 유지됩니다.",buttons);
   }
 }
