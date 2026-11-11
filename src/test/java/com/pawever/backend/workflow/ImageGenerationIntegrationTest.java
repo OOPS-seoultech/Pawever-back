@@ -193,7 +193,7 @@ class ImageGenerationIntegrationTest {
    var linked=StaffTelegramLink.create(actor.getId());linked.connect(777L);links.saveAndFlush(linked);
    String raw="{\"update_id\":99,\"callback_query\":{\"id\":\"test-cb\",\"from\":{\"id\":777},\"message\":{\"message_id\":10,\"chat\":{\"id\":\"-100test\"}},\"data\":\"test:payment\"}}";
    linking.update("payment",new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw));
-   verify(telegram).answer(eq("payment"),eq("test-cb"),contains("연결 테스트 성공"));
+   verify(telegram).answer(eq("payment"),eq("test-cb"),contains("연결 테스트 성공"),eq(true));
    verify(telegram,never()).clear(anyString(),anyString(),anyLong());
    assertThat(orders.findByOrderNumber(number).orElseThrow().paymentStatus()).isEqualTo("PENDING");
    assertThat(jobs.findByOrderNumberAndPetIndexOrderByCreatedAtAsc(number,0)).isEmpty();verifyNoInteractions(api);
@@ -263,7 +263,9 @@ class ImageGenerationIntegrationTest {
    var json=new com.fasterxml.jackson.databind.ObjectMapper();
    linking.update("review",json.valueToTree(Map.of("update_id",50,"callback_query",Map.of("id","cb","from",Map.of("id",777),"message",Map.of("message_id",20,"chat",Map.of("id","-review"),"text","검수 대기"),"data","changes:"+first))));
    String session=drafts.findById(first).orElseThrow().getSessionId();
+   verify(telegram).answer(eq("review"),eq("cb"),anyString(),eq(false));
    linking.update("review",json.valueToTree(Map.of("update_id",51,"callback_query",Map.of("id","cb2","from",Map.of("id",777),"message",Map.of("message_id",20,"chat",Map.of("id","-review")),"data","fb:"+session+":note"))));
+   verify(telegram).answer(eq("review"),eq("cb2"),anyString(),eq(false));
    linking.update("review",json.valueToTree(Map.of("update_id",52,"message",Map.of("message_id",101,"from",Map.of("id",888),"chat",Map.of("id","-review"),"reply_to_message",Map.of("message_id",100),"text","남의 메모"))));
    assertThat(drafts.findById(first).orElseThrow().getNote()).isEmpty();
    linking.update("review",json.valueToTree(Map.of("update_id",53,"message",Map.of("message_id",102,"from",Map.of("id",777),"chat",Map.of("id","-review"),"reply_to_message",Map.of("message_id",100),"text","눈 주변 무늬를 사진에 맞춰 주세요"))));

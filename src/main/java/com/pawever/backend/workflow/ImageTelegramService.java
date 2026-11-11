@@ -86,7 +86,7 @@ public class ImageTelegramService {
     var callback=update.path("callback_query");if(callback.isMissingNode())return;
     String callbackId=callback.path("id").asText();
     String chat=callback.path("message").path("chat").path("id").asText();
-    String result="처리할 수 없는 버튼입니다.";
+    String result="처리할 수 없는 버튼입니다.";boolean alert=true;
     var previous=SecurityContextHolder.getContext();
     try{
       if(!chat.equals(telegram.chat(kind)))throw new WorkflowException(403,"FORBIDDEN","등록된 운영 채팅방에서만 사용할 수 있습니다.");
@@ -94,11 +94,11 @@ public class ImageTelegramService {
       authenticate(userId);
       String data=callback.path("data").asText();
       if(kind.equals("review")&&data.startsWith("changes:")) {
-        result=feedback.begin(data.substring(8),chat,callback.path("message").path("message_id").asLong(),userId,callback.path("message").path("text").asText(),key);return;
+        result=feedback.begin(data.substring(8),chat,callback.path("message").path("message_id").asLong(),userId,callback.path("message").path("text").asText(),key);alert=result.contains("실패");return;
       }
       if(kind.equals("review")&&data.startsWith("fb:")) {
         String[] parts=data.split(":",3);if(parts.length!=3)throw new WorkflowException(400,"INVALID_INPUT","수정 버튼을 확인해 주세요.");
-        result=feedback.action(parts[1],parts[2],chat,key);return;
+        result=feedback.action(parts[1],parts[2],chat,key);alert=result.contains("실패")||!(parts[2].startsWith("d:")||parts[2].startsWith("r:")||parts[2].equals("note"));return;
       }
       if(data.equals("test:"+kind)) {
         access.require(kind.equals("payment")?CONFIRM_PAYMENT:REVIEW_IMAGES);
@@ -116,7 +116,7 @@ public class ImageTelegramService {
       telegram.clear(kind,chat,callback.path("message").path("message_id").asLong());
     }catch(WorkflowException e){result=e.getMessage();}
     catch(RuntimeException e){result="처리 결과를 확인하지 못했습니다. 관리자 사이트에서 확인해 주세요.";}
-    finally{SecurityContextHolder.setContext(previous);telegram.answer(kind,callbackId,result);}
+    finally{SecurityContextHolder.setContext(previous);telegram.answer(kind,callbackId,result,alert);}
   }
   private void authenticate(long user) {
     var link=links.findByTelegramUserId(user).orElseThrow(()->new WorkflowException(403,"TELEGRAM_NOT_LINKED","관리자 사이트의 텔레그램 연결을 먼저 진행해 주세요."));

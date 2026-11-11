@@ -106,7 +106,7 @@ public class ImageTelegramClient {
   void confirmedOrderLink(String chat,Long message,String number) {
     call("payment","editMessageReplyMarkup",Map.of("chat_id",chat,"message_id",message,"reply_markup",Map.of("inline_keyboard",List.of(List.of(Map.of("text","관리자 사이트","url",config.getPublicWebUrl()+"/admin/orders/"+number))))));
   }
-  void answer(String kind,String id,String text){try{call(kind,"answerCallbackQuery",Map.of("callback_query_id",id,"text",text,"show_alert",true));}catch(RuntimeException ignored){}}
+  void answer(String kind,String id,String text,boolean alert){try{call(kind,"answerCallbackQuery",Map.of("callback_query_id",id,"text",text,"show_alert",alert));}catch(RuntimeException ignored){}}
   void clear(String kind,String chat,Long message){if(message==null)return;try{call(kind,"editMessageReplyMarkup",Map.of("chat_id",chat,"message_id",message,"reply_markup",Map.of("inline_keyboard",List.of())));}catch(RuntimeException ignored){}}
   void text(String kind,String chat,String text){call(kind,"sendMessage",Map.of("chat_id",chat,"text",text));}
 }
